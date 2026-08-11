@@ -141,6 +141,43 @@
 
       };
     }
+async function sendQuestion() {
+  const input = document.getElementById("question");
+  const answer = document.getElementById("answer");
+  const message = input.value.trim();
+
+  if (!message) return;
+
+  answer.innerText = "AI 正在思考中，請稍候…";
+
+  try {
+    const response = await fetch("/api/chat", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ message: message })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      answer.innerText = "目前無法取得回答：" + (data.error || "請稍後再試");
+      return;
+    }
+
+    answer.innerText = data.answer;
+  } catch (error) {
+    answer.innerText = "系統暫時無法連線，請稍後再試。";
+  }
+}
+
+document.getElementById("question").addEventListener("keydown", function(event) {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    sendQuestion();
+  }
+}); 
   </script>
 
 </body>
