@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>希堤微旅 AI 智慧櫃台</title>
+  <style>
+    body {
+      font-family: Arial, "Microsoft JhengHei", sans-serif;
+      background: #f5f5f5;
+      margin: 0;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .card {
+      max-width: 520px;
+      margin: 50px auto;
+      background: white;
+      padding: 35px 25px;
+      border-radius: 20px;
+      box-shadow: 0 6px 25px rgba(0,0,0,0.10);
+    }
+
+    h1 {
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      color: #666;
+      margin-bottom: 30px;
+    }
+
+    button {
+      font-size: 18px;
+      padding: 16px 28px;
+      border: none;
+      border-radius: 30px;
+      cursor: pointer;
+      margin: 8px;
+    }
+
+    #voiceButton {
+      background: #222;
+      color: white;
+    }
+
+    #question {
+      width: 90%;
+      padding: 14px;
+      margin-top: 20px;
+      border-radius: 10px;
+      border: 1px solid #ccc;
+      font-size: 16px;
+    }
+
+    #answer {
+      margin-top: 25px;
+      text-align: left;
+      line-height: 1.7;
+      background: #fafafa;
+      padding: 18px;
+      border-radius: 12px;
+    }
+
+    .notice {
+      margin-top: 30px;
+      font-size: 13px;
+      color: #777;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="card">
+
+    <h1>希堤微旅 AI 智慧櫃台</h1>
+
+    <div class="subtitle">
+      24 小時旅宿資訊小幫手
+    </div>
+
+    <p>您可以詢問：</p>
+
+    <p>
+      早餐・停車・入住退房・房型<br>
+      智慧電視・備品・交通・周邊景點與餐廳
+    </p>
+
+    <button id="voiceButton" onclick="startVoice()">
+      🎤 語音詢問
+    </button>
+
+    <br>
+
+    <input
+      id="question"
+      type="text"
+      placeholder="也可以直接輸入您的問題"
+    >
+
+    <div id="answer">
+      您好！我是希堤微旅 AI 智慧櫃台。請問今天有什麼可以協助您的呢？
+    </div>
+
+    <div class="notice">
+      AI 提供一般旅宿資訊。訂房修改、退款、設備故障或其他特殊需求，請聯絡真人櫃台協助。
+    </div>
+
+  </div>
+
+  <script>
+    function startVoice() {
+
+      const SpeechRecognition =
+        window.SpeechRecognition ||
+        window.webkitSpeechRecognition;
+
+      if (!SpeechRecognition) {
+        alert("您的瀏覽器目前不支援語音輸入，請改用文字輸入。");
+        return;
+      }
+
+      const recognition = new SpeechRecognition();
+
+      recognition.lang = "zh-TW";
+      recognition.interimResults = false;
+
+      recognition.start();
+
+      recognition.onresult = function(event) {
+
+        const text =
+          event.results[0][0].transcript;
+
+        document.getElementById("question").value = text;
+
+        document.getElementById("answer").innerText =
+          "收到您的問題：「" + text + "」\n\nAI 串接功能即將啟用。";
+
+      };
+    }
+  </script>
+
+</body>
+</html>
