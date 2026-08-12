@@ -25,7 +25,7 @@ export default async function handler(req, res) {
     });
 
     const data = await response.json();
-
+console.log("OPENAI_RESPONSE", JSON.stringify(data));
     if (!response.ok) {
       console.error(data);
       return res.status(response.status).json({
