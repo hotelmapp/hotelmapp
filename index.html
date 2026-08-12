@@ -5,188 +5,77 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>希堤微旅 AI 智慧櫃台</title>
   <style>
-    body {
-      font-family: Arial, "Microsoft JhengHei", sans-serif;
-      background: #f5f5f5;
-      margin: 0;
-      padding: 20px;
-      text-align: center;
-    }
-
-    .card {
-      max-width: 520px;
-      margin: 50px auto;
-      background: white;
-      padding: 35px 25px;
-      border-radius: 20px;
-      box-shadow: 0 6px 25px rgba(0,0,0,0.10);
-    }
-
-    h1 {
-      margin-bottom: 8px;
-    }
-
-    .subtitle {
-      color: #666;
-      margin-bottom: 30px;
-    }
-
-    button {
-      font-size: 18px;
-      padding: 16px 28px;
-      border: none;
-      border-radius: 30px;
-      cursor: pointer;
-      margin: 8px;
-    }
-
-    #voiceButton {
-      background: #222;
-      color: white;
-    }
-
-    #question {
-      width: 90%;
-      padding: 14px;
-      margin-top: 20px;
-      border-radius: 10px;
-      border: 1px solid #ccc;
-      font-size: 16px;
-    }
-
-    #answer {
-      margin-top: 25px;
-      text-align: left;
-      line-height: 1.7;
-      background: #fafafa;
-      padding: 18px;
-      border-radius: 12px;
-    }
-
-    .notice {
-      margin-top: 30px;
-      font-size: 13px;
-      color: #777;
-    }
+    body { font-family: Arial, "Microsoft JhengHei", sans-serif; background: #f5f5f5; margin: 0; padding: 20px; text-align: center; }
+    .card { max-width: 520px; margin: 50px auto; background: white; padding: 35px 25px; border-radius: 20px; box-shadow: 0 6px 25px rgba(0,0,0,.1); }
+    h1 { margin-bottom: 8px; }
+    .subtitle { color: #666; margin-bottom: 30px; }
+    form { display: flex; gap: 10px; margin-top: 24px; }
+    #question { min-width: 0; flex: 1; padding: 14px; border-radius: 10px; border: 1px solid #ccc; font-size: 16px; }
+    button { border: 0; border-radius: 10px; padding: 0 22px; background: #222; color: white; font-size: 16px; cursor: pointer; }
+    button:disabled { cursor: wait; opacity: .6; }
+    #answer { margin-top: 25px; min-height: 1.7em; text-align: left; line-height: 1.7; background: #fafafa; padding: 18px; border-radius: 12px; white-space: pre-wrap; }
+    .notice { margin-top: 30px; font-size: 13px; color: #777; }
   </style>
 </head>
-
 <body>
-
-  <div class="card">
-
+  <main class="card">
     <h1>希堤微旅 AI 智慧櫃台</h1>
-
-    <div class="subtitle">
-      24 小時旅宿資訊小幫手
-    </div>
-
+    <div class="subtitle">24 小時旅宿資訊小幫手</div>
     <p>您可以詢問：</p>
+    <p>早餐・停車・入住退房・房型<br>智慧電視・備品・交通・周邊景點與餐廳</p>
 
-    <p>
-      早餐・停車・入住退房・房型<br>
-      智慧電視・備品・交通・周邊景點與餐廳
-    </p>
+    <form id="chatForm">
+      <input id="question" name="message" type="text" placeholder="請輸入您的問題" autocomplete="off" required>
+      <button id="submitButton" type="submit">送出</button>
+    </form>
 
-    <button id="voiceButton" onclick="startVoice()">
-      🎤 語音詢問
-    </button>
-
-    <br>
-
-    <input
-      id="question"
-      type="text"
-      placeholder="也可以直接輸入您的問題"
-    >
-
-    <div id="answer">
-      您好！我是希堤微旅 AI 智慧櫃台。請問今天有什麼可以協助您的呢？
-    </div>
-
-    <div class="notice">
-      AI 提供一般旅宿資訊。訂房修改、退款、設備故障或其他特殊需求，請聯絡真人櫃台協助。
-    </div>
-
-  </div>
+    <div id="answer" role="status" aria-live="polite">您好！請問今天有什麼可以協助您的呢？</div>
+    <div class="notice">AI 提供一般旅宿資訊。訂房修改、退款、設備故障或其他特殊需求，請聯絡真人櫃台協助。</div>
+  </main>
 
   <script>
-    const questionInput = document.getElementById("question");
-    const answerElement = document.getElementById("answer");
+    const form = document.getElementById("chatForm");
+    const input = document.getElementById("question");
+    const button = document.getElementById("submitButton");
+    const answer = document.getElementById("answer");
 
-    function startVoice() {
-      const SpeechRecognition =
-        window.SpeechRecognition ||
-        window.webkitSpeechRecognition;
-
-      if (!SpeechRecognition) {
-        alert("您的瀏覽器目前不支援語音輸入，請改用文字輸入。");
-        return;
-      }
-
-      const recognition = new SpeechRecognition();
-
-      recognition.lang = "zh-TW";
-      recognition.interimResults = false;
-      recognition.onresult = function(event) {
-        const text = event.results[0][0].transcript.trim();
-        questionInput.value = text;
-        sendQuestion();
-      };
-
-      recognition.onerror = function() {
-        answerElement.innerText = "目前無法辨識語音，請再試一次或改用文字輸入。";
-      };
-
-      recognition.start();
-    }
-
-    async function sendQuestion() {
-      const message = questionInput.value.trim();
-
+    form.addEventListener("submit", async event => {
+      event.preventDefault();
+      const message = input.value.trim();
       if (!message) return;
 
-      answerElement.innerText = "AI 正在思考中，請稍候…";
+      button.disabled = true;
+      answer.textContent = "AI 正在思考中，請稍候…";
 
       try {
         const response = await fetch("/api/chat", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ message })
         });
         const rawBody = await response.text();
-        let data;
-
+        let body;
         try {
-          data = rawBody ? JSON.parse(rawBody) : {};
-        } catch (_) {
-          throw new Error(`伺服器回傳無法解析的內容（HTTP ${response.status}）`);
+          body = rawBody ? JSON.parse(rawBody) : {};
+        } catch {
+          throw new Error(`伺服器回應格式錯誤（HTTP ${response.status}）`);
         }
 
         if (!response.ok) {
-          throw new Error(data.error || `伺服器請求失敗（HTTP ${response.status}）`);
+          const status = body?.diagnostic?.status || response.status;
+          const code = body?.diagnostic?.code ? `，代碼 ${body.diagnostic.code}` : "";
+          throw new Error(`${body?.error || "請求失敗"}（HTTP ${status}${code}）`);
         }
-
-        if (typeof data.answer !== "string" || !data.answer.trim()) {
-          throw new Error("AI 未回傳有效內容");
+        if (typeof body.answer !== "string" || !body.answer.trim()) {
+          throw new Error("AI 未回傳文字答案");
         }
-
-        answerElement.innerText = data.answer.trim();
+        answer.textContent = body.answer.trim();
       } catch (error) {
-        answerElement.innerText =
-          "目前無法取得回答：" + (error.message || "請稍後再試");
-      }
-    }
-
-    questionInput.addEventListener("keydown", function(event) {
-      if (event.key === "Enter" && !event.isComposing) {
-        event.preventDefault();
-        sendQuestion();
+        answer.textContent = `目前無法取得回答：${error.message || "未知錯誤"}`;
+      } finally {
+        button.disabled = false;
       }
     });
   </script>
-
 </body>
 </html>
