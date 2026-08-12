@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import handler, { responseText } from "../api/chat.js";
+import { hotelKnowledge } from "../data/hotel-info.js";
 
 function recorder() {
   return {
@@ -28,7 +29,11 @@ test("makes an outgoing Responses API request before returning its answer", asyn
     requested = true;
     assert.equal(url, "https://api.openai.com/v1/responses");
     assert.equal(options.headers.Authorization, "Bearer server-secret");
-    assert.equal(JSON.parse(options.body).input, "早餐幾點開始？");
+    const payload = JSON.parse(options.body);
+    assert.equal(payload.input, "早餐幾點開始？");
+    assert.match(payload.instructions, /08:00–10:00/);
+    assert.match(payload.instructions, /唯一正式飯店知識來源/);
+    assert.match(payload.instructions, /不得猜測即時房價/);
     return new Response(JSON.stringify({ output_text: "請洽櫃台確認早餐時間。" }), {
       status: 200,
       headers: { "x-request-id": "req_success" }
@@ -44,6 +49,25 @@ test("makes an outgoing Responses API request before returning its answer", asyn
   assert.equal(requested, true);
   assert.equal(res.statusCode, 200);
   assert.deepEqual(res.body, { answer: "請洽櫃台確認早餐時間。" });
+});
+
+test("contains confirmed V2.0 answers for the required guest scenarios", () => {
+  assert.equal(hotelKnowledge.breakfast.hours, "08:00–10:00");
+  assert.equal(hotelKnowledge.stay.checkOut, "11:00 前");
+  assert.equal(hotelKnowledge.parking.hotelSpaces, 3);
+  assert.match(hotelKnowledge.amenities.tv, /智慧電視/);
+  assert.match(hotelKnowledge.local.restaurants, /先詢問/);
+  assert.match(hotelKnowledge.booking.hotelOrWebsite, /聯繫櫃檯/);
+  assert.match(hotelKnowledge.escalation.equipment, /不自行判斷/);
+  assert.match(hotelKnowledge.booking.livePriceAndAvailability, /即時房價/);
+});
+
+test("keeps facts missing from V2.0 explicitly unknown", () => {
+  assert.equal(hotelKnowledge.identity.address, null);
+  assert.equal(hotelKnowledge.contact.frontDeskPhone, null);
+  assert.equal(hotelKnowledge.amenities.wifi, null);
+  assert.equal(hotelKnowledge.rooms.find(room => room.name === "家庭房").bathtub, null);
+  assert.equal(hotelKnowledge.review.contradictions.length, 0);
 });
 
 test("preserves an OpenAI HTTP error and returns safe diagnostics", async t => {
