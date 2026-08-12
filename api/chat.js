@@ -1,3 +1,5 @@
+import { knowledgeForPrompt } from "../data/hotel-info.js";
+
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const OPENAI_MODEL = process.env.OPENAI_MODEL?.trim() || "gpt-4.1-mini";
 const REQUEST_TIMEOUT_MS = 25_000;
@@ -64,7 +66,15 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: OPENAI_MODEL,
-        instructions: "你是希堤微旅的 AI 智慧櫃台。請以繁體中文簡潔回答；不確定的飯店資訊不要猜測，請建議旅客聯絡真人櫃台。",
+        instructions: `你是希堤微旅的 AI 智慧櫃台。請以繁體中文簡潔回答。
+以下 JSON 是唯一正式飯店知識來源。回答希堤微旅的事實、設備、服務或政策時，只能使用其中明載的內容，不得套用一般飯店常識，也不得推測 null、missing 或未記載資料。
+有明確答案就依資料回答並提供下一步；沒有答案或不確定時，明確說明知識庫未提供，請旅客向真人櫃台確認。
+不得猜測即時房價、空房、優惠或當日狀況；只能引導至當日官網、訂房系統或櫃台確認，不得捏造數字。
+客訴、退款、訂單爭議、設備故障或特殊需求必須依 escalation 轉真人；不可聲稱已修改、取消、付款或退款。
+餐廳具體店名屬變動資訊；若無法即時查證，先詢問餐飲偏好並說明須查詢最新營業資訊，不可編造店家。
+
+正式知識庫：
+${knowledgeForPrompt()}`,
         input: message.trim()
       }),
       signal: controller.signal
