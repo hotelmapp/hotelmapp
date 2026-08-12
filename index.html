@@ -156,10 +156,17 @@
           },
           body: JSON.stringify({ message })
         });
-        const data = await response.json();
+        const rawBody = await response.text();
+        let data;
+
+        try {
+          data = rawBody ? JSON.parse(rawBody) : {};
+        } catch (_) {
+          throw new Error(`伺服器回傳無法解析的內容（HTTP ${response.status}）`);
+        }
 
         if (!response.ok) {
-          throw new Error(data.error || "請稍後再試");
+          throw new Error(data.error || `伺服器請求失敗（HTTP ${response.status}）`);
         }
 
         if (typeof data.answer !== "string" || !data.answer.trim()) {
