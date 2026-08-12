@@ -34,7 +34,7 @@ console.log("OPENAI_RESPONSE", JSON.stringify(data));
     }
 
     return res.status(200).json({
-      answer: data.output?.find(item => item.type === "message")?.content?.find(part => part.type === "output_text")?.text || "目前無法取得回答，請稍後再試。"
+     answer: data.output_text || data.output?.flatMap(item => item.content || []).find(part => part.type === "output_text")?.text || "目前無法取得回答，請稍後再試。"
     });
   } catch (error) {
     console.error(error);
