@@ -111,8 +111,10 @@
   </div>
 
   <script>
-    function startVoice() {
+    const questionInput = document.getElementById("question");
+    const answerElement = document.getElementById("answer");
 
+    function startVoice() {
       const SpeechRecognition =
         window.SpeechRecognition ||
         window.webkitSpeechRecognition;
@@ -126,57 +128,57 @@
 
       recognition.lang = "zh-TW";
       recognition.interimResults = false;
+      recognition.onresult = function(event) {
+        const text = event.results[0][0].transcript.trim();
+        questionInput.value = text;
+        sendQuestion();
+      };
+
+      recognition.onerror = function() {
+        answerElement.innerText = "目前無法辨識語音，請再試一次或改用文字輸入。";
+      };
 
       recognition.start();
-
-      recognition.onresult = function(event) {
-
-        const text =
-          event.results[0][0].transcript;
-
-        document.getElementById("question").value = text;
-
-      sendQuestion();
-
-      };
     }
-async function sendQuestion() {
-  const input = document.getElementById("question");
-  const answer = document.getElementById("answer");
-  const message = input.value.trim();
 
-  if (!message) return;
+    async function sendQuestion() {
+      const message = questionInput.value.trim();
 
-  answer.innerText = "AI 正在思考中，請稍候…";
+      if (!message) return;
 
-  try {
-    const response = await fetch("/api/chat", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ message: message })
+      answerElement.innerText = "AI 正在思考中，請稍候…";
+
+      try {
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ message })
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "請稍後再試");
+        }
+
+        if (typeof data.answer !== "string" || !data.answer.trim()) {
+          throw new Error("AI 未回傳有效內容");
+        }
+
+        answerElement.innerText = data.answer.trim();
+      } catch (error) {
+        answerElement.innerText =
+          "目前無法取得回答：" + (error.message || "請稍後再試");
+      }
+    }
+
+    questionInput.addEventListener("keydown", function(event) {
+      if (event.key === "Enter" && !event.isComposing) {
+        event.preventDefault();
+        sendQuestion();
+      }
     });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      answer.innerText = "目前無法取得回答：" + (data.error || "請稍後再試");
-      return;
-    }
-
-    answer.innerText = data.answer;
-  } catch (error) {
-    answer.innerText = "系統暫時無法連線，請稍後再試。";
-  }
-}
-
-document.getElementById("question").addEventListener("keydown", function(event) {
-  if (event.key === "Enter") {
-    event.preventDefault();
-    sendQuestion();
-  }
-}); 
   </script>
 
 </body>
