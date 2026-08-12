@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import handler, { responseText } from "../api/chat.js";
+import handler, { relevantKnowledge, responseText, responsesPayload } from "../api/chat.js";
 import { hotelKnowledge } from "../data/hotel-info.js";
 
 function recorder() {
@@ -48,7 +48,42 @@ test("makes an outgoing Responses API request before returning its answer", asyn
   await handler({ method: "POST", body: { message: "早餐幾點開始？" } }, res);
   assert.equal(requested, true);
   assert.equal(res.statusCode, 200);
-  assert.deepEqual(res.body, { answer: "請洽櫃台確認早餐時間。" });
+  assert.equal(res.body.answer, "請洽櫃台確認早餐時間。");
+  assert.equal(res.body.diagnostic.knowledgeVersion, "2.0");
+  assert.equal(res.headers["X-Chat-Knowledge-Version"], "2.0");
+});
+
+test("prominently grounds the checkout question in the unchanged V2.0 fact", () => {
+  assert.deepEqual(relevantKnowledge("飯店幾點退房？"), {
+    stay: { checkOut: hotelKnowledge.stay.checkOut }
+  });
+  const payload = responsesPayload("飯店幾點退房？");
+  assert.equal(payload.input, "飯店幾點退房？");
+  assert.match(payload.instructions, /正式知識庫（V2\.0）/);
+  assert.match(payload.instructions, /本題相關欄位/);
+  assert.match(payload.instructions, /"checkOut": "11:00 前"/);
+  assert.doesNotMatch(payload.instructions, /中午12點/);
+});
+
+test("sends the V2.0 checkout fact to the Responses API", async t => {
+  const originalFetch = globalThis.fetch;
+  const originalKey = process.env.OPENAI_API_KEY;
+  process.env.OPENAI_API_KEY = "server-secret";
+  globalThis.fetch = async (_url, options) => {
+    const payload = JSON.parse(options.body);
+    assert.equal(payload.input, "飯店幾點退房？");
+    assert.match(payload.instructions, /"checkOut": "11:00 前"/);
+    return new Response(JSON.stringify({ output_text: "退房時間為上午 11:00 前。" }), { status: 200 });
+  };
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    originalKey === undefined ? delete process.env.OPENAI_API_KEY : process.env.OPENAI_API_KEY = originalKey;
+  });
+
+  const res = recorder();
+  await handler({ method: "POST", body: { message: "飯店幾點退房？" } }, res);
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.answer, "退房時間為上午 11:00 前。");
 });
 
 test("contains confirmed V2.0 answers for the required guest scenarios", () => {
