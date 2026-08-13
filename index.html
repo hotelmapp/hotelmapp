@@ -15,6 +15,15 @@
     button:disabled { cursor: wait; opacity: .6; }
     #answer { margin-top: 25px; min-height: 1.7em; text-align: left; line-height: 1.7; background: #fafafa; padding: 18px; border-radius: 12px; white-space: pre-wrap; }
     .notice { margin-top: 30px; font-size: 13px; color: #777; }
+    .contact { margin-top: 34px; padding-top: 24px; border-top: 1px solid #ddd; text-align: left; }
+    .contact h2 { text-align: center; }
+    #contactForm { display: grid; grid-template-columns: 1fr 1fr; }
+    #contactForm label { display: grid; gap: 6px; font-size: 14px; color: #444; }
+    #contactForm .wide { grid-column: 1 / -1; }
+    #contactForm input, #contactForm textarea { box-sizing: border-box; width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 8px; font: inherit; }
+    #contactForm button { min-height: 44px; }
+    #contactStatus { min-height: 1.5em; margin-top: 12px; text-align: center; }
+    @media (max-width: 520px) { #contactForm { grid-template-columns: 1fr; } #contactForm .wide { grid-column: auto; } }
   </style>
 </head>
 <body>
@@ -31,6 +40,21 @@
 
     <div id="answer" role="status" aria-live="polite">您好！請問今天有什麼可以協助您的呢？</div>
     <div class="notice">AI 提供一般旅宿資訊。訂房修改、退款、設備故障或其他特殊需求，請聯絡真人櫃台協助。</div>
+
+    <section class="contact" aria-labelledby="contactHeading">
+      <h2 id="contactHeading">留言給飯店人員</h2>
+      <form id="contactForm">
+        <label>姓名（必填）<input name="name" maxlength="80" required></label>
+        <label>電話（必填）<input name="phone" type="tel" maxlength="30" required></label>
+        <label>Email（選填）<input name="email" type="email" maxlength="254"></label>
+        <label>入住日期（選填）<input name="stayDate" type="date"></label>
+        <label class="wide">事由／需求（必填）<input name="reason" maxlength="100" placeholder="例如：設備問題、訂單疑問" required></label>
+        <label class="wide">事由摘要（必填）<textarea name="summary" maxlength="1000" rows="3" required></textarea></label>
+        <label class="wide">客人原始留言（必填）<textarea name="originalMessage" maxlength="5000" rows="5" required></textarea></label>
+        <button class="wide" type="submit">轉交飯店人員</button>
+      </form>
+      <div id="contactStatus" role="status" aria-live="polite"></div>
+    </section>
   </main>
 
   <script type="module">
@@ -42,6 +66,8 @@
     const answer = document.getElementById("answer");
     const MAX_HISTORY_MESSAGES = 20;
     const conversationHistory = [];
+    const contactForm = document.getElementById("contactForm");
+    const contactStatus = document.getElementById("contactStatus");
 
     form.addEventListener("submit", async event => {
       event.preventDefault();
@@ -87,6 +113,31 @@
         answer.textContent = `目前無法取得回答：${error.message || "未知錯誤"}`;
       } finally {
         button.disabled = false;
+      }
+    });
+
+    contactForm.addEventListener("submit", async event => {
+      event.preventDefault();
+      const contactButton = contactForm.querySelector("button");
+      contactButton.disabled = true;
+      contactStatus.textContent = "留言傳送中，請稍候…";
+      try {
+        const payload = Object.fromEntries(new FormData(contactForm));
+        const response = await fetch("/api/contact", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok || body.message !== "已將留言轉交飯店人員") {
+          throw new Error(body.error || "目前留言未成功送出，請直接聯絡櫃台");
+        }
+        contactStatus.textContent = body.message;
+        contactForm.reset();
+      } catch (error) {
+        contactStatus.textContent = error.message || "目前留言未成功送出，請直接聯絡櫃台";
+      } finally {
+        contactButton.disabled = false;
       }
     });
   </script>
