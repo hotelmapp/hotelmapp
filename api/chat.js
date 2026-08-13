@@ -4,6 +4,8 @@ const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const OPENAI_MODEL = process.env.OPENAI_MODEL?.trim() || "gpt-4.1-mini";
 const REQUEST_TIMEOUT_MS = 25_000;
 const KNOWLEDGE_VERSION = "2.0";
+const MAX_HISTORY_MESSAGES = 20;
+const MAX_MESSAGE_LENGTH = 2_000;
 
 export const config = { maxDuration: 30 };
 
@@ -14,8 +16,20 @@ export function relevantKnowledge(message) {
   return null;
 }
 
-export function responsesPayload(message) {
-  const relevant = relevantKnowledge(message);
+export function normalizedHistory(history) {
+  if (!Array.isArray(history)) return [];
+
+  return history
+    .filter(item => item && (item.role === "user" || item.role === "assistant") && typeof item.content === "string")
+    .map(item => ({ role: item.role, content: item.content.trim().slice(0, MAX_MESSAGE_LENGTH) }))
+    .filter(item => item.content)
+    .slice(-MAX_HISTORY_MESSAGES);
+}
+
+export function responsesPayload(message, history = []) {
+  const conversation = normalizedHistory(history);
+  const contextText = [...conversation.map(item => item.content), message].join("\n");
+  const relevant = relevantKnowledge(contextText);
   return {
     model: OPENAI_MODEL,
     instructions: `你是希堤微旅的 AI 智慧櫃台。請以繁體中文簡潔回答。
@@ -24,10 +38,11 @@ export function responsesPayload(message) {
 不得猜測即時房價、空房、優惠或當日狀況；只能引導至當日官網、訂房系統或櫃台確認，不得捏造數字。
 客訴、退款、訂單爭議、設備故障或特殊需求必須依 escalation 轉真人；不可聲稱已修改、取消、付款或退款。
 餐廳具體店名屬變動資訊；若無法即時查證，先詢問餐飲偏好並說明須查詢最新營業資訊，不可編造店家。
+請連貫理解下方對話脈絡。旅客使用「那」、「這個」、「兩個人呢」、「如果晚一點呢」等承接語時，應依最近對話判斷所指主題；計算仍只能使用正式知識庫已確認的數字。
 
 正式知識庫（V${KNOWLEDGE_VERSION}）：
 ${knowledgeForPrompt()}${relevant ? `\n\n從正式知識庫擷取的本題相關欄位（內容完全相同，回答時優先核對）：\n${JSON.stringify(relevant, null, 2)}` : ""}`,
-    input: message
+    input: [...conversation, { role: "user", content: message }]
   };
 }
 
@@ -91,7 +106,7 @@ export default async function handler(req, res) {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify(responsesPayload(message.trim())),
+      body: JSON.stringify(responsesPayload(message.trim().slice(0, MAX_MESSAGE_LENGTH), req.body?.history)),
       signal: controller.signal
     });
   } catch (error) {
