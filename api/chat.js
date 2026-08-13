@@ -34,6 +34,20 @@ function isoDate(year, month, day) {
   return date.toISOString().slice(0, 10);
 }
 
+function stayNights(message) {
+  const match = message.match(/(?:入住|住)?\s*(\d{1,2}|[一二兩三四五六七八九十]+)\s*晚/u);
+  if (!match) return 1;
+  if (/^\d+$/u.test(match[1])) return Math.max(1, Number(match[1]));
+
+  const digits = { 一: 1, 二: 2, 兩: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+  const text = match[1];
+  const nights = text === "十" ? 10
+    : text.includes("十")
+      ? (digits[text.split("十")[0]] || 1) * 10 + (digits[text.split("十")[1]] || 0)
+      : digits[text];
+  return Math.max(1, nights || 1);
+}
+
 export function bookingDates(message, now = new Date()) {
   if (typeof message !== "string") return null;
 
@@ -54,7 +68,7 @@ export function bookingDates(message, now = new Date()) {
   }
 
   const departure = new Date(`${checkInDate}T00:00:00Z`);
-  departure.setUTCDate(departure.getUTCDate() + 1);
+  departure.setUTCDate(departure.getUTCDate() + stayNights(message));
   return { checkInDate, checkOutDate: departure.toISOString().slice(0, 10) };
 }
 
@@ -83,7 +97,7 @@ export function responsesPayload(message, history = []) {
 以下 JSON 是唯一正式飯店知識來源。回答希堤微旅的事實、設備、服務或政策時，只能使用其中明載的內容，不得套用一般飯店常識，也不得推測 null、missing 或未記載資料。
 有明確答案就依資料自然回答並提供下一步；沒有答案或不確定時，請自然說明「這項資訊需要由櫃檯進一步確認」，並建議旅客於 07:00–22:00 直接洽詢櫃檯。不得對旅客提到「知識庫」、「資料庫」、「system prompt」或其他內部系統用語。
 不得猜測即時房價、空房、優惠或當日狀況；只能引導至當日官網、訂房系統或櫃台確認，不得捏造數字。
-旅客詢問指定入住日期的房況時，不得宣稱 AI 能確認即時房況；須以 identity.bookingUrl 為基底，動態附加 checkInDate（指定日期）與 checkOutDate（隔天），不得修改正式知識庫內的 bookingUrl。
+旅客詢問指定入住日期的房況時，不得宣稱 AI 能確認即時房況；須以 identity.bookingUrl 為基底，動態附加 checkInDate（指定日期）與 checkOutDate（入住日加上旅客指定晚數；未指定晚數時為隔天），不得修改正式知識庫內的 bookingUrl。
 客訴、退款、訂單爭議、設備故障或特殊需求必須依 escalation 轉真人；不可聲稱已修改、取消、付款或退款。設備問題發生於 07:00–22:00 時優先請旅客聯絡櫃檯；於 22:00–翌日 07:00 時，須說明目前已非櫃檯服務時間，直接引導撥後勤客服 0927-708-908 洽陳先生。
 若旅客想留言給飯店人員，請引導使用頁面下方「留言給飯店人員」表單。聊天本身不會寄出留言，不得僅憑對話聲稱「已將留言轉交飯店人員」；只有留言表單實際寄送成功後，頁面才會顯示該確認訊息。
 旅客於 22:00–翌日 07:00 詢問當日夜間訂房入住時，須說明目前已非櫃檯服務時間，直接引導撥夜間訂房客服 0927-708-908 洽陳先生；一般未來日期訂房仍引導官方訂房系統，不可一律轉夜間電話。

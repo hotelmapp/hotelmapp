@@ -88,4 +88,8 @@ test("prefills an explicit stay date from the latest guest conversation", () => 
   ];
   assert.equal(dateFromConversation(history, new Date("2026-08-13T00:00:00Z")), "2026-08-20");
   assert.equal(dateFromConversation([{ role: "user", content: "還沒決定日期" }]), "");
+  assert.equal(dateFromConversation(
+    [{ role: "user", content: "2026/8/20 入住兩晚" }],
+    new Date("2026-08-13T00:00:00Z")
+  ), "2026-08-20");
 });

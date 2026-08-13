@@ -95,6 +95,12 @@ test("generates category, summary, original messages, and stay date from convers
   assert.equal(stayDateFromHistory([{ role: "user", content: "明年再說，沒有確切日期" }]), "");
 });
 
+test("keeps the check-in date when the guest specifies multiple nights", () => {
+  const history = [{ role: "user", content: "我預計 2026/8/20 入住兩晚" }];
+  assert.equal(stayDateFromHistory(history, new Date("2026-08-13T00:00:00Z")), "2026-08-20");
+  assert.equal(contactDetails(history, new Date("2026-08-13T00:00:00Z")).stayDate, "2026-08-20");
+});
+
 test("keeps malicious HTML inert in a plain-text email and strips subject newlines", () => {
   const malicious = '<img src=x onerror="alert(1)"><script>alert(2)</script>';
   const validation = validateContact({

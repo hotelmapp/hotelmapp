@@ -43,6 +43,23 @@ test("supports explicit years, Chinese dates, year rollover, and invalid dates",
   assert.equal(bookingDates("2/30 有房嗎", now), null);
 });
 
+test("calculates checkout as check-in plus the requested number of nights", () => {
+  const now = new Date("2026-08-13T00:00:00Z");
+  assert.deepEqual(bookingDates("2026/8/20 入住兩晚，有房嗎？", now), {
+    checkInDate: "2026-08-20", checkOutDate: "2026-08-22"
+  });
+  assert.deepEqual(bookingDates("2026/8/20 住 3 晚", now), {
+    checkInDate: "2026-08-20", checkOutDate: "2026-08-23"
+  });
+});
+
+test("puts the requested stay length in the dated booking link and AI reply", () => {
+  const reply = availabilityReply("2026/8/20 入住兩晚有房嗎？", new Date("2026-08-13T00:00:00Z"));
+  assert.match(reply, /2026-08-20 入住、2026-08-22 退房/);
+  assert.match(reply, /checkInDate=2026-08-20/);
+  assert.match(reply, /checkOutDate=2026-08-22/);
+});
+
 test("answers dated availability requests without claiming live availability", async () => {
   const res = recorder();
   await handler({ method: "POST", body: { message: "2026/8/15 有房嗎？", history: [] } }, res);
