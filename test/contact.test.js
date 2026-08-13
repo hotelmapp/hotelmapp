@@ -113,6 +113,21 @@ test("preserves a multilingual special request in the staff summary and original
   assert.match(details.originalMessage, /two nights starting August 20/);
 });
 
+test("does not add unrequested baby equipment to multilingual contact summaries", () => {
+  const cases = [
+    ["2026/8/20 入住兩晚，需要嬰兒床。", /嬰兒床/u, /床圍|消毒鍋|澡盆/u],
+    ["Stay August 20 for two nights; I need a baby crib.", /baby crib/i, /bed rail|sterilizer|baby bath/i],
+    ["2026年8月20日から2泊、ベビーベッドを希望します。", /ベビーベッド/u, /ベッドガード|消毒器|ベビーバス/u],
+    ["2026년 8월 20일부터 2박, 아기 침대가 필요해요.", /아기 침대/u, /침대 가드|소독기|아기 욕조/u]
+  ];
+  for (const [content, requested, unrequested] of cases) {
+    const details = contactDetails([{ role: "user", content }], new Date("2026-08-13T00:00:00Z"));
+    assert.match(details.summary, requested);
+    assert.doesNotMatch(details.summary, unrequested);
+    assert.equal(details.stayDate, "2026-08-20");
+  }
+});
+
 test("uses the complete summary prefilled by the conversation form", async t => {
   const summary = "旅客詢問／需求：2026/8/20 入住兩晚；需要嬰兒床；需要停車位";
   await withResendMock(t, async (_url, options) => {

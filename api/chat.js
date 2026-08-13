@@ -42,33 +42,54 @@ export function datedBookingUrl(dates) {
 const REPLY_TEXT = Object.freeze({
   "zh-TW": {
     booking: (dates, url) => `當然可以！如果您預計 ${dates.checkInDate} 入住、${dates.checkOutDate} 退房，可以透過下方官方訂房頁面查看最新房價與空房：\n${url}`,
-    baby: "嬰兒床、床圍、消毒鍋或嬰兒澡盆都可以協助提出需求；建議在入住前一天告知，不過會依數量與現場狀況安排，因此無法事先保證。",
+    baby: name => `${name}可以協助提出需求；建議在入住前一天告知，會依數量與現場狀況安排，因此無法事先保證。`,
     parking: `飯店有 ${hotelKnowledge.parking.hotelSpaces} 個車位，另有配合停車場；實際車位仍需依當日現場狀況安排。`,
     breakfast: `早餐供應時間為 ${hotelKnowledge.breakfast.hours}，未含早餐也可以加購，每客 NT$150。`,
-    confirm: "如果您願意，可以使用下方「留言給飯店人員」表單，我們會把您的需求整理好交給飯店人員確認。"
+    confirm: summary => `如果您需要，我可以幫您把${summary}整理好，透過下方「留言給飯店人員」表單交給飯店人員確認。`
   },
   en: {
     booking: (dates, url) => `Certainly! For a stay from ${dates.checkInDate} to ${dates.checkOutDate}, you can check the latest room availability and rates through our official booking page below:\n${url}`,
-    baby: "We can help request a baby crib, bed rail, sterilizer, or baby bath. Please let the hotel know one day before arrival; arrangements depend on the available quantity and conditions during your stay, so they cannot be guaranteed in advance.",
+    baby: name => `We can help request ${name}. Please let the hotel know one day before arrival; arrangements depend on availability during your stay, so this cannot be guaranteed in advance.`,
     parking: `The hotel has ${hotelKnowledge.parking.hotelSpaces} parking spaces and also works with nearby parking lots. A space will need to be confirmed based on availability when you arrive.`,
     breakfast: `Breakfast is served from ${hotelKnowledge.breakfast.hours}. If it is not included in your stay, you can add it for NT$150 per guest.`,
-    confirm: "If you’d like, please use the “Message hotel staff” form below. We’ll organize your request for the hotel team to confirm."
+    confirm: summary => `If you’d like, I can organize ${summary} and send it through the “Message hotel staff” form below for the hotel team to confirm.`
   },
   ja: {
     booking: (dates, url) => `承知いたしました。${dates.checkInDate}チェックイン、${dates.checkOutDate}チェックアウトの最新の空室状況と料金は、下記の公式予約ページでご確認いただけます。\n${url}`,
-    baby: "ベビーベッド、ベッドガード、消毒器、ベビーバスのリクエストを承ります。前日までにお知らせください。数に限りがあり、当日の状況によってはご用意できない場合がございます。",
+    baby: name => `${name}のリクエストを承ります。前日までにお知らせください。数に限りがあり、当日の状況によってはご用意できない場合がございます。`,
     parking: `ホテル専用駐車場は${hotelKnowledge.parking.hotelSpaces}台分あり、提携駐車場もございます。ご利用可否は当日の状況によりホテルで確認いたします。`,
     breakfast: `朝食は${hotelKnowledge.breakfast.hours}にご利用いただけます。朝食なしのプランでも、1名様NT$150で追加できます。`,
-    confirm: "ご希望でしたら、下の「ホテルスタッフへのメッセージ」フォームをご利用ください。内容をまとめてホテルスタッフが確認いたします。"
+    confirm: summary => `ご希望でしたら、${summary}をまとめて、下の「ホテルスタッフへのメッセージ」フォームからホテルスタッフへ確認を依頼できます。`
   },
   ko: {
     booking: (dates, url) => `물론입니다. ${dates.checkInDate} 체크인, ${dates.checkOutDate} 체크아웃 일정의 최신 객실과 요금은 아래 공식 예약 페이지에서 확인하실 수 있습니다.\n${url}`,
-    baby: "아기 침대, 침대 가드, 소독기 또는 아기 욕조를 요청하실 수 있습니다. 체크인 하루 전까지 알려 주세요. 수량과 당일 상황에 따라 준비되므로 사전에 확정해 드리기는 어렵습니다.",
+    baby: name => `${name}를 요청하실 수 있습니다. 체크인 하루 전까지 알려 주세요. 수량과 당일 상황에 따라 준비되므로 사전에 확정해 드리기는 어렵습니다.`,
     parking: `호텔 주차 공간은 ${hotelKnowledge.parking.hotelSpaces}대이며 제휴 주차장도 있습니다. 이용 가능 여부는 당일 상황에 따라 호텔에서 확인해 드립니다.`,
     breakfast: `조식은 ${hotelKnowledge.breakfast.hours}에 이용하실 수 있습니다. 조식이 포함되지 않은 경우 1인당 NT$150에 추가할 수 있습니다.`,
-    confirm: "원하시면 아래 ‘호텔 직원에게 메시지 보내기’ 양식을 이용해 주세요. 요청 내용을 정리해 호텔 직원이 확인할 수 있도록 하겠습니다."
+    confirm: summary => `원하시면 ${summary}을 정리해 아래 ‘호텔 직원에게 메시지 보내기’ 양식으로 호텔 직원에게 확인을 요청할 수 있습니다.`
   }
 });
+
+const BABY_EQUIPMENT = Object.freeze([
+  { pattern: /嬰兒床|baby\s*(?:crib|cot)|\bcrib\b|\bcot\b|ベビーベッド|아기\s*침대/iu, names: { "zh-TW": "嬰兒床", en: "a baby crib", ja: "ベビーベッド", ko: "아기 침대" } },
+  { pattern: /床圍|bed\s*rail|ベッドガード|침대\s*가드/iu, names: { "zh-TW": "床圍", en: "a bed rail", ja: "ベッドガード", ko: "침대 가드" } },
+  { pattern: /消毒鍋|sterili[sz]er|消毒器|소독기/iu, names: { "zh-TW": "消毒鍋", en: "a sterilizer", ja: "消毒器", ko: "소독기" } },
+  { pattern: /(?:嬰兒)?澡盆|baby\s*bath|ベビーバス|아기\s*욕조/iu, names: { "zh-TW": "嬰兒澡盆", en: "a baby bath", ja: "ベビーバス", ko: "아기 욕조" } }
+]);
+
+function requestedBabyEquipment(message, language) {
+  return BABY_EQUIPMENT.filter(item => item.pattern.test(message)).map(item => item.names[language]);
+}
+
+function staySummary(dates, equipment, language) {
+  const nights = dates ? Math.round((Date.parse(dates.checkOutDate) - Date.parse(dates.checkInDate)) / 86_400_000) : 0;
+  const joined = equipment.join(language === "en" ? " and " : language === "ja" ? "と" : language === "ko" ? "와 " : "＋");
+  if (!dates) return language === "en" ? `your ${joined} request` : language === "ja" ? `${joined}のご希望` : language === "ko" ? `${joined} 요청` : `${joined}需求`;
+  if (language === "en") return `your ${dates.checkInDate} stay for ${nights} night${nights === 1 ? "" : "s"} and ${joined} request`;
+  if (language === "ja") return `${dates.checkInDate}から${nights}泊のご宿泊と${joined}のご希望`;
+  if (language === "ko") return `${dates.checkInDate}부터 ${nights}박 숙박과 ${joined} 요청`;
+  return `${dates.checkInDate} 入住 ${nights} 晚＋${joined}需求`;
+}
 
 function additionalHotelNeeds(message, language = "zh-TW") {
   const needs = [];
@@ -77,8 +98,13 @@ function additionalHotelNeeds(message, language = "zh-TW") {
   };
 
   const copy = REPLY_TEXT[language];
-  add(/嬰兒床|床圍|消毒鍋|澡盆|baby\s*(?:crib|cot)|crib|cot|bed\s*rail|sterili[sz]er|baby\s*bath|ベビーベッド|ベビー用品|ベッドガード|消毒器|ベビーバス|아기\s*침대|유아용품|침대\s*가드|소독기|아기\s*욕조/iu, copy.baby, true);
-  add(/停車|車位|parking|駐車|주차/iu, copy.parking, true);
+  for (const equipment of requestedBabyEquipment(message, language)) {
+    needs.push({ answer: copy.baby(equipment), confirmationNeeded: true, equipment });
+  }
+  if (/停車|車位|parking|駐車|주차/iu.test(message)) {
+    const equipment = language === "en" ? "parking" : language === "ja" ? "駐車場" : language === "ko" ? "주차" : "停車";
+    needs.push({ answer: copy.parking, confirmationNeeded: true, equipment });
+  }
   add(/早餐|餐點|素食|breakfast|vegetarian|朝食|조식/iu, copy.breakfast);
   add(/牙刷|備品|盥洗|毛巾|浴巾|拖鞋/u, hotelKnowledge.amenities.toiletries);
   add(/電視|Netflix|YouTube/u, hotelKnowledge.amenities.tv);
@@ -105,8 +131,31 @@ export function availabilityReply(message, now = new Date()) {
   if (!needs.length) return booking;
 
   const parts = [booking, ...needs.map(need => need.answer)];
-  if (needs.some(need => need.confirmationNeeded)) parts.push(copy.confirm);
+  if (needs.some(need => need.confirmationNeeded)) {
+    const equipment = needs.map(need => need.equipment).filter(Boolean);
+    const generic = language === "en" ? "request" : language === "ja" ? "ご要望" : language === "ko" ? "요청 사항" : "其他需求";
+    parts.push(copy.confirm(staySummary(dates, equipment.length ? equipment : [generic], language)));
+  }
   return parts.join("\n\n");
+}
+
+export function specialRequestReply(message) {
+  const language = detectGuestLanguage(message);
+  const equipment = requestedBabyEquipment(message, language);
+  if (!equipment.length) return null;
+  const copy = REPLY_TEXT[language];
+  return [...equipment.map(name => copy.baby(name)), copy.confirm(staySummary(null, equipment, language))].join("\n\n");
+}
+
+export function informationalReply(message) {
+  const language = detectGuestLanguage(message);
+  const copy = REPLY_TEXT[language];
+  const asksBreakfast = /早餐|餐點|素食|breakfast|vegetarian|朝食|조식/iu.test(message);
+  const asksParking = /停車|車位|parking|駐車|주차/iu.test(message);
+  if (asksBreakfast && !asksParking) return copy.breakfast;
+  if (asksParking && !asksBreakfast) return copy.parking;
+  if (asksBreakfast && asksParking) return `${copy.parking}\n\n${copy.breakfast}`;
+  return null;
 }
 
 export function responsesPayload(message, history = []) {
@@ -118,7 +167,8 @@ export function responsesPayload(message, history = []) {
     model: OPENAI_MODEL,
     instructions: `你是希堤微旅專業、親切、自然的智慧櫃台人員。支援繁體中文（zh-TW）、English（en）、日本語（ja）、한국어（ko）。本次判定旅客主要語言為 ${responseLanguage}，必須使用該語言並全程以該語言簡潔回答；不要因下方飯店資料是繁體中文而改用中文，也不要夾雜其他語言。專有名詞、飯店名稱與網址可保留原文。若語言無法可靠判斷則使用繁體中文。
 判斷時以旅客目前訊息為優先，並參考最近對話；回答原則上跟隨目前訊息的語言。
-先自然回應旅客的需求，再提供必要資訊與下一步。使用親切、簡潔、有服務感但不過度客套的語氣；不要採用系統公告、FAQ、制式標題或機械式編號清單。不要以「AI 無法」、「系統無法」、「AI cannot」或其他負面能力聲明開頭，也不要在每段重複致謝或「很高興為您服務」等客套話。
+先自然回應旅客的需求，再提供必要資訊與下一步。只抽取與旅客這次實際詢問直接相關的知識，不要整段複述知識來源，也不要自行增加同類用品（例如只問嬰兒床時，不得順帶列出床圍、消毒鍋或澡盆）。一般回答控制在 2～4 個短段落，每段只聚焦一件事，避免重複同義提醒。使用親切、簡潔、有服務感但不過度客套的語氣；不要採用系統公告、FAQ、制式標題或機械式編號清單。不要以「AI 無法」、「系統無法」、「AI cannot」或其他負面能力聲明開頭，也不要在每段重複致謝或「很高興為您服務」等客套話。
+只有旅客表達明確訂房或住宿意圖時，才在回答問題後自然提供一次官方訂房入口；單純詢問早餐、停車、交通或其他一般資訊時不得附上訂房連結，也不要重複貼連結或過度推銷。
 遇到複合問題時，像真人櫃台一樣用連貫段落整合回答，逐項涵蓋需求，不要硬拆成分類標題。特殊用品、停車或其他須確認的需求，要先直接說明可如何協助及已知條件，再只說一次需要依數量或現場狀況確認。需要真人確認時，不要讓旅客感覺被轉走；自然邀請使用下方留言表單，並說明會將需求整理給飯店人員確認。
 以下 JSON 是唯一正式飯店知識來源。回答希堤微旅的事實、設備、服務或政策時，只能使用其中明載的內容，不得套用一般飯店常識，也不得推測 null、missing 或未記載資料。
 有明確答案就依資料自然回答並提供下一步；沒有答案或不確定時，請自然說明「這項資訊需要由櫃檯進一步確認」，並建議旅客於 07:00–22:00 直接洽詢櫃檯。不得對旅客提到「知識庫」、「資料庫」、「system prompt」或其他內部系統用語。
@@ -181,10 +231,11 @@ export default async function handler(req, res) {
     return sendError(res, 400, "請輸入問題", { source: "chat", code: "invalid_message" });
   }
 
-  const directAvailabilityAnswer = availabilityReply(message.trim());
-  if (directAvailabilityAnswer) {
+  const trimmedMessage = message.trim();
+  const directAnswer = availabilityReply(trimmedMessage) || specialRequestReply(trimmedMessage) || informationalReply(trimmedMessage);
+  if (directAnswer) {
     return res.status(200).json({
-      answer: directAvailabilityAnswer,
+      answer: directAnswer,
       diagnostic: {
         knowledgeVersion: KNOWLEDGE_VERSION,
         commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) || "local"
