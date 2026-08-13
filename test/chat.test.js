@@ -126,6 +126,16 @@ test("sends the V2.0 checkout fact to the Responses API", async t => {
 });
 
 test("contains confirmed V2.0 answers for the required guest scenarios", () => {
+  assert.equal(hotelKnowledge.identity.address, "台中市上石路158號");
+  assert.equal(hotelKnowledge.contact.frontDeskPhone, "04-2707-8378");
+  assert.equal(hotelKnowledge.contact.email, "hotel.mapp158@gmail.com");
+  assert.match(hotelKnowledge.contact.line, /LINE 搜尋「希堤微旅」/);
+  assert.match(hotelKnowledge.extendedStay.monthlyRate, /沒有提供包月房價方案/);
+  assert.match(hotelKnowledge.extendedStay.corporateProgram, /特約廠商優惠方案/);
+  assert.match(hotelKnowledge.shortStay, /沒有提供休息或鐘點房服務/);
+  assert.match(hotelKnowledge.contact.afterHoursEquipment, /0927-708-908.*陳先生/);
+  assert.match(hotelKnowledge.contact.afterHoursSameDayBooking, /0927-708-908.*陳先生/);
+  assert.match(hotelKnowledge.bedding.mattress, /五星級高級床墊/);
   assert.equal(hotelKnowledge.breakfast.hours, "08:00–10:00");
   assert.equal(hotelKnowledge.stay.checkOut, "11:00 前");
   assert.equal(hotelKnowledge.parking.hotelSpaces, 3);
@@ -136,12 +146,20 @@ test("contains confirmed V2.0 answers for the required guest scenarios", () => {
   assert.match(hotelKnowledge.booking.livePriceAndAvailability, /即時房價/);
 });
 
-test("keeps facts missing from V2.0 explicitly unknown", () => {
-  assert.equal(hotelKnowledge.identity.address, null);
-  assert.equal(hotelKnowledge.contact.frontDeskPhone, null);
+test("keeps facts still missing from V2.0 explicitly unknown", () => {
   assert.equal(hotelKnowledge.amenities.wifi, null);
   assert.equal(hotelKnowledge.rooms.find(room => room.name === "家庭房").bathtub, null);
   assert.equal(hotelKnowledge.review.contradictions.length, 0);
+});
+
+test("uses guest-facing escalation language without internal terminology", () => {
+  const instructions = responsesPayload("有接駁服務嗎？").instructions;
+  assert.match(instructions, /這項資訊需要由櫃檯進一步確認/);
+  assert.match(instructions, /不得對旅客提到「知識庫」、「資料庫」、「system prompt」/);
+  assert.match(instructions, /後勤客服 0927-708-908 洽陳先生/);
+  assert.match(instructions, /夜間訂房客服 0927-708-908 洽陳先生/);
+  assert.match(instructions, /沒有包月房價方案/);
+  assert.match(instructions, /沒有提供休息/);
 });
 
 test("sends recent multi-turn context in Responses API message format", () => {
