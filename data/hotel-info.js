@@ -1,12 +1,16 @@
-// 唯一內容來源：〈希堤微旅 AI 櫃檯知識庫 V2.0〉完整合併正式版（2026-08-10）。
+// 唯一內容來源：〈希堤微旅 AI 櫃檯知識庫 V2.0〉完整合併正式版（2026-08-13）。
 // 未出現在原始文件中的資訊必須維持 null，不得以 placeholder 或常識補值。
 export const hotelKnowledge = {
-  source: { title: "希堤微旅 AI 櫃檯知識庫 V2.0 完整合併正式版", date: "2026-08-10" },
-identity: { name: "希堤微旅", address: null, website: "https://www.hotelm.com.tw/", bookingUrl: "https://book-directonline.com/properties/HotelMappTaichungDIrect?locale=zh-TW" },
+  source: { title: "希堤微旅 AI 櫃檯知識庫 V2.0 完整合併正式版", date: "2026-08-13" },
+  identity: { name: "希堤微旅", address: "台中市上石路158號", website: "https://www.hotelm.com.tw/", bookingUrl: "https://book-directonline.com/properties/HotelMappTaichungDIrect?locale=zh-TW" },
   contact: {
-    frontDeskPhone: null,
-    deskHours: "服務至 22:00",
-    afterHours: "22:00 後如有入住或住宿問題，撥 0927-708-908，由陳先生提供 24 小時客服協助。"
+    frontDeskPhone: "04-2707-8378",
+    fax: "04-2708-7287",
+    email: "hotel.mapp158@gmail.com",
+    deskHours: "07:00–22:00",
+    line: "在 LINE 搜尋「希堤微旅」，即可加入官方帳號並聊天。",
+    afterHoursEquipment: "22:00–翌日 07:00 遇到任何設備問題，請撥後勤客服 0927-708-908，洽陳先生。",
+    afterHoursSameDayBooking: "22:00–翌日 07:00 如需辦理當日夜間訂房入住，請撥夜間訂房客服 0927-708-908，洽陳先生。"
   },
   stay: {
     checkIn: "15:00 後",
@@ -61,6 +65,15 @@ identity: { name: "希堤微旅", address: null, website: "https://www.hotelm.co
     cancellationPolicy: "除上述修改管道與三天規則外，未提供具體取消／退款條件，須由原訂房管道或真人櫃檯確認。",
     livePriceAndAvailability: "房價採機動價格；即時房價、空房與優惠須由當日官網、訂房系統或櫃檯確認。"
   },
+  extendedStay: {
+    monthlyRate: "目前沒有提供包月房價方案，不可推算月租價格或承諾長住折扣。",
+    corporateProgram: "有特約廠商優惠方案；特約資格、優惠內容、價格與適用方式請直接洽詢櫃檯確認。"
+  },
+  shortStay: "目前沒有提供休息或鐘點房服務，不可報價。",
+  bedding: {
+    mattress: "客房使用五星級高級床墊。",
+    purchase: "如欲購買飯店使用的床墊、寢具或寢具備品，請直接洽詢櫃檯；未記載品牌、型號、尺寸與售價，不可猜測或報價。"
+  },
   guestServices: {
     luggage: "入住前或退房後可寄放，須於 22:00 前領取。", coldStorage: "冷藏／冷凍物可暫放一樓大廳冰箱；客房小冰箱無法冷凍。",
     parcels: "限入住客人，須提前通知櫃檯並說明物品種類；不代收違禁品。", lostProperty: "保留 1 週；查找時提供入住日期、房號或訂房資訊及物品描述；寄回郵資貨到付款。",
@@ -72,10 +85,13 @@ identity: { name: "希堤微旅", address: null, website: "https://www.hotelm.co
     restaurants: "先詢問燒肉、火鍋、台式料理、咖啡／早午餐、夜市小吃等偏好；具體店家、距離、評價及營業狀況屬變動資訊，須查詢最新資訊後推薦，不可使用舊名單或編造。"
   },
   escalation: {
-    always: ["客訴", "退款", "訂單爭議", "設備故障", "超出知識庫的特殊需求", "高風險特殊要求"],
-    equipment: "先表示願意協助，不自行判斷故障原因，再轉櫃檯同仁處理。"
+    always: ["客訴", "退款", "訂單爭議", "設備故障", "未明確記載的特殊需求", "高風險特殊要求"],
+    unknownDuringDeskHours: "未明確記載的飯店資訊需要由櫃檯進一步確認，於 07:00–22:00 建議直接洽詢櫃檯。",
+    equipment: "先表示願意協助，不自行判斷故障原因，再依服務時間轉由櫃檯或後勤客服處理。",
+    equipmentDuringDeskHours: "07:00–22:00 遇到設備問題，先表示願意協助，不自行判斷故障原因，優先請旅客聯絡櫃檯。",
+    equipmentAfterHours: "22:00–翌日 07:00 遇到冷氣、電視、熱水、門鎖、房內設備故障或其他設備問題，直接請旅客撥後勤客服 0927-708-908，洽陳先生。"
   },
-  missing: ["飯店完整地址", "一般櫃檯聯絡電話", "飯店官網網址", "官網／訂房系統查詢網址", "配合停車場完整地址", "停車場客服電話", "家庭房是否有浴缸", "Wi-Fi／網路連線資訊", "具體取消與退款條件"],
+  missing: ["配合停車場完整地址", "停車場客服電話", "家庭房是否有浴缸", "Wi-Fi／網路連線資訊", "具體取消與退款條件", "床墊與寢具的品牌、型號、尺寸及售價"],
   review: { contradictions: [], notes: ["家庭房浴缸欄原記載「依現場資料」，正式版列為尚未提供。", "餐廳、房價、房況、優惠及營業狀況是變動資料，不固化為事實。"] }
 };
 
