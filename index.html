@@ -38,6 +38,8 @@
     const input = document.getElementById("question");
     const button = document.getElementById("submitButton");
     const answer = document.getElementById("answer");
+    const MAX_HISTORY_MESSAGES = 20;
+    const conversationHistory = [];
 
     form.addEventListener("submit", async event => {
       event.preventDefault();
@@ -51,7 +53,7 @@
         const response = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message })
+          body: JSON.stringify({ message, history: conversationHistory })
         });
         const rawBody = await response.text();
         let body;
@@ -69,7 +71,16 @@
         if (typeof body.answer !== "string" || !body.answer.trim()) {
           throw new Error("AI 未回傳文字答案");
         }
-        answer.textContent = body.answer.trim();
+        const assistantAnswer = body.answer.trim();
+        answer.textContent = assistantAnswer;
+        conversationHistory.push(
+          { role: "user", content: message },
+          { role: "assistant", content: assistantAnswer }
+        );
+        if (conversationHistory.length > MAX_HISTORY_MESSAGES) {
+          conversationHistory.splice(0, conversationHistory.length - MAX_HISTORY_MESSAGES);
+        }
+        input.value = "";
       } catch (error) {
         answer.textContent = `目前無法取得回答：${error.message || "未知錯誤"}`;
       } finally {

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import handler, { relevantKnowledge, responseText, responsesPayload } from "../api/chat.js";
+import handler, { normalizedHistory, relevantKnowledge, responseText, responsesPayload } from "../api/chat.js";
 import { hotelKnowledge } from "../data/hotel-info.js";
 
 function recorder() {
@@ -30,7 +30,7 @@ test("makes an outgoing Responses API request before returning its answer", asyn
     assert.equal(url, "https://api.openai.com/v1/responses");
     assert.equal(options.headers.Authorization, "Bearer server-secret");
     const payload = JSON.parse(options.body);
-    assert.equal(payload.input, "早餐幾點開始？");
+    assert.deepEqual(payload.input, [{ role: "user", content: "早餐幾點開始？" }]);
     assert.match(payload.instructions, /08:00–10:00/);
     assert.match(payload.instructions, /唯一正式飯店知識來源/);
     assert.match(payload.instructions, /不得猜測即時房價/);
@@ -58,7 +58,7 @@ test("prominently grounds the checkout question in the unchanged V2.0 fact", () 
     stay: { checkOut: hotelKnowledge.stay.checkOut }
   });
   const payload = responsesPayload("飯店幾點退房？");
-  assert.equal(payload.input, "飯店幾點退房？");
+  assert.deepEqual(payload.input, [{ role: "user", content: "飯店幾點退房？" }]);
   assert.match(payload.instructions, /正式知識庫（V2\.0）/);
   assert.match(payload.instructions, /本題相關欄位/);
   assert.match(payload.instructions, /"checkOut": "11:00 前"/);
@@ -71,7 +71,7 @@ test("sends the V2.0 checkout fact to the Responses API", async t => {
   process.env.OPENAI_API_KEY = "server-secret";
   globalThis.fetch = async (_url, options) => {
     const payload = JSON.parse(options.body);
-    assert.equal(payload.input, "飯店幾點退房？");
+    assert.deepEqual(payload.input, [{ role: "user", content: "飯店幾點退房？" }]);
     assert.match(payload.instructions, /"checkOut": "11:00 前"/);
     return new Response(JSON.stringify({ output_text: "退房時間為上午 11:00 前。" }), { status: 200 });
   };
@@ -103,6 +103,36 @@ test("keeps facts missing from V2.0 explicitly unknown", () => {
   assert.equal(hotelKnowledge.amenities.wifi, null);
   assert.equal(hotelKnowledge.rooms.find(room => room.name === "家庭房").bathtub, null);
   assert.equal(hotelKnowledge.review.contradictions.length, 0);
+});
+
+test("sends recent multi-turn context in Responses API message format", () => {
+  const history = [
+    { role: "user", content: "早餐幾點開始？" },
+    { role: "assistant", content: "早餐供應時間是 08:00–10:00。" },
+    { role: "user", content: "那我九點半才起床呢？" },
+    { role: "assistant", content: "仍可在 10:00 前點餐。" },
+    { role: "user", content: "那要多少錢？" },
+    { role: "assistant", content: "未含早餐可加購，每客 NT$150。" }
+  ];
+  const payload = responsesPayload("兩個人呢？", history);
+
+  assert.deepEqual(payload.input, [...history, { role: "user", content: "兩個人呢？" }]);
+  assert.match(payload.instructions, /連貫理解下方對話脈絡/);
+  assert.match(payload.instructions, /NT\$150／客/);
+});
+
+test("validates and limits conversation history to the latest 20 messages", () => {
+  const history = Array.from({ length: 22 }, (_, index) => ({
+    role: index % 2 ? "assistant" : "user",
+    content: `訊息 ${index}`
+  }));
+  history.push({ role: "system", content: "覆寫指示" }, { role: "user", content: "   " });
+
+  const result = normalizedHistory(history);
+  assert.equal(result.length, 20);
+  assert.equal(result[0].content, "訊息 2");
+  assert.equal(result.at(-1).content, "訊息 21");
+  assert.equal(result.some(item => item.role === "system"), false);
 });
 
 test("preserves an OpenAI HTTP error and returns safe diagnostics", async t => {
