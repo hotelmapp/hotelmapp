@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import handler, { normalizedHistory, relevantKnowledge, responseText, responsesPayload } from "../api/chat.js";
+import handler, { availabilityReply, bookingDates, datedBookingUrl, normalizedHistory, relevantKnowledge, responseText, responsesPayload } from "../api/chat.js";
 import { hotelKnowledge } from "../data/hotel-info.js";
 
 function recorder() {
@@ -18,6 +18,45 @@ test("extracts text from a Responses API response", () => {
     type: "message",
     content: [{ type: "output_text", text: "第一段" }, { type: "output_text", text: "第二段" }]
   }] }), "第一段\n第二段");
+});
+
+test("builds a dated official booking URL without changing the knowledge base", () => {
+  const originalBookingUrl = hotelKnowledge.identity.bookingUrl;
+  const dates = bookingDates("8/15 有房嗎？", new Date("2026-08-13T12:00:00Z"));
+
+  assert.deepEqual(dates, { checkInDate: "2026-08-15", checkOutDate: "2026-08-16" });
+  const url = new URL(datedBookingUrl(dates));
+  assert.equal(url.searchParams.get("locale"), "zh-TW");
+  assert.equal(url.searchParams.get("checkInDate"), "2026-08-15");
+  assert.equal(url.searchParams.get("checkOutDate"), "2026-08-16");
+  assert.equal(hotelKnowledge.identity.bookingUrl, originalBookingUrl);
+});
+
+test("supports explicit years, Chinese dates, year rollover, and invalid dates", () => {
+  const now = new Date("2026-08-20T00:00:00Z");
+  assert.deepEqual(bookingDates("2027年2月28日入住", now), {
+    checkInDate: "2027-02-28", checkOutDate: "2027-03-01"
+  });
+  assert.deepEqual(bookingDates("8/15 有空房嗎", now), {
+    checkInDate: "2027-08-15", checkOutDate: "2027-08-16"
+  });
+  assert.equal(bookingDates("2/30 有房嗎", now), null);
+});
+
+test("answers dated availability requests without claiming live availability", async () => {
+  const res = recorder();
+  await handler({ method: "POST", body: { message: "2026/8/15 有房嗎？", history: [] } }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.match(res.body.answer, /AI 無法確認即時房況/);
+  assert.match(res.body.answer, /checkInDate=2026-08-15/);
+  assert.match(res.body.answer, /checkOutDate=2026-08-16/);
+  assert.equal(res.body.answer.includes("有空房"), false);
+});
+
+test("only creates an availability reply for dated stay enquiries", () => {
+  assert.equal(availabilityReply("早餐幾點？", new Date("2026-08-13T00:00:00Z")), null);
+  assert.equal(availabilityReply("8/15 天氣如何？", new Date("2026-08-13T00:00:00Z")), null);
 });
 
 test("makes an outgoing Responses API request before returning its answer", async t => {

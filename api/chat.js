@@ -26,6 +26,53 @@ export function normalizedHistory(history) {
     .slice(-MAX_HISTORY_MESSAGES);
 }
 
+function isoDate(year, month, day) {
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
+    return null;
+  }
+  return date.toISOString().slice(0, 10);
+}
+
+export function bookingDates(message, now = new Date()) {
+  if (typeof message !== "string") return null;
+
+  const match = message.match(/(?:(\d{4})\s*[年\/-]\s*)?(\d{1,2})\s*(?:月|[\/-])\s*(\d{1,2})\s*日?/u);
+  if (!match) return null;
+
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  let year = match[1] ? Number(match[1]) : now.getUTCFullYear();
+  let checkInDate = isoDate(year, month, day);
+  if (!checkInDate) return null;
+
+  const today = now.toISOString().slice(0, 10);
+  if (!match[1] && checkInDate < today) {
+    year += 1;
+    checkInDate = isoDate(year, month, day);
+    if (!checkInDate) return null;
+  }
+
+  const departure = new Date(`${checkInDate}T00:00:00Z`);
+  departure.setUTCDate(departure.getUTCDate() + 1);
+  return { checkInDate, checkOutDate: departure.toISOString().slice(0, 10) };
+}
+
+export function datedBookingUrl(dates) {
+  const url = new URL(hotelKnowledge.identity.bookingUrl);
+  url.searchParams.set("checkInDate", dates.checkInDate);
+  url.searchParams.set("checkOutDate", dates.checkOutDate);
+  return url.toString();
+}
+
+export function availabilityReply(message, now = new Date()) {
+  if (!/(有房|空房|房況|訂房|入住|住宿)/u.test(message)) return null;
+  const dates = bookingDates(message, now);
+  if (!dates) return null;
+
+  return `AI 無法確認即時房況。請至官方訂房系統查詢 ${dates.checkInDate} 入住、${dates.checkOutDate} 退房的房價與空房：\n${datedBookingUrl(dates)}`;
+}
+
 export function responsesPayload(message, history = []) {
   const conversation = normalizedHistory(history);
   const contextText = [...conversation.map(item => item.content), message].join("\n");
@@ -36,6 +83,7 @@ export function responsesPayload(message, history = []) {
 以下 JSON 是唯一正式飯店知識來源。回答希堤微旅的事實、設備、服務或政策時，只能使用其中明載的內容，不得套用一般飯店常識，也不得推測 null、missing 或未記載資料。
 有明確答案就依資料回答並提供下一步；沒有答案或不確定時，明確說明知識庫未提供，請旅客向真人櫃台確認。
 不得猜測即時房價、空房、優惠或當日狀況；只能引導至當日官網、訂房系統或櫃台確認，不得捏造數字。
+旅客詢問指定入住日期的房況時，不得宣稱 AI 能確認即時房況；須以 identity.bookingUrl 為基底，動態附加 checkInDate（指定日期）與 checkOutDate（隔天），不得修改正式知識庫內的 bookingUrl。
 客訴、退款、訂單爭議、設備故障或特殊需求必須依 escalation 轉真人；不可聲稱已修改、取消、付款或退款。
 餐廳具體店名屬變動資訊；若無法即時查證，先詢問餐飲偏好並說明須查詢最新營業資訊，不可編造店家。
 請連貫理解下方對話脈絡。旅客使用「那」、「這個」、「兩個人呢」、「如果晚一點呢」等承接語時，應依最近對話判斷所指主題；計算仍只能使用正式知識庫已確認的數字。
@@ -87,6 +135,17 @@ export default async function handler(req, res) {
   const message = req.body?.message;
   if (typeof message !== "string" || !message.trim()) {
     return sendError(res, 400, "請輸入問題", { source: "chat", code: "invalid_message" });
+  }
+
+  const directAvailabilityAnswer = availabilityReply(message.trim());
+  if (directAvailabilityAnswer) {
+    return res.status(200).json({
+      answer: directAvailabilityAnswer,
+      diagnostic: {
+        knowledgeVersion: KNOWLEDGE_VERSION,
+        commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) || "local"
+      }
+    });
   }
 
   const apiKey = process.env.OPENAI_API_KEY?.trim();
