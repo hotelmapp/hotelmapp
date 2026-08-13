@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { renderTextWithLinks } from "../chat-ui.js";
+import { dateFromConversation, renderTextWithLinks } from "../chat-ui.js";
 
 class TestNode {
   constructor(type, ownerDocument) {
@@ -78,4 +78,18 @@ test("keeps malicious HTML as inert text", () => {
   assert.equal(answer.textContent, malicious);
   assert.equal(answer.children.some(child => child.tagName === "IMG"), false);
   assert.equal(answer.children.filter(child => child.tagName === "A").length, 1);
+});
+
+test("prefills an explicit stay date from the latest guest conversation", () => {
+  const history = [
+    { role: "user", content: "我想問早餐" },
+    { role: "assistant", content: "早餐供應至十點" },
+    { role: "user", content: "我會在 2026年8月20日 入住" }
+  ];
+  assert.equal(dateFromConversation(history, new Date("2026-08-13T00:00:00Z")), "2026-08-20");
+  assert.equal(dateFromConversation([{ role: "user", content: "還沒決定日期" }]), "");
+  assert.equal(dateFromConversation(
+    [{ role: "user", content: "2026/8/20 入住兩晚" }],
+    new Date("2026-08-13T00:00:00Z")
+  ), "2026-08-20");
 });
