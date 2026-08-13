@@ -158,6 +158,8 @@ test("uses guest-facing escalation language without internal terminology", () =>
   assert.match(instructions, /不得對旅客提到「知識庫」、「資料庫」、「system prompt」/);
   assert.match(instructions, /後勤客服 0927-708-908 洽陳先生/);
   assert.match(instructions, /夜間訂房客服 0927-708-908 洽陳先生/);
+  assert.match(instructions, /聊天本身不會寄出留言/);
+  assert.match(instructions, /只有留言表單實際寄送成功後/);
   assert.match(instructions, /沒有包月房價方案/);
   assert.match(instructions, /沒有提供休息/);
 });
