@@ -7,7 +7,8 @@ const LIMITS = Object.freeze({
   name: 80,
   phone: 30,
   email: 254,
-  stayDate: 10
+  stayDate: 10,
+  summary: 1_000
 });
 const MAX_HISTORY_MESSAGES = 20;
 const MAX_MESSAGE_LENGTH = 2_000;
@@ -138,7 +139,8 @@ export default async function handler(req, res) {
   validation.data = {
     ...validation.data,
     ...generated,
-    stayDate: validation.data.stayDate || generated.stayDate
+    stayDate: validation.data.stayDate || generated.stayDate,
+    summary: validation.data.summary || generated.summary
   };
 
   const apiKey = process.env.RESEND_API_KEY?.trim();

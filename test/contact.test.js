@@ -101,6 +101,19 @@ test("keeps the check-in date when the guest specifies multiple nights", () => {
   assert.equal(contactDetails(history, new Date("2026-08-13T00:00:00Z")).stayDate, "2026-08-20");
 });
 
+test("uses the complete summary prefilled by the conversation form", async t => {
+  const summary = "旅客詢問／需求：2026/8/20 入住兩晚；需要嬰兒床；需要停車位";
+  await withResendMock(t, async (_url, options) => {
+    const email = JSON.parse(options.body);
+    assert.match(email.text, new RegExp(summary));
+    return new Response(JSON.stringify({ id: "email_composite" }), { status: 200 });
+  }, async () => {
+    const res = recorder();
+    await handler({ method: "POST", body: { ...validContact, summary } }, res);
+    assert.equal(res.statusCode, 200);
+  });
+});
+
 test("keeps malicious HTML inert in a plain-text email and strips subject newlines", () => {
   const malicious = '<img src=x onerror="alert(1)"><script>alert(2)</script>';
   const validation = validateContact({
