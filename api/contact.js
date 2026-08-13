@@ -1,3 +1,5 @@
+import { bookingDatesFromText } from "../stay-dates.js";
+
 const RESEND_EMAILS_URL = "https://api.resend.com/emails";
 const RECIPIENT = "hotel.mapp158@gmail.com";
 const SENDER = "希堤微旅 AI 智慧櫃台 <onboarding@resend.dev>";
@@ -54,24 +56,10 @@ function normalizedHistory(history) {
     .slice(-MAX_HISTORY_MESSAGES);
 }
 
-function isoDate(year, month, day) {
-  const date = new Date(Date.UTC(year, month - 1, day));
-  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
-    ? date.toISOString().slice(0, 10)
-    : "";
-}
-
 export function stayDateFromHistory(history, now = new Date()) {
   for (const message of normalizedHistory(history).reverse()) {
-    const match = message.match(/(?:(\d{4})\s*[年\/-]\s*)?(\d{1,2})\s*(?:月|[\/-])\s*(\d{1,2})\s*日?/u);
-    if (!match) continue;
-    let year = match[1] ? Number(match[1]) : now.getUTCFullYear();
-    const month = Number(match[2]);
-    const day = Number(match[3]);
-    let date = isoDate(year, month, day);
-    if (!date) continue;
-    if (!match[1] && date < now.toISOString().slice(0, 10)) date = isoDate(++year, month, day);
-    if (date) return date;
+    const dates = bookingDatesFromText(message, now);
+    if (dates) return dates.checkInDate;
   }
   return "";
 }
@@ -84,9 +72,9 @@ export function contactDetails(history, now = new Date()) {
     ["設備問題", /(故障|壞掉|無法使用|沒反應|冷氣|電視|設備|wifi|網路)/iu],
     ["停車", /(停車|車位)/u],
     ["早餐", /(早餐|餐點)/u],
-    ["入住需求", /(提早入住|延後退房|入住需求|check[ -]?in|check[ -]?out)/iu],
-    ["訂房詢問", /(訂房|空房|房況|房價|住宿)/u],
-    ["特殊需求", /(特殊需求|嬰兒|寵物|無障礙|加床|過敏|素食|慶生)/u]
+    ["入住需求", /(提早入住|延後退房|入住需求|check[ -]?in|check[ -]?out|チェックイン|チェックアウト|체크인|체크아웃)/iu],
+    ["特殊需求", /(特殊需求|嬰兒|寵物|無障礙|加床|過敏|素食|慶生|baby\s*(?:crib|cot)|crib|cot|ベビーベッド|아기\s*침대)/iu],
+    ["訂房詢問", /(訂房|空房|房況|房價|住宿|booking|availability|room|予約|空室|宿泊|예약|객실|숙박)/iu]
   ];
   const reason = categories.find(([, pattern]) => pattern.test(text))?.[0] || "其他";
   const summarySource = messages.slice(-2).join("；");

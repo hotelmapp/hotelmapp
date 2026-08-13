@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import handler, { availabilityReply, bookingDates, datedBookingUrl, normalizedHistory, relevantKnowledge, responseText, responsesPayload } from "../api/chat.js";
 import { hotelKnowledge } from "../data/hotel-info.js";
+import { detectGuestLanguage } from "../guest-language.js";
 
 function recorder() {
   return {
@@ -51,6 +52,55 @@ test("calculates checkout as check-in plus the requested number of nights", () =
   assert.deepEqual(bookingDates("2026/8/20 住 3 晚", now), {
     checkInDate: "2026-08-20", checkOutDate: "2026-08-23"
   });
+});
+
+test("detects all supported guest languages and uses recent context only for ambiguous messages", () => {
+  assert.equal(detectGuestLanguage("早餐幾點開始？"), "zh-TW");
+  assert.equal(detectGuestLanguage("What time is breakfast?"), "en");
+  assert.equal(detectGuestLanguage("朝食は何時ですか？"), "ja");
+  assert.equal(detectGuestLanguage("조식은 몇 시인가요?"), "ko");
+  assert.equal(detectGuestLanguage("8/20?", [{ role: "user", content: "Is that date available?" }]), "en");
+  assert.equal(detectGuestLanguage("8/20?", []), "zh-TW");
+});
+
+test("instructs the AI to answer Chinese, English, Japanese, and Korean questions in kind", () => {
+  const cases = [
+    ["早餐幾點？", "zh-TW"],
+    ["What time is breakfast?", "en"],
+    ["朝食は何時ですか？", "ja"],
+    ["조식은 몇 시인가요?", "ko"]
+  ];
+  for (const [question, language] of cases) {
+    const payload = responsesPayload(question);
+    assert.match(payload.instructions, new RegExp(`主要語言為 ${language}`));
+    assert.match(payload.instructions, /必須使用該語言/);
+    assert.deepEqual(payload.input, [{ role: "user", content: question }]);
+  }
+});
+
+test("parses English, Japanese, and Korean stay dates and night counts", () => {
+  const now = new Date("2026-08-13T00:00:00Z");
+  assert.deepEqual(bookingDates("Do you have a room for two nights starting August 20?", now), {
+    checkInDate: "2026-08-20", checkOutDate: "2026-08-22"
+  });
+  assert.deepEqual(bookingDates("2026年8月20日から2泊したいです", now), {
+    checkInDate: "2026-08-20", checkOutDate: "2026-08-22"
+  });
+  assert.deepEqual(bookingDates("2026년 8월 20일부터 2박 숙박하고 싶어요", now), {
+    checkInDate: "2026-08-20", checkOutDate: "2026-08-22"
+  });
+});
+
+test("answers an English booking and crib request without promising the crib", () => {
+  const reply = availabilityReply(
+    "Do you have a room for two nights starting August 20? Also, can the hotel provide a baby crib?",
+    new Date("2026-08-13T00:00:00Z")
+  );
+  assert.match(reply, /check-in 2026-08-20 and check-out 2026-08-22/);
+  assert.match(reply, /Baby equipment/);
+  assert.match(reply, /cannot be guaranteed/);
+  assert.match(reply, /Message hotel staff/);
+  assert.doesNotMatch(reply, /一定能提供/);
 });
 
 test("puts the requested stay length in the dated booking link and AI reply", () => {
