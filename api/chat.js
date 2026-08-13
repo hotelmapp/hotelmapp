@@ -41,47 +41,55 @@ export function datedBookingUrl(dates) {
 
 const REPLY_TEXT = Object.freeze({
   "zh-TW": {
-    booking: (dates, url) => `1. 訂房／查房：AI 無法確認即時房況。請至官方訂房系統查詢 ${dates.checkInDate} 入住、${dates.checkOutDate} 退房的房價與空房：\n${url}`,
-    babyLabel: "嬰幼兒用品", baby: hotelKnowledge.extraBed.babyEquipment,
-    confirm: "如需確認上述需求，請使用頁面下方「留言給飯店人員」表單；飯店將依數量與現場狀況確認，AI 不會自行承諾一定能提供。"
+    booking: (dates, url) => `當然可以！如果您預計 ${dates.checkInDate} 入住、${dates.checkOutDate} 退房，可以透過下方官方訂房頁面查看最新房價與空房：\n${url}`,
+    baby: "嬰兒床、床圍、消毒鍋或嬰兒澡盆都可以協助提出需求；建議在入住前一天告知，不過會依數量與現場狀況安排，因此無法事先保證。",
+    parking: `飯店有 ${hotelKnowledge.parking.hotelSpaces} 個車位，另有配合停車場；實際車位仍需依當日現場狀況安排。`,
+    breakfast: `早餐供應時間為 ${hotelKnowledge.breakfast.hours}，未含早餐也可以加購，每客 NT$150。`,
+    confirm: "如果您願意，可以使用下方「留言給飯店人員」表單，我們會把您的需求整理好交給飯店人員確認。"
   },
   en: {
-    booking: (dates, url) => `1. Booking / availability: AI cannot confirm live availability. Please check rates and rooms for check-in ${dates.checkInDate} and check-out ${dates.checkOutDate} in the official booking system:\n${url}`,
-    babyLabel: "Baby equipment", baby: "A baby crib, bed rail, sterilizer, or baby bath may be available. Please notify the hotel one day before arrival; availability depends on quantity and on-site conditions and cannot be guaranteed.",
-    confirm: "To confirm these requests, please use the “Message hotel staff” form below. The hotel must confirm based on quantity and on-site conditions; AI cannot promise that an item will be provided."
+    booking: (dates, url) => `Certainly! For a stay from ${dates.checkInDate} to ${dates.checkOutDate}, you can check the latest room availability and rates through our official booking page below:\n${url}`,
+    baby: "We can help request a baby crib, bed rail, sterilizer, or baby bath. Please let the hotel know one day before arrival; arrangements depend on the available quantity and conditions during your stay, so they cannot be guaranteed in advance.",
+    parking: `The hotel has ${hotelKnowledge.parking.hotelSpaces} parking spaces and also works with nearby parking lots. A space will need to be confirmed based on availability when you arrive.`,
+    breakfast: `Breakfast is served from ${hotelKnowledge.breakfast.hours}. If it is not included in your stay, you can add it for NT$150 per guest.`,
+    confirm: "If you’d like, please use the “Message hotel staff” form below. We’ll organize your request for the hotel team to confirm."
   },
   ja: {
-    booking: (dates, url) => `1. 予約／空室確認：AIではリアルタイムの空室状況を確認できません。公式予約システムでチェックイン ${dates.checkInDate}、チェックアウト ${dates.checkOutDate} の料金と空室をご確認ください：\n${url}`,
-    babyLabel: "ベビー用品", baby: "ベビーベッド、ベッドガード、消毒器、ベビーバスはご用意できる場合があります。前日までにホテルへお知らせください。数量と当日の状況によるため、確約はできません。",
-    confirm: "ご希望の確認には、下の「ホテルスタッフへのメッセージ」フォームをご利用ください。数量と当日の状況をホテルが確認する必要があり、AIがお約束することはできません。"
+    booking: (dates, url) => `承知いたしました。${dates.checkInDate}チェックイン、${dates.checkOutDate}チェックアウトの最新の空室状況と料金は、下記の公式予約ページでご確認いただけます。\n${url}`,
+    baby: "ベビーベッド、ベッドガード、消毒器、ベビーバスのリクエストを承ります。前日までにお知らせください。数に限りがあり、当日の状況によってはご用意できない場合がございます。",
+    parking: `ホテル専用駐車場は${hotelKnowledge.parking.hotelSpaces}台分あり、提携駐車場もございます。ご利用可否は当日の状況によりホテルで確認いたします。`,
+    breakfast: `朝食は${hotelKnowledge.breakfast.hours}にご利用いただけます。朝食なしのプランでも、1名様NT$150で追加できます。`,
+    confirm: "ご希望でしたら、下の「ホテルスタッフへのメッセージ」フォームをご利用ください。内容をまとめてホテルスタッフが確認いたします。"
   },
   ko: {
-    booking: (dates, url) => `1. 예약 / 객실 확인: AI는 실시간 객실 상황을 확인할 수 없습니다. 공식 예약 시스템에서 체크인 ${dates.checkInDate}, 체크아웃 ${dates.checkOutDate}의 요금과 객실을 확인해 주세요:\n${url}`,
-    babyLabel: "유아용품", baby: "아기 침대, 침대 가드, 소독기, 아기 욕조는 제공 가능할 수 있습니다. 체크인 하루 전 호텔에 알려 주세요. 수량과 현장 상황에 따라 확인이 필요하며 보장할 수 없습니다.",
-    confirm: "요청 확인이 필요하면 아래의 ‘호텔 직원에게 메시지 보내기’ 양식을 이용해 주세요. 호텔이 수량과 현장 상황을 확인해야 하며, AI는 제공을 보장하지 않습니다."
+    booking: (dates, url) => `물론입니다. ${dates.checkInDate} 체크인, ${dates.checkOutDate} 체크아웃 일정의 최신 객실과 요금은 아래 공식 예약 페이지에서 확인하실 수 있습니다.\n${url}`,
+    baby: "아기 침대, 침대 가드, 소독기 또는 아기 욕조를 요청하실 수 있습니다. 체크인 하루 전까지 알려 주세요. 수량과 당일 상황에 따라 준비되므로 사전에 확정해 드리기는 어렵습니다.",
+    parking: `호텔 주차 공간은 ${hotelKnowledge.parking.hotelSpaces}대이며 제휴 주차장도 있습니다. 이용 가능 여부는 당일 상황에 따라 호텔에서 확인해 드립니다.`,
+    breakfast: `조식은 ${hotelKnowledge.breakfast.hours}에 이용하실 수 있습니다. 조식이 포함되지 않은 경우 1인당 NT$150에 추가할 수 있습니다.`,
+    confirm: "원하시면 아래 ‘호텔 직원에게 메시지 보내기’ 양식을 이용해 주세요. 요청 내용을 정리해 호텔 직원이 확인할 수 있도록 하겠습니다."
   }
 });
 
 function additionalHotelNeeds(message, language = "zh-TW") {
   const needs = [];
-  const add = (pattern, label, answer) => {
-    if (pattern.test(message)) needs.push({ label, answer });
+  const add = (pattern, answer, confirmationNeeded = false) => {
+    if (pattern.test(message)) needs.push({ answer, confirmationNeeded });
   };
 
   const copy = REPLY_TEXT[language];
-  add(/嬰兒床|床圍|消毒鍋|澡盆|baby\s*(?:crib|cot)|crib|cot|ベビーベッド|ベビー用品|아기\s*침대|유아용품/iu, copy.babyLabel, copy.baby);
-  add(/停車|車位/u, "停車需求", `飯店有 ${hotelKnowledge.parking.hotelSpaces} 個車位，也有配合停車場；車位與現場安排仍請飯店人員確認。`);
-  add(/早餐|餐點|素食/u, "早餐需求", `早餐資訊：${hotelKnowledge.breakfast.hours}，${hotelKnowledge.breakfast.addOn}${/素食/u.test(message) ? ` ${hotelKnowledge.breakfast.vegetarian}` : ""}`);
-  add(/牙刷|備品|盥洗|毛巾|浴巾|拖鞋/u, "備品需求", hotelKnowledge.amenities.toiletries);
-  add(/電視|Netflix|YouTube/u, "電視設備", hotelKnowledge.amenities.tv);
-  add(/洗衣|烘衣/u, "洗衣設備", hotelKnowledge.amenities.laundry);
-  add(/充電器|轉接頭|雨傘/u, "借用物品", hotelKnowledge.amenities.loans);
-  add(/提早入住/u, "提早入住", hotelKnowledge.stay.earlyCheckIn);
-  add(/延後退房/u, "延後退房", hotelKnowledge.stay.lateCheckOut);
-  add(/加床/u, "加床需求", `${hotelKnowledge.extraBed.price}；是否可加床仍須依房型與現場狀況確認。`);
+  add(/嬰兒床|床圍|消毒鍋|澡盆|baby\s*(?:crib|cot)|crib|cot|bed\s*rail|sterili[sz]er|baby\s*bath|ベビーベッド|ベビー用品|ベッドガード|消毒器|ベビーバス|아기\s*침대|유아용품|침대\s*가드|소독기|아기\s*욕조/iu, copy.baby, true);
+  add(/停車|車位|parking|駐車|주차/iu, copy.parking, true);
+  add(/早餐|餐點|素食|breakfast|vegetarian|朝食|조식/iu, copy.breakfast);
+  add(/牙刷|備品|盥洗|毛巾|浴巾|拖鞋/u, hotelKnowledge.amenities.toiletries);
+  add(/電視|Netflix|YouTube/u, hotelKnowledge.amenities.tv);
+  add(/洗衣|烘衣/u, hotelKnowledge.amenities.laundry);
+  add(/充電器|轉接頭|雨傘/u, hotelKnowledge.amenities.loans);
+  add(/提早入住/u, hotelKnowledge.stay.earlyCheckIn, true);
+  add(/延後退房/u, hotelKnowledge.stay.lateCheckOut, true);
+  add(/加床/u, `${hotelKnowledge.extraBed.price}；是否可加床仍須依房型與現場狀況確認。`, true);
 
   if (/(設備故障|壞掉|無法使用|沒反應|特殊需求|過敏|無障礙|慶生)/u.test(message)) {
-    needs.push({ label: "其他需求", answer: "這項需求需要由飯店人員依現場狀況進一步確認，無法預先保證。" });
+    needs.push({ answer: "這項需求可以請飯店人員依現場狀況進一步確認，但目前無法預先保證。", confirmationNeeded: true });
   }
   return needs;
 }
@@ -94,10 +102,11 @@ export function availabilityReply(message, now = new Date()) {
   const copy = REPLY_TEXT[language];
   const booking = copy.booking(dates, datedBookingUrl(dates));
   const needs = additionalHotelNeeds(message, language);
-  if (!needs.length) return booking.replace(/^1\. /u, "");
+  if (!needs.length) return booking;
 
-  const answers = needs.map((need, index) => `${index + 2}. ${need.label}：${need.answer}`);
-  return [booking, ...answers, copy.confirm].join("\n\n");
+  const parts = [booking, ...needs.map(need => need.answer)];
+  if (needs.some(need => need.confirmationNeeded)) parts.push(copy.confirm);
+  return parts.join("\n\n");
 }
 
 export function responsesPayload(message, history = []) {
@@ -107,8 +116,10 @@ export function responsesPayload(message, history = []) {
   const relevant = relevantKnowledge(contextText);
   return {
     model: OPENAI_MODEL,
-    instructions: `你是希堤微旅的 AI 智慧櫃台。支援繁體中文（zh-TW）、English（en）、日本語（ja）、한국어（ko）。本次判定旅客主要語言為 ${responseLanguage}，必須使用該語言簡潔回答；不要因下方飯店資料是繁體中文而改用中文。專有名詞、飯店名稱與網址可保留原文。若語言無法可靠判斷則使用繁體中文。
+    instructions: `你是希堤微旅專業、親切、自然的智慧櫃台人員。支援繁體中文（zh-TW）、English（en）、日本語（ja）、한국어（ko）。本次判定旅客主要語言為 ${responseLanguage}，必須使用該語言並全程以該語言簡潔回答；不要因下方飯店資料是繁體中文而改用中文，也不要夾雜其他語言。專有名詞、飯店名稱與網址可保留原文。若語言無法可靠判斷則使用繁體中文。
 判斷時以旅客目前訊息為優先，並參考最近對話；回答原則上跟隨目前訊息的語言。
+先自然回應旅客的需求，再提供必要資訊與下一步。使用親切、簡潔、有服務感但不過度客套的語氣；不要採用系統公告、FAQ、制式標題或機械式編號清單。不要以「AI 無法」、「系統無法」、「AI cannot」或其他負面能力聲明開頭，也不要在每段重複致謝或「很高興為您服務」等客套話。
+遇到複合問題時，像真人櫃台一樣用連貫段落整合回答，逐項涵蓋需求，不要硬拆成分類標題。特殊用品、停車或其他須確認的需求，要先直接說明可如何協助及已知條件，再只說一次需要依數量或現場狀況確認。需要真人確認時，不要讓旅客感覺被轉走；自然邀請使用下方留言表單，並說明會將需求整理給飯店人員確認。
 以下 JSON 是唯一正式飯店知識來源。回答希堤微旅的事實、設備、服務或政策時，只能使用其中明載的內容，不得套用一般飯店常識，也不得推測 null、missing 或未記載資料。
 有明確答案就依資料自然回答並提供下一步；沒有答案或不確定時，請自然說明「這項資訊需要由櫃檯進一步確認」，並建議旅客於 07:00–22:00 直接洽詢櫃檯。不得對旅客提到「知識庫」、「資料庫」、「system prompt」或其他內部系統用語。
 不得猜測即時房價、空房、優惠或當日狀況；只能引導至當日官網、訂房系統或櫃台確認，不得捏造數字。

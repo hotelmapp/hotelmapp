@@ -96,8 +96,8 @@ test("answers an English booking and crib request without promising the crib", (
     "Do you have a room for two nights starting August 20? Also, can the hotel provide a baby crib?",
     new Date("2026-08-13T00:00:00Z")
   );
-  assert.match(reply, /check-in 2026-08-20 and check-out 2026-08-22/);
-  assert.match(reply, /Baby equipment/);
+  assert.match(reply, /from 2026-08-20 to 2026-08-22/);
+  assert.match(reply, /baby crib/);
   assert.match(reply, /cannot be guaranteed/);
   assert.match(reply, /Message hotel staff/);
   assert.doesNotMatch(reply, /一定能提供/);
@@ -128,9 +128,9 @@ test("answers both booking dates and a cot request in the same message", async t
   assert.match(res.body.answer, /checkInDate=2026-08-20/);
   assert.match(res.body.answer, /checkOutDate=2026-08-22/);
   assert.match(res.body.answer, /嬰兒床/);
-  assert.match(res.body.answer, /依數量與現場狀況確認/);
+  assert.match(res.body.answer, /依數量與現場狀況安排/);
   assert.match(res.body.answer, /留言給飯店人員/);
-  assert.match(res.body.answer, /不會自行承諾一定能提供/);
+  assert.doesNotMatch(res.body.answer, /AI 無法|系統無法/);
 });
 
 test("answers every recognized need in a composite booking question", () => {
@@ -138,10 +138,11 @@ test("answers every recognized need in a composite booking question", () => {
     "2026/8/20 入住兩晚，請問有停車位、早餐和牙刷嗎？",
     new Date("2026-08-13T00:00:00Z")
   );
-  assert.match(reply, /1\. 訂房／查房/);
-  assert.match(reply, /2\. 停車需求/);
-  assert.match(reply, /3\. 早餐需求/);
-  assert.match(reply, /4\. 備品需求/);
+  assert.match(reply, /官方訂房頁面/);
+  assert.match(reply, /飯店有 3 個車位/);
+  assert.match(reply, /早餐供應時間為 08:00–10:00/);
+  assert.match(reply, /不提供牙刷/);
+  assert.doesNotMatch(reply, /^1\.|Booking \/ availability|AI 無法/u);
 });
 
 test("answers dated availability requests without claiming live availability", async () => {
@@ -149,10 +150,52 @@ test("answers dated availability requests without claiming live availability", a
   await handler({ method: "POST", body: { message: "2026/8/15 有房嗎？", history: [] } }, res);
 
   assert.equal(res.statusCode, 200);
-  assert.match(res.body.answer, /AI 無法確認即時房況/);
+  assert.match(res.body.answer, /^當然可以！/);
+  assert.doesNotMatch(res.body.answer, /AI 無法|系統無法/);
   assert.match(res.body.answer, /checkInDate=2026-08-15/);
   assert.match(res.body.answer, /checkOutDate=2026-08-16/);
   assert.equal(res.body.answer.includes("有空房"), false);
+});
+
+test("uses a natural opening for a single Chinese availability question", () => {
+  const reply = availabilityReply("2026/8/20 有房嗎？", new Date("2026-08-13T00:00:00Z"));
+  assert.match(reply, /^當然可以！/);
+  assert.match(reply, /官方訂房頁面/);
+  assert.doesNotMatch(reply, /^(?:AI 無法|系統無法)/u);
+});
+
+test("keeps Japanese and Korean booking replies natural and language-consistent", () => {
+  const now = new Date("2026-08-13T00:00:00Z");
+  const japanese = availabilityReply("2026年8月20日から2泊の宿泊はできますか？ベビーベッドもお願いします。", now);
+  assert.match(japanese, /^承知いたしました。/);
+  assert.match(japanese, /ベビーベッド、.*リクエスト/);
+  assert.match(japanese, /ホテルスタッフへのメッセージ/);
+  assert.doesNotMatch(japanese, /AIでは|AI 無法|AI cannot/u);
+
+  const korean = availabilityReply("2026년 8월 20일부터 2박 숙박 가능한가요? 아기 침대도 필요해요.", now);
+  assert.match(korean, /^물론입니다\./);
+  assert.match(korean, /아기 침대/);
+  assert.match(korean, /호텔 직원에게 메시지 보내기/);
+  assert.doesNotMatch(korean, /AI는|AI 無法|AI cannot/u);
+});
+
+test("answers parking and breakfast together without mechanical section labels", () => {
+  const reply = availabilityReply(
+    "2026/8/20 入住，請問有停車位和早餐嗎？",
+    new Date("2026-08-13T00:00:00Z")
+  );
+  assert.match(reply, /飯店有 3 個車位/);
+  assert.match(reply, /早餐供應時間為 08:00–10:00/);
+  assert.match(reply, /留言給飯店人員/);
+  assert.doesNotMatch(reply, /\d+\. (?:訂房|停車|早餐)/u);
+});
+
+test("instructs uncertain requests to be handed over warmly without unsafe promises", () => {
+  const instructions = responsesPayload("可以幫我準備無障礙淋浴椅嗎？").instructions;
+  assert.match(instructions, /先直接說明可如何協助/);
+  assert.match(instructions, /需求整理給飯店人員確認/);
+  assert.match(instructions, /不可聲稱已修改、取消、付款或退款/);
+  assert.match(instructions, /不得承諾一定能提供/);
 });
 
 test("only creates an availability reply for dated stay enquiries", () => {
