@@ -1,4 +1,6 @@
 import { hotelKnowledge, knowledgeForPrompt } from "../data/hotel-info.js";
+import { detectGuestLanguage } from "../guest-language.js";
+import { bookingDatesFromText } from "../stay-dates.js";
 
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const OPENAI_MODEL = process.env.OPENAI_MODEL?.trim() || "gpt-4.1-mini";
@@ -26,50 +28,8 @@ export function normalizedHistory(history) {
     .slice(-MAX_HISTORY_MESSAGES);
 }
 
-function isoDate(year, month, day) {
-  const date = new Date(Date.UTC(year, month - 1, day));
-  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
-    return null;
-  }
-  return date.toISOString().slice(0, 10);
-}
-
-function stayNights(message) {
-  const match = message.match(/(?:入住|住)?\s*(\d{1,2}|[一二兩三四五六七八九十]+)\s*晚/u);
-  if (!match) return 1;
-  if (/^\d+$/u.test(match[1])) return Math.max(1, Number(match[1]));
-
-  const digits = { 一: 1, 二: 2, 兩: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
-  const text = match[1];
-  const nights = text === "十" ? 10
-    : text.includes("十")
-      ? (digits[text.split("十")[0]] || 1) * 10 + (digits[text.split("十")[1]] || 0)
-      : digits[text];
-  return Math.max(1, nights || 1);
-}
-
 export function bookingDates(message, now = new Date()) {
-  if (typeof message !== "string") return null;
-
-  const match = message.match(/(?:(\d{4})\s*[年\/-]\s*)?(\d{1,2})\s*(?:月|[\/-])\s*(\d{1,2})\s*日?/u);
-  if (!match) return null;
-
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  let year = match[1] ? Number(match[1]) : now.getUTCFullYear();
-  let checkInDate = isoDate(year, month, day);
-  if (!checkInDate) return null;
-
-  const today = now.toISOString().slice(0, 10);
-  if (!match[1] && checkInDate < today) {
-    year += 1;
-    checkInDate = isoDate(year, month, day);
-    if (!checkInDate) return null;
-  }
-
-  const departure = new Date(`${checkInDate}T00:00:00Z`);
-  departure.setUTCDate(departure.getUTCDate() + stayNights(message));
-  return { checkInDate, checkOutDate: departure.toISOString().slice(0, 10) };
+  return bookingDatesFromText(message, now);
 }
 
 export function datedBookingUrl(dates) {
@@ -79,13 +39,37 @@ export function datedBookingUrl(dates) {
   return url.toString();
 }
 
-function additionalHotelNeeds(message) {
+const REPLY_TEXT = Object.freeze({
+  "zh-TW": {
+    booking: (dates, url) => `1. 訂房／查房：AI 無法確認即時房況。請至官方訂房系統查詢 ${dates.checkInDate} 入住、${dates.checkOutDate} 退房的房價與空房：\n${url}`,
+    babyLabel: "嬰幼兒用品", baby: hotelKnowledge.extraBed.babyEquipment,
+    confirm: "如需確認上述需求，請使用頁面下方「留言給飯店人員」表單；飯店將依數量與現場狀況確認，AI 不會自行承諾一定能提供。"
+  },
+  en: {
+    booking: (dates, url) => `1. Booking / availability: AI cannot confirm live availability. Please check rates and rooms for check-in ${dates.checkInDate} and check-out ${dates.checkOutDate} in the official booking system:\n${url}`,
+    babyLabel: "Baby equipment", baby: "A baby crib, bed rail, sterilizer, or baby bath may be available. Please notify the hotel one day before arrival; availability depends on quantity and on-site conditions and cannot be guaranteed.",
+    confirm: "To confirm these requests, please use the “Message hotel staff” form below. The hotel must confirm based on quantity and on-site conditions; AI cannot promise that an item will be provided."
+  },
+  ja: {
+    booking: (dates, url) => `1. 予約／空室確認：AIではリアルタイムの空室状況を確認できません。公式予約システムでチェックイン ${dates.checkInDate}、チェックアウト ${dates.checkOutDate} の料金と空室をご確認ください：\n${url}`,
+    babyLabel: "ベビー用品", baby: "ベビーベッド、ベッドガード、消毒器、ベビーバスはご用意できる場合があります。前日までにホテルへお知らせください。数量と当日の状況によるため、確約はできません。",
+    confirm: "ご希望の確認には、下の「ホテルスタッフへのメッセージ」フォームをご利用ください。数量と当日の状況をホテルが確認する必要があり、AIがお約束することはできません。"
+  },
+  ko: {
+    booking: (dates, url) => `1. 예약 / 객실 확인: AI는 실시간 객실 상황을 확인할 수 없습니다. 공식 예약 시스템에서 체크인 ${dates.checkInDate}, 체크아웃 ${dates.checkOutDate}의 요금과 객실을 확인해 주세요:\n${url}`,
+    babyLabel: "유아용품", baby: "아기 침대, 침대 가드, 소독기, 아기 욕조는 제공 가능할 수 있습니다. 체크인 하루 전 호텔에 알려 주세요. 수량과 현장 상황에 따라 확인이 필요하며 보장할 수 없습니다.",
+    confirm: "요청 확인이 필요하면 아래의 ‘호텔 직원에게 메시지 보내기’ 양식을 이용해 주세요. 호텔이 수량과 현장 상황을 확인해야 하며, AI는 제공을 보장하지 않습니다."
+  }
+});
+
+function additionalHotelNeeds(message, language = "zh-TW") {
   const needs = [];
   const add = (pattern, label, answer) => {
     if (pattern.test(message)) needs.push({ label, answer });
   };
 
-  add(/嬰兒床|床圍|消毒鍋|澡盆/u, "嬰幼兒用品", hotelKnowledge.extraBed.babyEquipment);
+  const copy = REPLY_TEXT[language];
+  add(/嬰兒床|床圍|消毒鍋|澡盆|baby\s*(?:crib|cot)|crib|cot|ベビーベッド|ベビー用品|아기\s*침대|유아용품/iu, copy.babyLabel, copy.baby);
   add(/停車|車位/u, "停車需求", `飯店有 ${hotelKnowledge.parking.hotelSpaces} 個車位，也有配合停車場；車位與現場安排仍請飯店人員確認。`);
   add(/早餐|餐點|素食/u, "早餐需求", `早餐資訊：${hotelKnowledge.breakfast.hours}，${hotelKnowledge.breakfast.addOn}${/素食/u.test(message) ? ` ${hotelKnowledge.breakfast.vegetarian}` : ""}`);
   add(/牙刷|備品|盥洗|毛巾|浴巾|拖鞋/u, "備品需求", hotelKnowledge.amenities.toiletries);
@@ -103,25 +87,28 @@ function additionalHotelNeeds(message) {
 }
 
 export function availabilityReply(message, now = new Date()) {
-  if (!/(有房|空房|房況|訂房|入住|住宿)/u.test(message)) return null;
+  if (!/(有房|空房|房況|訂房|入住|住宿|room|availab|book|check[ -]?in|stay|予約|空室|宿泊|チェックイン|객실|예약|숙박|체크인)/iu.test(message)) return null;
   const dates = bookingDates(message, now);
   if (!dates) return null;
-
-  const booking = `1. 訂房／查房：AI 無法確認即時房況。請至官方訂房系統查詢 ${dates.checkInDate} 入住、${dates.checkOutDate} 退房的房價與空房：\n${datedBookingUrl(dates)}`;
-  const needs = additionalHotelNeeds(message);
+  const language = detectGuestLanguage(message);
+  const copy = REPLY_TEXT[language];
+  const booking = copy.booking(dates, datedBookingUrl(dates));
+  const needs = additionalHotelNeeds(message, language);
   if (!needs.length) return booking.replace(/^1\. /u, "");
 
   const answers = needs.map((need, index) => `${index + 2}. ${need.label}：${need.answer}`);
-  return [booking, ...answers, "如需確認上述需求，請使用頁面下方「留言給飯店人員」表單；飯店將依數量與現場狀況確認，AI 不會自行承諾一定能提供。"].join("\n\n");
+  return [booking, ...answers, copy.confirm].join("\n\n");
 }
 
 export function responsesPayload(message, history = []) {
   const conversation = normalizedHistory(history);
+  const responseLanguage = detectGuestLanguage(message, conversation);
   const contextText = [...conversation.map(item => item.content), message].join("\n");
   const relevant = relevantKnowledge(contextText);
   return {
     model: OPENAI_MODEL,
-    instructions: `你是希堤微旅的 AI 智慧櫃台。請以繁體中文簡潔回答。
+    instructions: `你是希堤微旅的 AI 智慧櫃台。支援繁體中文（zh-TW）、English（en）、日本語（ja）、한국어（ko）。本次判定旅客主要語言為 ${responseLanguage}，必須使用該語言簡潔回答；不要因下方飯店資料是繁體中文而改用中文。專有名詞、飯店名稱與網址可保留原文。若語言無法可靠判斷則使用繁體中文。
+判斷時以旅客目前訊息為優先，並參考最近對話；回答原則上跟隨目前訊息的語言。
 以下 JSON 是唯一正式飯店知識來源。回答希堤微旅的事實、設備、服務或政策時，只能使用其中明載的內容，不得套用一般飯店常識，也不得推測 null、missing 或未記載資料。
 有明確答案就依資料自然回答並提供下一步；沒有答案或不確定時，請自然說明「這項資訊需要由櫃檯進一步確認」，並建議旅客於 07:00–22:00 直接洽詢櫃檯。不得對旅客提到「知識庫」、「資料庫」、「system prompt」或其他內部系統用語。
 不得猜測即時房價、空房、優惠或當日狀況；只能引導至當日官網、訂房系統或櫃台確認，不得捏造數字。

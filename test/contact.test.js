@@ -101,6 +101,18 @@ test("keeps the check-in date when the guest specifies multiple nights", () => {
   assert.equal(contactDetails(history, new Date("2026-08-13T00:00:00Z")).stayDate, "2026-08-20");
 });
 
+test("preserves a multilingual special request in the staff summary and original message", () => {
+  const history = [{
+    role: "user",
+    content: "Do you have a room for two nights starting August 20? I also need a baby crib."
+  }];
+  const details = contactDetails(history, new Date("2026-08-13T00:00:00Z"));
+  assert.equal(details.stayDate, "2026-08-20");
+  assert.equal(details.reason, "特殊需求");
+  assert.match(details.summary, /baby crib/);
+  assert.match(details.originalMessage, /two nights starting August 20/);
+});
+
 test("uses the complete summary prefilled by the conversation form", async t => {
   const summary = "旅客詢問／需求：2026/8/20 入住兩晚；需要嬰兒床；需要停車位";
   await withResendMock(t, async (_url, options) => {
