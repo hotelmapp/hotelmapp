@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import handler, { availabilityReply, bookingDates, datedBookingUrl, normalizedHistory, relevantKnowledge, responseText, responsesPayload } from "../api/chat.js";
+import handler, { availabilityReply, bookingDates, datedBookingUrl, informationalReply, normalizedHistory, relevantKnowledge, responseText, responsesPayload, specialRequestReply } from "../api/chat.js";
 import { hotelKnowledge } from "../data/hotel-info.js";
 import { detectGuestLanguage } from "../guest-language.js";
 
@@ -168,7 +168,7 @@ test("keeps Japanese and Korean booking replies natural and language-consistent"
   const now = new Date("2026-08-13T00:00:00Z");
   const japanese = availabilityReply("2026年8月20日から2泊の宿泊はできますか？ベビーベッドもお願いします。", now);
   assert.match(japanese, /^承知いたしました。/);
-  assert.match(japanese, /ベビーベッド、.*リクエスト/);
+  assert.match(japanese, /ベビーベッド.*リクエスト/);
   assert.match(japanese, /ホテルスタッフへのメッセージ/);
   assert.doesNotMatch(japanese, /AIでは|AI 無法|AI cannot/u);
 
@@ -203,6 +203,44 @@ test("only creates an availability reply for dated stay enquiries", () => {
   assert.equal(availabilityReply("8/15 天氣如何？", new Date("2026-08-13T00:00:00Z")), null);
 });
 
+test("answers only the baby equipment actually requested in all four languages", () => {
+  const cases = [
+    ["嬰兒床可以提供嗎？", /嬰兒床/u, /床圍|消毒鍋|澡盆/u],
+    ["Can I request a baby crib?", /baby crib/i, /bed rail|sterilizer|baby bath/i],
+    ["ベビーベッドはお願いできますか？", /ベビーベッド/u, /ベッドガード|消毒器|ベビーバス/u],
+    ["아기 침대를 요청할 수 있나요?", /아기 침대/u, /침대 가드|소독기|아기 욕조/u]
+  ];
+  for (const [message, requested, unrequested] of cases) {
+    const reply = specialRequestReply(message);
+    assert.match(reply, requested);
+    assert.doesNotMatch(reply, unrequested);
+  }
+});
+
+test("combines dated accommodation and crib needs into a useful handoff", () => {
+  const reply = availabilityReply("2026/8/20 入住兩晚，有房嗎？另外要嬰兒床。", new Date("2026-08-13T00:00:00Z"));
+  assert.match(reply, /2026-08-20 入住、2026-08-22 退房/);
+  assert.match(reply, /嬰兒床/);
+  assert.match(reply, /2026-08-20 入住 2 晚＋嬰兒床需求整理好/);
+  assert.doesNotMatch(reply, /床圍|消毒鍋|澡盆/u);
+});
+
+test("does not add booking links to breakfast or parking information", () => {
+  const breakfast = informationalReply("早餐幾點？");
+  const parking = informationalReply("請問有停車位嗎？");
+  assert.match(breakfast, /08:00–10:00/);
+  assert.match(parking, /3 個車位/);
+  assert.doesNotMatch(breakfast, /https?:\/\//u);
+  assert.doesNotMatch(parking, /https?:\/\//u);
+});
+
+test("provides one official booking entry for explicit dated accommodation intent", () => {
+  const reply = availabilityReply("我想 2026/8/20 入住兩晚", new Date("2026-08-13T00:00:00Z"));
+  assert.equal((reply.match(/https?:\/\//gu) || []).length, 1);
+  assert.match(reply, /checkInDate=2026-08-20/);
+  assert.match(reply, /checkOutDate=2026-08-22/);
+});
+
 test("makes an outgoing Responses API request before returning its answer", async t => {
   const originalFetch = globalThis.fetch;
   const originalKey = process.env.OPENAI_API_KEY;
@@ -213,11 +251,11 @@ test("makes an outgoing Responses API request before returning its answer", asyn
     assert.equal(url, "https://api.openai.com/v1/responses");
     assert.equal(options.headers.Authorization, "Bearer server-secret");
     const payload = JSON.parse(options.body);
-    assert.deepEqual(payload.input, [{ role: "user", content: "早餐幾點開始？" }]);
+    assert.deepEqual(payload.input, [{ role: "user", content: "飯店地址在哪裡？" }]);
     assert.match(payload.instructions, /08:00–10:00/);
     assert.match(payload.instructions, /唯一正式飯店知識來源/);
     assert.match(payload.instructions, /不得猜測即時房價/);
-    return new Response(JSON.stringify({ output_text: "請洽櫃台確認早餐時間。" }), {
+    return new Response(JSON.stringify({ output_text: "飯店地址是台中市上石路158號。" }), {
       status: 200,
       headers: { "x-request-id": "req_success" }
     });
@@ -228,10 +266,10 @@ test("makes an outgoing Responses API request before returning its answer", asyn
   });
 
   const res = recorder();
-  await handler({ method: "POST", body: { message: "早餐幾點開始？" } }, res);
+  await handler({ method: "POST", body: { message: "飯店地址在哪裡？" } }, res);
   assert.equal(requested, true);
   assert.equal(res.statusCode, 200);
-  assert.equal(res.body.answer, "請洽櫃台確認早餐時間。");
+  assert.equal(res.body.answer, "飯店地址是台中市上石路158號。");
   assert.equal(res.body.diagnostic.knowledgeVersion, "2.0");
   assert.equal(res.headers["X-Chat-Knowledge-Version"], "2.0");
 });
