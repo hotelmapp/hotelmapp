@@ -2,7 +2,7 @@
 // 未出現在原始文件中的資訊必須維持 null，不得以 placeholder 或常識補值。
 export const hotelKnowledge = {
   source: { title: "希堤微旅 AI 櫃檯知識庫 V2.0 完整合併正式版", date: "2026-08-10" },
-  identity: { name: "希堤微旅", address: null, website: null, bookingUrl: null },
+identity: { name: "希堤微旅", address: null, website: "https://www.hotelm.com.tw/", bookingUrl: "https://book-directonline.com/properties/HotelMappTaichungDIrect?locale=zh-TW" },
   contact: {
     frontDeskPhone: null,
     deskHours: "服務至 22:00",
