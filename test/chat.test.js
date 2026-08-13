@@ -60,6 +60,40 @@ test("puts the requested stay length in the dated booking link and AI reply", ()
   assert.match(reply, /checkOutDate=2026-08-22/);
 });
 
+test("answers both booking dates and a cot request in the same message", async t => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    assert.fail("a recognized composite request should not depend on an upstream AI response");
+  };
+  t.after(() => { globalThis.fetch = originalFetch; });
+
+  const res = recorder();
+  await handler({
+    method: "POST",
+    body: { message: "我想 2026/8/20 入住兩晚，另外想請飯店幫我準備嬰兒床，可以嗎？", history: [] }
+  }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.match(res.body.answer, /2026-08-20 入住、2026-08-22 退房/);
+  assert.match(res.body.answer, /checkInDate=2026-08-20/);
+  assert.match(res.body.answer, /checkOutDate=2026-08-22/);
+  assert.match(res.body.answer, /嬰兒床/);
+  assert.match(res.body.answer, /依數量與現場狀況確認/);
+  assert.match(res.body.answer, /留言給飯店人員/);
+  assert.match(res.body.answer, /不會自行承諾一定能提供/);
+});
+
+test("answers every recognized need in a composite booking question", () => {
+  const reply = availabilityReply(
+    "2026/8/20 入住兩晚，請問有停車位、早餐和牙刷嗎？",
+    new Date("2026-08-13T00:00:00Z")
+  );
+  assert.match(reply, /1\. 訂房／查房/);
+  assert.match(reply, /2\. 停車需求/);
+  assert.match(reply, /3\. 早餐需求/);
+  assert.match(reply, /4\. 備品需求/);
+});
+
 test("answers dated availability requests without claiming live availability", async () => {
   const res = recorder();
   await handler({ method: "POST", body: { message: "2026/8/15 有房嗎？", history: [] } }, res);
@@ -177,6 +211,7 @@ test("uses guest-facing escalation language without internal terminology", () =>
   assert.match(instructions, /夜間訂房客服 0927-708-908 洽陳先生/);
   assert.match(instructions, /聊天本身不會寄出留言/);
   assert.match(instructions, /只有留言表單實際寄送成功後/);
+  assert.match(instructions, /逐項回答所有意圖/);
   assert.match(instructions, /沒有包月房價方案/);
   assert.match(instructions, /沒有提供休息/);
 });

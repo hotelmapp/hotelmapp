@@ -20,7 +20,8 @@
     #contactForm { display: grid; grid-template-columns: 1fr 1fr; }
     #contactForm label { display: grid; gap: 6px; font-size: 14px; color: #444; }
     #contactForm .wide { grid-column: 1 / -1; }
-    #contactForm input { box-sizing: border-box; width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 8px; font: inherit; }
+    #contactForm input, #contactForm textarea { box-sizing: border-box; width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 8px; font: inherit; }
+    #contactForm textarea { min-height: 90px; resize: vertical; }
     #contactForm button { min-height: 44px; }
     #contactStatus { min-height: 1.5em; margin-top: 12px; text-align: center; }
     @media (max-width: 520px) { #contactForm { grid-template-columns: 1fr; } #contactForm .wide { grid-column: auto; } }
@@ -48,6 +49,7 @@
         <label>電話（必填）<input name="phone" type="tel" maxlength="30" required></label>
         <label>Email（選填）<input name="email" type="email" maxlength="254"></label>
         <label>入住日期（選填）<input name="stayDate" type="date"></label>
+        <label class="wide">需求摘要（自動帶入，可修改）<textarea name="summary" maxlength="1000"></textarea></label>
         <button class="wide" type="submit">轉交飯店人員</button>
       </form>
       <div id="contactStatus" role="status" aria-live="polite"></div>
@@ -55,7 +57,7 @@
   </main>
 
   <script type="module">
-    import { dateFromConversation, renderTextWithLinks } from "./chat-ui.js";
+    import { dateFromConversation, renderTextWithLinks, summaryFromConversation } from "./chat-ui.js";
 
     const form = document.getElementById("chatForm");
     const input = document.getElementById("question");
@@ -107,6 +109,7 @@
         }
         const stayDateInput = contactForm.elements.namedItem("stayDate");
         if (!stayDateInput.value) stayDateInput.value = dateFromConversation(conversationHistory);
+        contactForm.elements.namedItem("summary").value = summaryFromConversation(conversationHistory);
         input.value = "";
       } catch (error) {
         answer.textContent = `目前無法取得回答：${error.message || "未知錯誤"}`;

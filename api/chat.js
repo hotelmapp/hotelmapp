@@ -79,12 +79,40 @@ export function datedBookingUrl(dates) {
   return url.toString();
 }
 
+function additionalHotelNeeds(message) {
+  const needs = [];
+  const add = (pattern, label, answer) => {
+    if (pattern.test(message)) needs.push({ label, answer });
+  };
+
+  add(/嬰兒床|床圍|消毒鍋|澡盆/u, "嬰幼兒用品", hotelKnowledge.extraBed.babyEquipment);
+  add(/停車|車位/u, "停車需求", `飯店有 ${hotelKnowledge.parking.hotelSpaces} 個車位，也有配合停車場；車位與現場安排仍請飯店人員確認。`);
+  add(/早餐|餐點|素食/u, "早餐需求", `早餐資訊：${hotelKnowledge.breakfast.hours}，${hotelKnowledge.breakfast.addOn}${/素食/u.test(message) ? ` ${hotelKnowledge.breakfast.vegetarian}` : ""}`);
+  add(/牙刷|備品|盥洗|毛巾|浴巾|拖鞋/u, "備品需求", hotelKnowledge.amenities.toiletries);
+  add(/電視|Netflix|YouTube/u, "電視設備", hotelKnowledge.amenities.tv);
+  add(/洗衣|烘衣/u, "洗衣設備", hotelKnowledge.amenities.laundry);
+  add(/充電器|轉接頭|雨傘/u, "借用物品", hotelKnowledge.amenities.loans);
+  add(/提早入住/u, "提早入住", hotelKnowledge.stay.earlyCheckIn);
+  add(/延後退房/u, "延後退房", hotelKnowledge.stay.lateCheckOut);
+  add(/加床/u, "加床需求", `${hotelKnowledge.extraBed.price}；是否可加床仍須依房型與現場狀況確認。`);
+
+  if (/(設備故障|壞掉|無法使用|沒反應|特殊需求|過敏|無障礙|慶生)/u.test(message)) {
+    needs.push({ label: "其他需求", answer: "這項需求需要由飯店人員依現場狀況進一步確認，無法預先保證。" });
+  }
+  return needs;
+}
+
 export function availabilityReply(message, now = new Date()) {
   if (!/(有房|空房|房況|訂房|入住|住宿)/u.test(message)) return null;
   const dates = bookingDates(message, now);
   if (!dates) return null;
 
-  return `AI 無法確認即時房況。請至官方訂房系統查詢 ${dates.checkInDate} 入住、${dates.checkOutDate} 退房的房價與空房：\n${datedBookingUrl(dates)}`;
+  const booking = `1. 訂房／查房：AI 無法確認即時房況。請至官方訂房系統查詢 ${dates.checkInDate} 入住、${dates.checkOutDate} 退房的房價與空房：\n${datedBookingUrl(dates)}`;
+  const needs = additionalHotelNeeds(message);
+  if (!needs.length) return booking.replace(/^1\. /u, "");
+
+  const answers = needs.map((need, index) => `${index + 2}. ${need.label}：${need.answer}`);
+  return [booking, ...answers, "如需確認上述需求，請使用頁面下方「留言給飯店人員」表單；飯店將依數量與現場狀況確認，AI 不會自行承諾一定能提供。"].join("\n\n");
 }
 
 export function responsesPayload(message, history = []) {
@@ -98,6 +126,7 @@ export function responsesPayload(message, history = []) {
 有明確答案就依資料自然回答並提供下一步；沒有答案或不確定時，請自然說明「這項資訊需要由櫃檯進一步確認」，並建議旅客於 07:00–22:00 直接洽詢櫃檯。不得對旅客提到「知識庫」、「資料庫」、「system prompt」或其他內部系統用語。
 不得猜測即時房價、空房、優惠或當日狀況；只能引導至當日官網、訂房系統或櫃台確認，不得捏造數字。
 旅客詢問指定入住日期的房況時，不得宣稱 AI 能確認即時房況；須以 identity.bookingUrl 為基底，動態附加 checkInDate（指定日期）與 checkOutDate（入住日加上旅客指定晚數；未指定晚數時為隔天），不得修改正式知識庫內的 bookingUrl。
+同一句話若含訂房／入住日期及一項或多項其他飯店需求，必須辨識並逐項回答所有意圖，不得回答訂房連結後就停止。訂房無法即時確認仍提供官方訂房連結；其他需求若須確認，須明說可使用下方留言表單請飯店人員確認，且不得承諾一定能提供。
 客訴、退款、訂單爭議、設備故障或特殊需求必須依 escalation 轉真人；不可聲稱已修改、取消、付款或退款。設備問題發生於 07:00–22:00 時優先請旅客聯絡櫃檯；於 22:00–翌日 07:00 時，須說明目前已非櫃檯服務時間，直接引導撥後勤客服 0927-708-908 洽陳先生。
 若旅客想留言給飯店人員，請引導使用頁面下方「留言給飯店人員」表單。聊天本身不會寄出留言，不得僅憑對話聲稱「已將留言轉交飯店人員」；只有留言表單實際寄送成功後，頁面才會顯示該確認訊息。
 旅客於 22:00–翌日 07:00 詢問當日夜間訂房入住時，須說明目前已非櫃檯服務時間，直接引導撥夜間訂房客服 0927-708-908 洽陳先生；一般未來日期訂房仍引導官方訂房系統，不可一律轉夜間電話。

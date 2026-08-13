@@ -42,3 +42,14 @@ export function dateFromConversation(history, now = new Date()) {
   }
   return "";
 }
+
+export function summaryFromConversation(history) {
+  if (!Array.isArray(history)) return "";
+  const messages = history
+    .filter(item => item?.role === "user" && typeof item.content === "string")
+    .map(item => item.content.trim())
+    .filter(Boolean);
+  if (!messages.length) return "";
+  const text = `旅客詢問／需求：${messages.join("；")}`;
+  return `${text.slice(0, 997)}${text.length > 1000 ? "…" : ""}`;
+}

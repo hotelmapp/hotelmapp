@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { dateFromConversation, renderTextWithLinks } from "../chat-ui.js";
+import { dateFromConversation, renderTextWithLinks, summaryFromConversation } from "../chat-ui.js";
 
 class TestNode {
   constructor(type, ownerDocument) {
@@ -92,4 +92,17 @@ test("prefills an explicit stay date from the latest guest conversation", () => 
     [{ role: "user", content: "2026/8/20 入住兩晚" }],
     new Date("2026-08-13T00:00:00Z")
   ), "2026-08-20");
+});
+
+test("prefills a complete guest requirement summary from the conversation", () => {
+  const history = [
+    { role: "user", content: "我想 2026/8/20 入住兩晚" },
+    { role: "assistant", content: "請至官網查房。" },
+    { role: "user", content: "另外需要嬰兒床，也想確認停車位" }
+  ];
+  assert.equal(
+    summaryFromConversation(history),
+    "旅客詢問／需求：我想 2026/8/20 入住兩晚；另外需要嬰兒床，也想確認停車位"
+  );
+  assert.equal(summaryFromConversation([{ role: "assistant", content: "您好" }]), "");
 });
