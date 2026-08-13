@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import handler, { emailForContact, validateContact } from "../api/contact.js";
+import handler, { contactDetails, emailForContact, stayDateFromHistory, validateContact } from "../api/contact.js";
 
 function recorder() {
   return {
@@ -16,10 +16,12 @@ const validContact = {
   name: "王小明",
   phone: "0912-345-678",
   email: "guest@example.com",
-  stayDate: "2026-08-20",
-  reason: "設備問題",
-  summary: "房內冷氣無法啟動，希望飯店協助。",
-  originalMessage: "您好，我 8/20 入住，房間冷氣按了沒有反應，麻煩協助，謝謝。"
+  stayDate: "",
+  conversationHistory: [
+    { role: "user", content: "您好，我 2026/8/20 入住。" },
+    { role: "assistant", content: "請問需要什麼協助？" },
+    { role: "user", content: "房間冷氣按了沒有反應，麻煩協助，謝謝。" }
+  ]
 };
 
 async function withResendMock(t, implementation, callback) {
@@ -46,7 +48,7 @@ test("sends the complete contact email and only confirms after Resend succeeds",
     assert.match(email.text, /電話：0912-345-678/);
     assert.match(email.text, /Email：guest@example\.com/);
     assert.match(email.text, /入住日期：2026-08-20/);
-    assert.match(email.text, /AI 整理的事由摘要：[\s\S]*房內冷氣無法啟動/);
+    assert.match(email.text, /事由分類：設備問題[\s\S]*AI 整理的事由摘要：[\s\S]*房間冷氣按了沒有反應/);
     assert.match(email.text, /客人原始留言：[\s\S]*房間冷氣按了沒有反應/);
     assert.equal("html" in email, false);
     return new Response(JSON.stringify({ id: "email_123" }), { status: 200 });
@@ -69,28 +71,39 @@ test("does not claim delivery when Resend fails", async t => {
   });
 });
 
-test("rejects missing required fields without contacting Resend", async t => {
+test("only name and phone are required and email may be blank", async t => {
   let fetched = false;
-  await withResendMock(t, async () => { fetched = true; }, async () => {
+  await withResendMock(t, async (_url, options) => {
+    fetched = true;
+    const email = JSON.parse(options.body);
+    assert.match(email.text, /Email：未提供/);
+    return new Response(JSON.stringify({ id: "email_minimum" }), { status: 200 });
+  }, async () => {
     const res = recorder();
-    await handler({ method: "POST", body: { name: "王小明", phone: "0912345678" } }, res);
-    assert.equal(res.statusCode, 400);
-    assert.equal(res.body.code, "missing_fields");
-    assert.deepEqual(res.body.fields, ["reason", "summary", "originalMessage"]);
-    assert.equal(fetched, false);
+    await handler({ method: "POST", body: { name: "王小明", phone: "0912345678", email: "" } }, res);
+    assert.equal(res.statusCode, 200);
+    assert.equal(fetched, true);
   });
+});
+
+test("generates category, summary, original messages, and stay date from conversation history", () => {
+  const details = contactDetails(validContact.conversationHistory, new Date("2026-08-13T00:00:00Z"));
+  assert.equal(details.reason, "設備問題");
+  assert.match(details.summary, /冷氣按了沒有反應/);
+  assert.equal(details.originalMessage, "您好，我 2026/8/20 入住。\n房間冷氣按了沒有反應，麻煩協助，謝謝。");
+  assert.equal(details.stayDate, "2026-08-20");
+  assert.equal(stayDateFromHistory([{ role: "user", content: "明年再說，沒有確切日期" }]), "");
 });
 
 test("keeps malicious HTML inert in a plain-text email and strips subject newlines", () => {
   const malicious = '<img src=x onerror="alert(1)"><script>alert(2)</script>';
   const validation = validateContact({
-    ...validContact,
+    phone: validContact.phone,
+    email: validContact.email,
     name: "王小明\r\nBcc: attacker@example.com",
-    reason: "設備問題\nInjected",
-    originalMessage: malicious
   });
   assert.ok(validation.data);
-  const email = emailForContact(validation.data, new Date("2026-08-13T12:34:56Z"));
+  const email = emailForContact({ ...validation.data, reason: "設備問題\nInjected", summary: "摘要", originalMessage: malicious }, new Date("2026-08-13T12:34:56Z"));
   assert.equal(email.subject, "【AI 客人留言】設備問題 Injected－王小明 Bcc: attacker@example.com");
   assert.equal("html" in email, false);
   assert.match(email.text, /<img src=x onerror="alert\(1\)"><script>alert\(2\)<\/script>/);
@@ -118,5 +131,5 @@ test("validates phone, optional email/date, and field lengths", () => {
   assert.equal(validateContact({ ...validContact, email: "not-an-email" }).code, "invalid_email");
   assert.equal(validateContact({ ...validContact, stayDate: "2026-02-30" }).code, "invalid_stay_date");
   assert.equal(validateContact({ ...validContact, email: "", stayDate: "" }).data.email, "");
-  assert.deepEqual(validateContact({ ...validContact, originalMessage: "x".repeat(5001) }).fields, ["originalMessage"]);
+  assert.deepEqual(validateContact({ ...validContact, name: "x".repeat(81) }).fields, ["name"]);
 });

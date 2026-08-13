@@ -20,7 +20,7 @@
     #contactForm { display: grid; grid-template-columns: 1fr 1fr; }
     #contactForm label { display: grid; gap: 6px; font-size: 14px; color: #444; }
     #contactForm .wide { grid-column: 1 / -1; }
-    #contactForm input, #contactForm textarea { box-sizing: border-box; width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 8px; font: inherit; }
+    #contactForm input { box-sizing: border-box; width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 8px; font: inherit; }
     #contactForm button { min-height: 44px; }
     #contactStatus { min-height: 1.5em; margin-top: 12px; text-align: center; }
     @media (max-width: 520px) { #contactForm { grid-template-columns: 1fr; } #contactForm .wide { grid-column: auto; } }
@@ -48,9 +48,6 @@
         <label>電話（必填）<input name="phone" type="tel" maxlength="30" required></label>
         <label>Email（選填）<input name="email" type="email" maxlength="254"></label>
         <label>入住日期（選填）<input name="stayDate" type="date"></label>
-        <label class="wide">事由／需求（必填）<input name="reason" maxlength="100" placeholder="例如：設備問題、訂單疑問" required></label>
-        <label class="wide">事由摘要（必填）<textarea name="summary" maxlength="1000" rows="3" required></textarea></label>
-        <label class="wide">客人原始留言（必填）<textarea name="originalMessage" maxlength="5000" rows="5" required></textarea></label>
         <button class="wide" type="submit">轉交飯店人員</button>
       </form>
       <div id="contactStatus" role="status" aria-live="polite"></div>
@@ -58,7 +55,7 @@
   </main>
 
   <script type="module">
-    import { renderTextWithLinks } from "./chat-ui.js";
+    import { dateFromConversation, renderTextWithLinks } from "./chat-ui.js";
 
     const form = document.getElementById("chatForm");
     const input = document.getElementById("question");
@@ -108,6 +105,8 @@
         if (conversationHistory.length > MAX_HISTORY_MESSAGES) {
           conversationHistory.splice(0, conversationHistory.length - MAX_HISTORY_MESSAGES);
         }
+        const stayDateInput = contactForm.elements.namedItem("stayDate");
+        if (!stayDateInput.value) stayDateInput.value = dateFromConversation(conversationHistory);
         input.value = "";
       } catch (error) {
         answer.textContent = `目前無法取得回答：${error.message || "未知錯誤"}`;
@@ -123,6 +122,7 @@
       contactStatus.textContent = "留言傳送中，請稍候…";
       try {
         const payload = Object.fromEntries(new FormData(contactForm));
+        payload.conversationHistory = conversationHistory;
         const response = await fetch("/api/contact", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
