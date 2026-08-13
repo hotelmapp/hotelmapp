@@ -33,7 +33,9 @@
     <div class="notice">AI 提供一般旅宿資訊。訂房修改、退款、設備故障或其他特殊需求，請聯絡真人櫃台協助。</div>
   </main>
 
-  <script>
+  <script type="module">
+    import { renderTextWithLinks } from "./chat-ui.js";
+
     const form = document.getElementById("chatForm");
     const input = document.getElementById("question");
     const button = document.getElementById("submitButton");
@@ -72,7 +74,7 @@
           throw new Error("AI 未回傳文字答案");
         }
         const assistantAnswer = body.answer.trim();
-        answer.textContent = assistantAnswer;
+        renderTextWithLinks(answer, assistantAnswer);
         conversationHistory.push(
           { role: "user", content: message },
           { role: "assistant", content: assistantAnswer }
