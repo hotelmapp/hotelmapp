@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { greetingEvent, languageFromText, loadSelectedVoice, saveSelectedVoice, spokenText, RealtimeVoiceSession, VOICE_OPTIONS, VOICE_STORAGE_KEY } from "../voice-assistant.js";
+import { greetingEvent, languageFromText, loadSelectedVoice, saveSelectedVoice, spokenText, RealtimeVoiceSession, safeRealtimeError, VOICE_OPTIONS, VOICE_STORAGE_KEY } from "../voice-assistant.js";
 import realtimeHandler, { ephemeralCredential, realtimeSession, voiceInstructions } from "../api/realtime.js";
 
 test("supports the four guest languages", () => {
@@ -22,6 +22,7 @@ test("selected voice controls the server-side realtime neural voice", () => {
   assert.equal(VOICE_OPTIONS[0].recommended, true);
   assert.equal(VOICE_OPTIONS[0].id, "coral");
   assert.equal(VOICE_OPTIONS.some(voice => voice.id === "maple"), false);
+  assert.deepEqual(VOICE_OPTIONS.map(voice => voice.id), ["coral", "marin", "cedar", "sage", "verse", "shimmer", "alloy", "ash", "ballad", "echo"]);
 });
 
 test("voice and rich screen text are separated and URLs are never spoken", () => {
@@ -48,15 +49,31 @@ test("realtime session keeps context and uses semantic VAD interruption", () => 
   assert.match(session.instructions, /不要朗讀網址、URL、畫面文字/);
 });
 
-test("speech-start immediately cancels response and clears buffered audio", () => {
+test("speech-start relies on semantic VAD cancellation and clears buffered audio", () => {
   const sent = [];
   const states = [];
   const session = new RealtimeVoiceSession({ onState: state => states.push(state) });
   session.channel = { readyState: "open", send: value => sent.push(JSON.parse(value)) };
   session.responseActive = true;
   session.handleEvent({ type: "input_audio_buffer.speech_started" });
-  assert.deepEqual(sent.map(item => item.type), ["response.cancel", "output_audio_buffer.clear"]);
+  assert.deepEqual(sent.map(item => item.type), ["output_audio_buffer.clear"]);
   assert.equal(states.at(-1), "user_speaking");
+});
+
+test("ignores duplicate-cancellation races but exposes safe provider diagnostics", () => {
+  const errors = [];
+  const warnings = [];
+  const oldWarn = console.warn;
+  console.warn = (_label, diagnostic) => warnings.push(diagnostic);
+  const session = new RealtimeVoiceSession({ onError: error => errors.push(error) });
+  try {
+    session.handleEvent({ type: "error", error: { type: "invalid_request_error", code: "response_cancel_not_active", message: "Cancellation failed: no active response found" } });
+    assert.equal(errors.length, 0);
+    assert.equal(warnings[0].code, "response_cancel_not_active");
+    session.handleEvent({ type: "error", error: { type: "invalid_request_error", code: "invalid_voice", message: "Unsupported voice", param: "audio.output.voice" } });
+  } finally { console.warn = oldWarn; }
+  assert.match(errors[0], /realtime_api_rejected.*invalid_voice.*Unsupported voice/);
+  assert.deepEqual(safeRealtimeError({ code: "bad", message: "Bearer secret-value https://example.com/private" }), { code: "bad", type: "unknown", param: "", message: "[redacted] [url]" });
 });
 
 test("transcripts preserve user turns while provider errors fall back to text", () => {

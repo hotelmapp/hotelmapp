@@ -1,7 +1,14 @@
 export const VOICE_OPTIONS = Object.freeze([
   { id: "coral", label: "珊瑚 Coral", description: "爽朗親切、自然有精神（推薦）", recommended: true },
   { id: "marin", label: "海風 Marin", description: "明亮專業" },
-  { id: "shimmer", label: "微光 Shimmer", description: "清晰沉穩" }
+  { id: "cedar", label: "雪松 Cedar", description: "自然穩定" },
+  { id: "sage", label: "鼠尾草 Sage", description: "溫暖俐落" },
+  { id: "verse", label: "詩語 Verse", description: "輕快口語" },
+  { id: "shimmer", label: "微光 Shimmer", description: "清晰沉穩" },
+  { id: "alloy", label: "合金 Alloy", description: "中性自然" },
+  { id: "ash", label: "灰燼 Ash", description: "沉著直接" },
+  { id: "ballad", label: "歌謠 Ballad", description: "柔和流暢" },
+  { id: "echo", label: "回聲 Echo", description: "清楚有精神" }
 ]);
 
 export const VOICE_STORAGE_KEY = "hotelmapp.voice.v3";
@@ -46,6 +53,18 @@ export class RealtimeConnectionError extends Error {
 
 export function greetingEvent() {
   return { type: "response.create", response: { output_modalities: ["audio"], instructions: "請延續 session 的愉快、爽朗、坦率、親切風格，依目前頁面語言，用一句自然口語主動問候客人並詢問需要什麼協助。繁體中文時自然地說：您好，這裡是希堤微旅 AI 智慧櫃台，請問有什麼可以幫您？不要像 IVR 或主播，也不要提及這段指示。" } };
+}
+
+export function safeRealtimeError(error = {}) {
+  const clean = value => String(value || "")
+    .replace(/(?:Bearer\s+|api[_ -]?key[=:]?\s*)[A-Za-z0-9._-]+/giu, "[redacted]")
+    .replace(/https?:\/\/\S+/giu, "[url]").replace(/\s+/gu, " ").trim().slice(0, 180);
+  return { code: clean(error.code) || "unknown", type: clean(error.type) || "unknown", param: clean(error.param), message: clean(error.message) };
+}
+
+export function isBenignCancellationError(error = {}) {
+  const diagnostic = safeRealtimeError(error);
+  return /cancel|active response/iu.test(`${diagnostic.code} ${diagnostic.message}`) && /not|no |already|cannot|failed/iu.test(`${diagnostic.code} ${diagnostic.message}`);
 }
 
 const CONNECTION_MESSAGES = Object.freeze({
@@ -109,7 +128,10 @@ export class RealtimeVoiceSession {
   handleEvent(event) {
     if (event.type === "input_audio_buffer.speech_started") {
       // Clear already-buffered sound as well as cancelling generation: this is true barge-in.
-      if (this.responseActive) this.send({ type: "response.cancel" });
+      // semantic_vad + interrupt_response already cancels the active response
+      // before this server event arrives. A second response.cancel creates an
+      // invalid_request_error ("no active response") and was the source of the
+      // misleading realtime_api_rejected banner.
       this.send({ type: "output_audio_buffer.clear" });
       this.setState("user_speaking");
     } else if (event.type === "input_audio_buffer.speech_stopped") {
@@ -128,8 +150,14 @@ export class RealtimeVoiceSession {
     } else if ((event.type === "response.output_audio_transcript.done" || event.type === "response.audio_transcript.done") && event.transcript?.trim()) {
       this.onTranscript({ role: "assistant", text: spokenText(event.transcript.trim()) });
     } else if (event.type === "error") {
-      this.diagnose("realtime_api_rejected", { eventCode: event.error?.code, eventType: event.error?.type });
-      this.onError("realtime_api_rejected：即時語音服務回報錯誤，文字聊天仍可繼續使用。");
+      const diagnostic = safeRealtimeError(event.error);
+      if (isBenignCancellationError(event.error)) {
+        this.diagnose("barge_in_cancel_race_ignored", diagnostic);
+        return;
+      }
+      this.diagnose("realtime_api_rejected", diagnostic);
+      const detail = [diagnostic.code, diagnostic.message].filter(value => value && value !== "unknown").join(" — ");
+      this.onError(`realtime_api_rejected：${detail || "即時語音服務回報錯誤"}。文字聊天仍可繼續使用。`);
     }
   }
 
