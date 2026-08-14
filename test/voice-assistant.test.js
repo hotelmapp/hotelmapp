@@ -14,15 +14,15 @@ test("supports the four guest languages", () => {
 test("selected voice controls the server-side realtime neural voice", () => {
   const values = new Map();
   const storage = { getItem: key => values.get(key), setItem: (key, value) => values.set(key, value) };
-  assert.equal(loadSelectedVoice(storage), "coral");
+  assert.equal(loadSelectedVoice(storage), "marin");
   assert.equal(saveSelectedVoice(storage, "marin"), true);
   assert.equal(values.get(VOICE_STORAGE_KEY), "marin");
   assert.equal(realtimeSession("marin").session.audio.output.voice, "marin");
-  assert.equal(realtimeSession("invalid").session.audio.output.voice, "coral");
+  assert.equal(realtimeSession("invalid").session.audio.output.voice, "marin");
   assert.equal(VOICE_OPTIONS[0].recommended, true);
-  assert.equal(VOICE_OPTIONS[0].id, "coral");
+  assert.equal(VOICE_OPTIONS[0].id, "marin");
   assert.equal(VOICE_OPTIONS.some(voice => voice.id === "maple"), false);
-  assert.deepEqual(VOICE_OPTIONS.map(voice => voice.id), ["coral", "marin", "cedar", "sage", "verse", "shimmer", "alloy", "ash", "ballad", "echo"]);
+  assert.deepEqual(VOICE_OPTIONS.map(voice => voice.id), ["marin", "coral", "cedar", "sage", "verse", "shimmer", "alloy", "ash", "ballad", "echo"]);
 });
 
 test("voice and rich screen text are separated and URLs are never spoken", () => {

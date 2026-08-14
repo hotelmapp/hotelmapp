@@ -26,10 +26,13 @@ test("opens an immersive voice mode, shows states, and keeps transcript hidden i
   const { document, root, home, classes } = fixture();
   global.document = document;
   let callbacks;
-  const session = { active: false, async start() { this.active = true; callbacks.onState("listening"); return true; }, stop() { this.active = false; }, setMuted() { return false; } };
+  let startedVoice;
+  const session = { active: false, async start(voice) { startedVoice = voice; this.active = true; callbacks.onState("listening"); return true; }, stop() { this.active = false; }, setMuted() { return false; } };
   const mode = new VoiceMode({ root, home, storage: { getItem() {} }, sessionFactory: value => { callbacks = value; return session; } });
   try {
+    assert.equal(root.nodes["[data-voice-selector]"].value, "marin");
     assert.equal(await mode.open(), true);
+    assert.equal(startedVoice, "marin");
     assert.equal(root.hidden, false);
     assert.equal(root.attributes["aria-hidden"], "false");
     assert.equal(home.attributes.inert, "");
