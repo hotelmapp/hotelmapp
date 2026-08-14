@@ -194,6 +194,39 @@ test("successful Chromium-style WebRTC flow reaches listening and requests nativ
   session.stop();
 });
 
+test("binds browser Window.fetch during realtime credential initialization", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = function (_url) {
+    if (this !== globalThis) throw new TypeError("Illegal invocation");
+    calls++;
+    return calls === 1
+      ? Promise.resolve({ ok: true, status: 200, json: async () => ({ value: "ephemeral" }) })
+      : Promise.resolve({ ok: true, status: 200, text: async () => "answer-sdp" });
+  };
+  const channel = { readyState: "open", send() {}, close() {} };
+  class PeerConnection {
+    createDataChannel() { return channel; }
+    addTrack() {}
+    async createOffer() { return { type: "offer", sdp: "offer-sdp" }; }
+    async setLocalDescription() {}
+    async setRemoteDescription() {}
+    close() {}
+  }
+  const track = { stop() {} };
+  try {
+    const session = new RealtimeVoiceSession({
+      mediaDevices: { getUserMedia: async () => ({ getTracks: () => [track], getAudioTracks: () => [track] }) },
+      RTCPeerConnectionImpl: PeerConnection, audioFactory: () => ({ play: async () => {} })
+    });
+    assert.equal(await session.start("coral"), true);
+    assert.equal(calls, 2);
+    session.stop();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("unsupported browsers cleanly fall back without breaking text chat", async () => {
   const errors = [];
   const session = new RealtimeVoiceSession({ mediaDevices: null, RTCPeerConnectionImpl: null, onError: error => errors.push(error) });

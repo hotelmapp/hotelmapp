@@ -65,7 +65,12 @@ const CONNECTION_MESSAGES = Object.freeze({
 export class RealtimeVoiceSession {
   constructor({ fetchImpl = globalThis.fetch, mediaDevices = globalThis.navigator?.mediaDevices,
     RTCPeerConnectionImpl = globalThis.RTCPeerConnection, audioFactory, onState, onTranscript, onError }) {
-    this.fetch = fetchImpl;
+    // Window.fetch is a Web IDL method and some Chromium/Edge builds reject it
+    // when it is later invoked as `session.fetch(...)` with the session as
+    // `this`. Preserve Window as the receiver for the native implementation.
+    this.fetch = fetchImpl === globalThis.fetch
+      ? globalThis.fetch.bind(globalThis)
+      : (...args) => fetchImpl(...args);
     this.mediaDevices = mediaDevices;
     this.RTCPeerConnection = RTCPeerConnectionImpl;
     this.audioFactory = audioFactory || (() => new Audio());
