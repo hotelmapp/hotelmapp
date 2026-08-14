@@ -9,10 +9,15 @@
     .card { max-width: 520px; margin: 50px auto; background: white; padding: 35px 25px; border-radius: 20px; box-shadow: 0 6px 25px rgba(0,0,0,.1); }
     h1 { margin-bottom: 8px; }
     .subtitle { color: #666; margin-bottom: 30px; }
-    form { display: flex; gap: 10px; margin-top: 24px; }
+    #chatForm { display: flex; gap: 10px; margin-top: 24px; }
     #question { min-width: 0; flex: 1; padding: 14px; border-radius: 10px; border: 1px solid #ccc; font-size: 16px; }
     button { border: 0; border-radius: 10px; padding: 0 22px; background: #222; color: white; font-size: 16px; cursor: pointer; }
     button:disabled { cursor: wait; opacity: .6; }
+    .icon-button { min-width: 48px; padding: 0 14px; background: #f0f0f0; color: #222; border: 1px solid #d5d5d5; }
+    .icon-button.listening { background: #8f2f2f; border-color: #8f2f2f; color: white; }
+    #voiceStatus { min-height: 1.4em; margin-top: 8px; color: #666; font-size: 13px; text-align: left; }
+    #speakButton { display: block; min-height: 38px; margin: 10px 0 0 auto; padding: 6px 14px; background: #fff; color: #222; border: 1px solid #ccc; font-size: 14px; }
+    #speakButton[hidden] { display: none; }
     #answer { margin-top: 25px; min-height: 1.7em; text-align: left; line-height: 1.7; background: #fafafa; padding: 18px; border-radius: 12px; white-space: pre-wrap; }
     .notice { margin-top: 30px; font-size: 13px; color: #777; }
     .contact { margin-top: 34px; padding-top: 24px; border-top: 1px solid #ddd; text-align: left; }
@@ -24,7 +29,7 @@
     #contactForm textarea { min-height: 90px; resize: vertical; }
     #contactForm button { min-height: 44px; }
     #contactStatus { min-height: 1.5em; margin-top: 12px; text-align: center; }
-    @media (max-width: 520px) { #contactForm { grid-template-columns: 1fr; } #contactForm .wide { grid-column: auto; } }
+    @media (max-width: 520px) { body { padding: 12px; } .card { padding: 28px 18px; } #chatForm { gap: 7px; } #chatForm button { padding: 0 15px; } #contactForm { grid-template-columns: 1fr; } #contactForm .wide { grid-column: auto; } }
   </style>
 </head>
 <body>
@@ -37,10 +42,13 @@
 
     <form id="chatForm">
       <input id="question" name="message" type="text" placeholder="請輸入您的問題" autocomplete="off" required>
+      <button id="microphoneButton" class="icon-button" type="button" aria-label="開始語音輸入" aria-pressed="false" title="開始語音輸入">🎤</button>
       <button id="submitButton" type="submit">送出</button>
     </form>
+    <div id="voiceStatus" role="status" aria-live="polite">語音輸入需使用瀏覽器麥克風權限。</div>
 
     <div id="answer" role="status" aria-live="polite">您好！請問今天有什麼可以協助您的呢？</div>
+    <button id="speakButton" type="button" aria-label="朗讀 AI 最新回答" aria-pressed="false" title="朗讀 AI 最新回答" hidden>🔊 朗讀</button>
     <div class="notice">AI 提供一般旅宿資訊。訂房修改、退款、設備故障或其他特殊需求，請聯絡真人櫃台協助。</div>
 
     <section class="contact" aria-labelledby="contactHeading">
@@ -59,6 +67,8 @@
 
   <script type="module">
     import { dateFromConversation, renderTextWithLinks, summaryFromConversation } from "./chat-ui.js";
+    import { createVoiceAssistant } from "./voice-assistant.js";
+    import { detectGuestLanguage } from "./guest-language.js";
 
     const form = document.getElementById("chatForm");
     const input = document.getElementById("question");
@@ -68,11 +78,22 @@
     const conversationHistory = [];
     const contactForm = document.getElementById("contactForm");
     const contactStatus = document.getElementById("contactStatus");
+    const voiceAssistant = createVoiceAssistant({
+      window,
+      form,
+      input,
+      microphoneButton: document.getElementById("microphoneButton"),
+      voiceStatus: document.getElementById("voiceStatus"),
+      speakerButton: document.getElementById("speakButton")
+    });
 
     form.addEventListener("submit", async event => {
       event.preventDefault();
       const message = input.value.trim();
       if (!message) return;
+      voiceAssistant.stopSpeaking();
+      voiceAssistant.setLatestAnswer("");
+      voiceAssistant.setLocale(detectGuestLanguage(message, conversationHistory));
 
       button.disabled = true;
       answer.textContent = "AI 正在思考中，請稍候…";
@@ -101,6 +122,7 @@
         }
         const assistantAnswer = body.answer.trim();
         renderTextWithLinks(answer, assistantAnswer);
+        voiceAssistant.setLatestAnswer(assistantAnswer);
         conversationHistory.push(
           { role: "user", content: message },
           { role: "assistant", content: assistantAnswer }
