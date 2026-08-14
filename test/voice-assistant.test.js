@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { languageFromText, loadSelectedVoice, saveSelectedVoice, spokenText, RealtimeVoiceSession, VOICE_STORAGE_KEY } from "../voice-assistant.js";
-import realtimeHandler, { realtimeSession, voiceInstructions } from "../api/realtime.js";
+import realtimeHandler, { ephemeralCredential, realtimeSession, voiceInstructions } from "../api/realtime.js";
 
 test("supports the four guest languages", () => {
   assert.equal(languageFromText("早餐幾點？"), "zh-TW");
@@ -77,6 +77,60 @@ test("ephemeral credential endpoint keeps the server API key out of its response
   assert.equal(authorization, "Bearer server-secret");
   assert.deepEqual(result, { status: 200, body: { value: "ephemeral-secret", expires_at: 123 } });
   assert.doesNotMatch(JSON.stringify(result), /server-secret/);
+});
+
+test("accepts current and staged ephemeral credential response schemas", () => {
+  assert.equal(ephemeralCredential({ value: "current-secret" }), "current-secret");
+  assert.equal(ephemeralCredential({ client_secret: { value: "compatible-secret" } }), "compatible-secret");
+  assert.equal(ephemeralCredential({ client_secret: {} }), "");
+});
+
+test("missing Preview API key returns an explicit safe diagnostic", async () => {
+  const originalKey = process.env.OPENAI_API_KEY;
+  delete process.env.OPENAI_API_KEY;
+  const result = {};
+  const res = { setHeader() {}, status(code) { result.status = code; return this; }, json(body) { result.body = body; return this; } };
+  try { await realtimeHandler({ method: "POST", body: {} }, res); }
+  finally { process.env.OPENAI_API_KEY = originalKey; }
+  assert.equal(result.status, 503);
+  assert.equal(result.body.diagnostic.code, "missing_api_key");
+  assert.match(result.body.error, /Vercel Preview.*OPENAI_API_KEY/);
+});
+
+test("credential fetch failures expose their stage and server reason", async () => {
+  const errors = [];
+  const warnings = [];
+  const oldWarn = console.warn;
+  console.warn = (_label, detail) => warnings.push(detail);
+  const session = new RealtimeVoiceSession({
+    fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({ error: "Preview 尚未設定 OPENAI_API_KEY", diagnostic: { code: "missing_api_key" } }) }),
+    mediaDevices: { getUserMedia() {} }, RTCPeerConnectionImpl: function () {}, onError: error => errors.push(error)
+  });
+  try { assert.equal(await session.start(), false); } finally { console.warn = oldWarn; }
+  assert.equal(warnings[0].stage, "credential");
+  assert.equal(warnings[0].code, "missing_api_key");
+  assert.match(errors[0], /無法取得即時語音憑證.*OPENAI_API_KEY/);
+  assert.match(errors[0], /文字聊天仍可繼續使用/);
+});
+
+test("microphone permission and data channel failures remain distinguishable", async () => {
+  const microphoneErrors = [];
+  const oldWarn = console.warn;
+  console.warn = () => {};
+  const denied = Object.assign(new Error("denied"), { name: "NotAllowedError" });
+  const microphoneSession = new RealtimeVoiceSession({
+    fetchImpl: async () => ({ ok: true, json: async () => ({ value: "ephemeral" }) }),
+    mediaDevices: { getUserMedia: async () => { throw denied; } },
+    RTCPeerConnectionImpl: function () {}, audioFactory: () => ({}), onError: error => microphoneErrors.push(error)
+  });
+  try { assert.equal(await microphoneSession.start(), false); } finally { console.warn = oldWarn; }
+  assert.match(microphoneErrors[0], /無法開啟麥克風.*權限遭拒/);
+
+  const channelSession = new RealtimeVoiceSession({});
+  channelSession.channel = { readyState: "connecting" };
+  const readiness = channelSession.waitForDataChannel(100);
+  channelSession.channel.onerror();
+  await assert.rejects(readiness, error => error.stage === "data_channel");
 });
 
 test("unsupported browsers cleanly fall back without breaking text chat", async () => {

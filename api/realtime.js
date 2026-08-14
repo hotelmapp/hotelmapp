@@ -4,6 +4,19 @@ import { knowledgeForPrompt } from "../data/hotel-info.js";
 const CLIENT_SECRETS_URL = "https://api.openai.com/v1/realtime/client_secrets";
 export const config = { maxDuration: 15 };
 
+function sendError(res, status, code, message, diagnostic = {}) {
+  return res.status(status).json({ error: message, diagnostic: { source: "realtime", code, ...diagnostic } });
+}
+
+// `/v1/realtime/client_secrets` currently returns `value` at the top level.
+// Accept the earlier session response shape too, so a staged API rollout cannot
+// leave Preview completely unable to start voice sessions.
+export function ephemeralCredential(body) {
+  return typeof body?.value === "string" ? body.value
+    : typeof body?.client_secret?.value === "string" ? body.client_secret.value
+      : "";
+}
+
 export function voiceInstructions() {
   return `你是希堤微旅親切、自然、簡潔的女性櫃檯人員，正在與客人面對面交談。依客人目前使用的語言，自然使用繁體中文、English、日本語或한국어，並能隨客人切換語言。
 像真人說話，不像客服稿：一次通常只回答一到三個自然短句，必要時問一個簡短問題。不要使用條列、Markdown、標題，不要重複客人的問題，不要朗讀網址、URL、符號或技術文字。訂房時只說「可以點畫面上的官方訂房連結」，完整日期、價格與網址會另外顯示在畫面。
@@ -30,17 +43,36 @@ export function realtimeSession(voice) {
 
 export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
-  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+  if (req.method !== "POST") return sendError(res, 405, "method_not_allowed", "Method not allowed");
   const apiKey = process.env.OPENAI_API_KEY?.trim();
-  if (!apiKey) return res.status(503).json({ error: "Voice service is not configured" });
+  if (!apiKey) {
+    console.error("[api/realtime] OPENAI_API_KEY is missing in this deployment");
+    return sendError(res, 503, "missing_api_key", "Vercel Preview 尚未設定 OPENAI_API_KEY，請在 Preview Environment Variables 設定後重新部署。");
+  }
   try {
     const upstream = await fetch(CLIENT_SECRETS_URL, {
       method: "POST", headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify(realtimeSession(req.body?.voice)), signal: AbortSignal.timeout(12_000)
     });
     const body = await upstream.json().catch(() => ({}));
-    if (!upstream.ok || !body.value) return res.status(502).json({ error: "Voice provider failed" });
+    const requestId = upstream.headers?.get?.("x-request-id") || undefined;
+    if (!upstream.ok) {
+      console.error("[api/realtime] credential request rejected", { status: upstream.status, requestId, code: body?.error?.code });
+      return sendError(res, 502, "credential_provider_failed", "OpenAI 無法建立即時語音憑證。", {
+        upstreamStatus: upstream.status, requestId, upstreamCode: body?.error?.code
+      });
+    }
+    const value = ephemeralCredential(body);
+    if (!value) {
+      console.error("[api/realtime] credential response schema mismatch", { requestId, keys: Object.keys(body || {}) });
+      return sendError(res, 502, "credential_schema_invalid", "OpenAI 即時語音憑證格式不正確。", { requestId });
+    }
     // Return only the short-lived client secret, never the server API key or session instructions.
-    return res.status(200).json({ value: body.value, expires_at: body.expires_at });
-  } catch { return res.status(502).json({ error: "Voice provider unavailable" }); }
+    return res.status(200).json({ value, expires_at: body.expires_at || body.client_secret?.expires_at });
+  } catch (error) {
+    const timedOut = error?.name === "TimeoutError";
+    console.error("[api/realtime] credential request failed", { timedOut, name: error?.name });
+    return sendError(res, timedOut ? 504 : 502, timedOut ? "credential_timeout" : "credential_connection_failed",
+      timedOut ? "建立即時語音憑證逾時。" : "目前無法連線至 OpenAI 即時語音服務。");
+  }
 }

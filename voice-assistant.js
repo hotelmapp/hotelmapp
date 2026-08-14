@@ -38,6 +38,20 @@ export function saveSelectedVoice(storage, voice) {
   try { storage?.setItem(VOICE_STORAGE_KEY, voice); return true; } catch { return false; }
 }
 
+export class RealtimeConnectionError extends Error {
+  constructor(stage, message, details = {}) {
+    super(message); this.name = "RealtimeConnectionError"; this.stage = stage; this.details = details;
+  }
+}
+
+const CONNECTION_MESSAGES = Object.freeze({
+  credential: "無法取得即時語音憑證",
+  microphone: "無法開啟麥克風",
+  negotiation: "即時語音連線協商失敗",
+  data_channel: "即時語音資料連線失敗",
+  unsupported: "此瀏覽器不支援即時語音"
+});
+
 // A single WebRTC connection carries microphone audio in and model audio out.
 // OpenAI's server VAD owns turn boundaries, so no browser STT/TTS pipeline is involved.
 export class RealtimeVoiceSession {
@@ -56,6 +70,25 @@ export class RealtimeVoiceSession {
 
   setState(state) { this.state = state; this.onState(state); }
   send(event) { if (this.channel?.readyState === "open") this.channel.send(JSON.stringify(event)); }
+  diagnose(stage, details = {}) {
+    // Never log credentials, SDP, transcript content, or the server prompt.
+    console.warn?.("[voice/realtime]", { stage, ...details });
+  }
+
+  waitForDataChannel(timeoutMs = 8_000) {
+    if (this.channel?.readyState === "open") return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new RealtimeConnectionError("data_channel", "連線逾時")), timeoutMs);
+      this.channel.onopen = () => { clearTimeout(timer); resolve(); };
+      this.channel.onerror = () => { clearTimeout(timer); reject(new RealtimeConnectionError("data_channel", "資料通道錯誤")); };
+      this.channel.onclose = () => {
+        if (!this.active) return;
+        this.diagnose("data_channel", { reason: "closed" });
+        this.onError("即時語音連線已中斷，文字聊天仍可繼續使用。");
+        this.stop();
+      };
+    });
+  }
 
   handleEvent(event) {
     if (event.type === "input_audio_buffer.speech_started") {
@@ -84,18 +117,34 @@ export class RealtimeVoiceSession {
   async start(voice = VOICE_OPTIONS[0].id) {
     if (this.active) return true;
     if (!this.mediaDevices?.getUserMedia || !this.RTCPeerConnection) {
-      this.onError("此瀏覽器不支援即時語音，請使用文字聊天。"); return false;
+      this.diagnose("unsupported");
+      this.onError("此瀏覽器不支援即時語音，請改用最新版 Chrome、Edge 或 Safari；文字聊天仍可使用。"); return false;
     }
     this.setState("connecting");
     try {
       const tokenResponse = await this.fetch("/api/realtime", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ voice }) });
-      const token = await tokenResponse.json();
-      if (!tokenResponse.ok || !token.value) throw new Error("session unavailable");
+      const token = await tokenResponse.json().catch(() => ({}));
+      if (!tokenResponse.ok || !token.value) {
+        throw new RealtimeConnectionError("credential", token.error || "伺服器未回傳憑證", {
+          status: tokenResponse.status, code: token?.diagnostic?.code
+        });
+      }
       this.pc = new this.RTCPeerConnection();
+      this.pc.onconnectionstatechange = () => {
+        const connectionState = this.pc?.connectionState;
+        if (connectionState === "failed" || connectionState === "disconnected") {
+          this.diagnose("negotiation", { connectionState });
+          this.onError("即時語音連線已中斷，文字聊天仍可繼續使用。");
+        }
+      };
       this.audio = this.audioFactory();
       this.audio.autoplay = true;
       this.pc.ontrack = event => { this.audio.srcObject = event.streams[0]; };
-      this.stream = await this.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      try {
+        this.stream = await this.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      } catch (error) {
+        throw new RealtimeConnectionError("microphone", error?.name === "NotAllowedError" ? "麥克風權限遭拒" : "無法取得麥克風", { name: error?.name });
+      }
       for (const track of this.stream.getTracks()) this.pc.addTrack(track, this.stream);
       this.channel = this.pc.createDataChannel("oai-events");
       this.channel.onmessage = message => { try { this.handleEvent(JSON.parse(message.data)); } catch { /* ignore malformed provider events */ } };
@@ -104,14 +153,21 @@ export class RealtimeVoiceSession {
       const sdpResponse = await this.fetch("https://api.openai.com/v1/realtime/calls", {
         method: "POST", headers: { Authorization: `Bearer ${token.value}`, "Content-Type": "application/sdp" }, body: offer.sdp
       });
-      if (!sdpResponse.ok) throw new Error("realtime negotiation failed");
+      if (!sdpResponse.ok) {
+        const providerError = await sdpResponse.text().catch(() => "");
+        throw new RealtimeConnectionError("negotiation", "OpenAI 拒絕 SDP", { status: sdpResponse.status, providerError: providerError.slice(0, 160) });
+      }
       await this.pc.setRemoteDescription({ type: "answer", sdp: await sdpResponse.text() });
+      await this.waitForDataChannel();
       this.active = true;
       this.setState("listening");
       return true;
     } catch (error) {
+      const stage = error?.stage || "negotiation";
+      this.diagnose(stage, error?.details || { name: error?.name });
       this.stop();
-      this.onError(error?.name === "NotAllowedError" ? "麥克風權限未開啟，仍可使用文字聊天。" : "即時語音暫時無法使用，請使用文字聊天。");
+      const reason = error?.message && error.message !== CONNECTION_MESSAGES[stage] ? `：${error.message}` : "";
+      this.onError(`${CONNECTION_MESSAGES[stage] || "即時語音初始化失敗"}${reason}。文字聊天仍可繼續使用。`);
       return false;
     }
   }
