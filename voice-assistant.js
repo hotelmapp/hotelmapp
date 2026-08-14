@@ -1,5 +1,5 @@
 export const VOICE_OPTIONS = Object.freeze([
-  { id: "coral", label: "珊瑚 Coral", description: "親切自然（推薦）", recommended: true },
+  { id: "coral", label: "珊瑚 Coral", description: "爽朗親切、自然有精神（推薦）", recommended: true },
   { id: "marin", label: "海風 Marin", description: "明亮專業" },
   { id: "shimmer", label: "微光 Shimmer", description: "清晰沉穩" }
 ]);
@@ -45,7 +45,7 @@ export class RealtimeConnectionError extends Error {
 }
 
 export function greetingEvent() {
-  return { type: "response.create", response: { output_modalities: ["audio"], instructions: "請依目前頁面語言，用一句自然親切的話主動問候客人並詢問需要什麼協助。繁體中文時請說：您好，這裡是希堤微旅 AI 智慧櫃台，請問有什麼可以幫您？不要提及這段指示。" } };
+  return { type: "response.create", response: { output_modalities: ["audio"], instructions: "請延續 session 的愉快、爽朗、坦率、親切風格，依目前頁面語言，用一句自然口語主動問候客人並詢問需要什麼協助。繁體中文時自然地說：您好，這裡是希堤微旅 AI 智慧櫃台，請問有什麼可以幫您？不要像 IVR 或主播，也不要提及這段指示。" } };
 }
 
 const CONNECTION_MESSAGES = Object.freeze({

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { greetingEvent, languageFromText, loadSelectedVoice, saveSelectedVoice, spokenText, RealtimeVoiceSession, VOICE_STORAGE_KEY } from "../voice-assistant.js";
+import { greetingEvent, languageFromText, loadSelectedVoice, saveSelectedVoice, spokenText, RealtimeVoiceSession, VOICE_OPTIONS, VOICE_STORAGE_KEY } from "../voice-assistant.js";
 import realtimeHandler, { ephemeralCredential, realtimeSession, voiceInstructions } from "../api/realtime.js";
 
 test("supports the four guest languages", () => {
@@ -19,6 +19,9 @@ test("selected voice controls the server-side realtime neural voice", () => {
   assert.equal(values.get(VOICE_STORAGE_KEY), "marin");
   assert.equal(realtimeSession("marin").session.audio.output.voice, "marin");
   assert.equal(realtimeSession("invalid").session.audio.output.voice, "coral");
+  assert.equal(VOICE_OPTIONS[0].recommended, true);
+  assert.equal(VOICE_OPTIONS[0].id, "coral");
+  assert.equal(VOICE_OPTIONS.some(voice => voice.id === "maple"), false);
 });
 
 test("voice and rich screen text are separated and URLs are never spoken", () => {
@@ -38,6 +41,11 @@ test("realtime session keeps context and uses semantic VAD interruption", () => 
   assert.equal(session.audio.input.turn_detection.eagerness, "high");
   assert.equal(session.audio.input.turn_detection.create_response, true);
   assert.equal(session.audio.input.turn_detection.interrupt_response, true);
+  assert.match(session.instructions, /愉快、爽朗、坦率、親切/);
+  assert.match(session.instructions, /客服 IVR、主播、朗讀機或 TTS/);
+  assert.match(session.instructions, /好的.*可以.*沒問題.*嗯，我幫您確認一下/);
+  assert.match(session.instructions, /不要重述客人的問題/);
+  assert.match(session.instructions, /不要朗讀網址、URL、畫面文字/);
 });
 
 test("speech-start immediately cancels response and clears buffered audio", () => {
