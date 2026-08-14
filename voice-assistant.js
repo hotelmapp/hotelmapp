@@ -44,11 +44,19 @@ export class RealtimeConnectionError extends Error {
   }
 }
 
+export function greetingEvent() {
+  return { type: "response.create", response: { output_modalities: ["audio"], instructions: "請依目前頁面語言，用一句自然親切的話主動問候客人並詢問需要什麼協助。繁體中文時請說：您好，這裡是希堤微旅 AI 智慧櫃台，請問有什麼可以幫您？不要提及這段指示。" } };
+}
+
 const CONNECTION_MESSAGES = Object.freeze({
-  credential: "無法取得即時語音憑證",
-  microphone: "無法開啟麥克風",
-  negotiation: "即時語音連線協商失敗",
-  data_channel: "即時語音資料連線失敗",
+  credential_failed: "無法取得即時語音憑證",
+  microphone_denied: "麥克風權限未開啟",
+  microphone_failed: "無法開啟麥克風",
+  peer_connection_failed: "無法建立即時語音連線",
+  sdp_failed: "即時語音連線協商失敗",
+  data_channel_timeout: "即時語音資料連線逾時",
+  audio_playback_failed: "無法播放即時語音",
+  realtime_api_rejected: "OpenAI 拒絕即時語音連線",
   unsupported: "此瀏覽器不支援即時語音"
 });
 
@@ -65,6 +73,9 @@ export class RealtimeVoiceSession {
     this.onTranscript = onTranscript || (() => {});
     this.onError = onError || (() => {});
     this.active = false;
+    this.muted = false;
+    this.responseActive = false;
+    this.starting = false;
     this.state = "idle";
   }
 
@@ -78,12 +89,12 @@ export class RealtimeVoiceSession {
   waitForDataChannel(timeoutMs = 8_000) {
     if (this.channel?.readyState === "open") return Promise.resolve();
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new RealtimeConnectionError("data_channel", "連線逾時")), timeoutMs);
-      this.channel.onopen = () => { clearTimeout(timer); resolve(); };
-      this.channel.onerror = () => { clearTimeout(timer); reject(new RealtimeConnectionError("data_channel", "資料通道錯誤")); };
+      this.channelTimer = setTimeout(() => reject(new RealtimeConnectionError("data_channel_timeout", "連線逾時")), timeoutMs);
+      this.channel.onopen = () => { clearTimeout(this.channelTimer); this.channelTimer = null; resolve(); };
+      this.channel.onerror = () => { clearTimeout(this.channelTimer); this.channelTimer = null; reject(new RealtimeConnectionError("data_channel_timeout", "資料通道無法開啟")); };
       this.channel.onclose = () => {
         if (!this.active) return;
-        this.diagnose("data_channel", { reason: "closed" });
+        this.diagnose("data_channel_timeout", { reason: "closed" });
         this.onError("即時語音連線已中斷，文字聊天仍可繼續使用。");
         this.stop();
       };
@@ -93,57 +104,72 @@ export class RealtimeVoiceSession {
   handleEvent(event) {
     if (event.type === "input_audio_buffer.speech_started") {
       // Clear already-buffered sound as well as cancelling generation: this is true barge-in.
-      this.send({ type: "response.cancel" });
+      if (this.responseActive) this.send({ type: "response.cancel" });
       this.send({ type: "output_audio_buffer.clear" });
-      this.setState("listening");
+      this.setState("user_speaking");
     } else if (event.type === "input_audio_buffer.speech_stopped") {
       this.setState("answering");
     } else if (event.type === "response.created") {
+      this.responseActive = true;
       this.setState("answering");
     } else if (event.type === "response.output_audio.delta" || event.type === "response.audio.delta" ||
       event.type === "response.output_audio_transcript.delta" || event.type === "response.audio_transcript.delta") {
       this.setState("speaking");
     } else if (event.type === "response.done") {
+      this.responseActive = false;
       this.setState("listening");
     } else if (event.type === "conversation.item.input_audio_transcription.completed" && event.transcript?.trim()) {
       this.onTranscript({ role: "user", text: event.transcript.trim() });
     } else if ((event.type === "response.output_audio_transcript.done" || event.type === "response.audio_transcript.done") && event.transcript?.trim()) {
       this.onTranscript({ role: "assistant", text: spokenText(event.transcript.trim()) });
     } else if (event.type === "error") {
-      this.onError("即時語音暫時無法使用，您仍可繼續使用文字聊天。");
+      this.diagnose("realtime_api_rejected", { eventCode: event.error?.code, eventType: event.error?.type });
+      this.onError("realtime_api_rejected：即時語音服務回報錯誤，文字聊天仍可繼續使用。");
     }
   }
 
   async start(voice = VOICE_OPTIONS[0].id) {
-    if (this.active) return true;
+    if (this.active || this.starting) return true;
     if (!this.mediaDevices?.getUserMedia || !this.RTCPeerConnection) {
       this.diagnose("unsupported");
       this.onError("此瀏覽器不支援即時語音，請改用最新版 Chrome、Edge 或 Safari；文字聊天仍可使用。"); return false;
     }
+    this.starting = true;
+    this.abortController = new AbortController();
     this.setState("connecting");
     try {
-      const tokenResponse = await this.fetch("/api/realtime", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ voice }) });
+      const tokenResponse = await this.fetch("/api/realtime", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ voice }), signal: this.abortController.signal });
       const token = await tokenResponse.json().catch(() => ({}));
       if (!tokenResponse.ok || !token.value) {
-        throw new RealtimeConnectionError("credential", token.error || "伺服器未回傳憑證", {
+        throw new RealtimeConnectionError(token?.diagnostic?.code === "realtime_api_rejected" ? "realtime_api_rejected" : "credential_failed", token.error || "伺服器未回傳憑證", {
           status: tokenResponse.status, code: token?.diagnostic?.code
         });
       }
-      this.pc = new this.RTCPeerConnection();
+      try { this.pc = new this.RTCPeerConnection(); }
+      catch (error) { throw new RealtimeConnectionError("peer_connection_failed", "瀏覽器無法建立 RTCPeerConnection", { name: error?.name }); }
       this.pc.onconnectionstatechange = () => {
         const connectionState = this.pc?.connectionState;
         if (connectionState === "failed" || connectionState === "disconnected") {
-          this.diagnose("negotiation", { connectionState });
+          this.diagnose("peer_connection_failed", { connectionState });
           this.onError("即時語音連線已中斷，文字聊天仍可繼續使用。");
         }
       };
       this.audio = this.audioFactory();
       this.audio.autoplay = true;
-      this.pc.ontrack = event => { this.audio.srcObject = event.streams[0]; };
+      this.pc.ontrack = event => {
+        const stream = event.streams?.[0] || (globalThis.MediaStream ? new MediaStream([event.track]) : null);
+        this.audio.srcObject = stream;
+        const playback = this.audio.play?.();
+        playback?.catch?.(error => {
+          this.diagnose("audio_playback_failed", { name: error?.name });
+          this.onError("audio_playback_failed：請點一下畫面後重試；文字聊天仍可繼續使用。");
+        });
+      };
       try {
         this.stream = await this.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
       } catch (error) {
-        throw new RealtimeConnectionError("microphone", error?.name === "NotAllowedError" ? "麥克風權限遭拒" : "無法取得麥克風", { name: error?.name });
+        const denied = error?.name === "NotAllowedError" || error?.name === "SecurityError";
+        throw new RealtimeConnectionError(denied ? "microphone_denied" : "microphone_failed", denied ? "麥克風權限遭拒" : "無法取得麥克風", { name: error?.name });
       }
       for (const track of this.stream.getTracks()) this.pc.addTrack(track, this.stream);
       this.channel = this.pc.createDataChannel("oai-events");
@@ -151,19 +177,22 @@ export class RealtimeVoiceSession {
       const offer = await this.pc.createOffer();
       await this.pc.setLocalDescription(offer);
       const sdpResponse = await this.fetch("https://api.openai.com/v1/realtime/calls", {
-        method: "POST", headers: { Authorization: `Bearer ${token.value}`, "Content-Type": "application/sdp" }, body: offer.sdp
+        method: "POST", headers: { Authorization: `Bearer ${token.value}`, "Content-Type": "application/sdp" }, body: offer.sdp, signal: this.abortController.signal
       });
       if (!sdpResponse.ok) {
         const providerError = await sdpResponse.text().catch(() => "");
-        throw new RealtimeConnectionError("negotiation", "OpenAI 拒絕 SDP", { status: sdpResponse.status, providerError: providerError.slice(0, 160) });
+        throw new RealtimeConnectionError("sdp_failed", "OpenAI 拒絕 SDP", { status: sdpResponse.status, providerError: providerError.slice(0, 160) });
       }
       await this.pc.setRemoteDescription({ type: "answer", sdp: await sdpResponse.text() });
       await this.waitForDataChannel();
+      this.starting = false;
       this.active = true;
       this.setState("listening");
+      this.send(greetingEvent());
       return true;
     } catch (error) {
-      const stage = error?.stage || "negotiation";
+      if (error?.name === "AbortError" && !this.starting) return false;
+      const stage = error?.stage || "peer_connection_failed";
       this.diagnose(stage, error?.details || { name: error?.name });
       this.stop();
       const reason = error?.message && error.message !== CONNECTION_MESSAGES[stage] ? `：${error.message}` : "";
@@ -173,12 +202,24 @@ export class RealtimeVoiceSession {
   }
 
   interrupt() { this.handleEvent({ type: "input_audio_buffer.speech_started" }); }
+  setMuted(muted) {
+    this.muted = Boolean(muted);
+    for (const track of this.stream?.getAudioTracks?.() || []) track.enabled = !this.muted;
+    this.setState(this.muted ? "muted" : "listening");
+    return this.muted;
+  }
   stop() {
     this.active = false;
+    this.starting = false;
+    this.responseActive = false;
+    this.send({ type: "response.cancel" });
+    this.send({ type: "output_audio_buffer.clear" });
+    this.abortController?.abort?.();
+    clearTimeout(this.channelTimer);
     for (const track of this.stream?.getTracks?.() || []) track.stop();
     this.channel?.close?.(); this.pc?.close?.();
     if (this.audio) { this.audio.pause?.(); this.audio.srcObject = null; }
-    this.stream = this.channel = this.pc = this.audio = null;
+    this.stream = this.channel = this.pc = this.audio = this.abortController = this.channelTimer = null;
     this.setState("idle");
   }
 }

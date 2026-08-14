@@ -34,7 +34,7 @@ export function realtimeSession(voice) {
       model: process.env.OPENAI_REALTIME_MODEL?.trim() || "gpt-realtime",
       instructions: voiceInstructions(),
       audio: {
-        input: { transcription: { model: "gpt-4o-mini-transcribe" }, turn_detection: { type: "server_vad", threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: 450, create_response: true, interrupt_response: true } },
+        input: { transcription: { model: "gpt-4o-mini-transcribe" }, turn_detection: { type: "semantic_vad", eagerness: "high", create_response: true, interrupt_response: true } },
         output: { voice: selected }
       }
     }
@@ -47,7 +47,7 @@ export default async function handler(req, res) {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
     console.error("[api/realtime] OPENAI_API_KEY is missing in this deployment");
-    return sendError(res, 503, "missing_api_key", "Vercel Preview 尚未設定 OPENAI_API_KEY，請在 Preview Environment Variables 設定後重新部署。");
+    return sendError(res, 503, "credential_failed", "Vercel Preview 無法建立即時語音憑證；請確認 OPENAI_API_KEY 與 Realtime API 權限。", { reason: "missing_api_key" });
   }
   try {
     const upstream = await fetch(CLIENT_SECRETS_URL, {
@@ -58,21 +58,21 @@ export default async function handler(req, res) {
     const requestId = upstream.headers?.get?.("x-request-id") || undefined;
     if (!upstream.ok) {
       console.error("[api/realtime] credential request rejected", { status: upstream.status, requestId, code: body?.error?.code });
-      return sendError(res, 502, "credential_provider_failed", "OpenAI 無法建立即時語音憑證。", {
+      return sendError(res, 502, "realtime_api_rejected", "OpenAI 拒絕建立即時語音憑證。", {
         upstreamStatus: upstream.status, requestId, upstreamCode: body?.error?.code
       });
     }
     const value = ephemeralCredential(body);
     if (!value) {
       console.error("[api/realtime] credential response schema mismatch", { requestId, keys: Object.keys(body || {}) });
-      return sendError(res, 502, "credential_schema_invalid", "OpenAI 即時語音憑證格式不正確。", { requestId });
+      return sendError(res, 502, "credential_failed", "OpenAI 即時語音憑證格式不正確。", { requestId, reason: "schema_invalid" });
     }
     // Return only the short-lived client secret, never the server API key or session instructions.
     return res.status(200).json({ value, expires_at: body.expires_at || body.client_secret?.expires_at });
   } catch (error) {
     const timedOut = error?.name === "TimeoutError";
     console.error("[api/realtime] credential request failed", { timedOut, name: error?.name });
-    return sendError(res, timedOut ? 504 : 502, timedOut ? "credential_timeout" : "credential_connection_failed",
+    return sendError(res, timedOut ? 504 : 502, "credential_failed",
       timedOut ? "建立即時語音憑證逾時。" : "目前無法連線至 OpenAI 即時語音服務。");
   }
 }

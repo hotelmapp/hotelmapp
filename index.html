@@ -29,6 +29,31 @@
     #contactForm textarea { min-height: 90px; resize: vertical; }
     #contactForm button { min-height: 44px; }
     #contactStatus { min-height: 1.5em; margin-top: 12px; text-align: center; }
+    .voice-mode { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 20px; color: white; background: radial-gradient(circle at 50% 35%, #264b68 0, #102634 42%, #081117 100%); }
+    .voice-mode[hidden] { display: none; }
+    .voice-mode__content { box-sizing: border-box; width: min(620px, 100%); min-height: min(760px, calc(100dvh - 40px)); display: flex; flex-direction: column; align-items: center; padding: 42px 24px 28px; }
+    .voice-mode h2 { margin: 0; font-size: clamp(22px, 5vw, 31px); }
+    .voice-mode__hint { margin: 9px 0 0; color: #b8c9d3; }
+    .voice-orb { width: 184px; height: 184px; margin: auto; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #b6fff5, #43c9d5 35%, #3569ca 72%); box-shadow: 0 0 0 18px rgba(89,216,224,.08), 0 0 70px rgba(72,205,220,.42); transition: transform .25s, filter .25s; }
+    .voice-orb[data-state="connecting"] { animation: orb-pulse 1.5s infinite; filter: saturate(.6); }
+    .voice-orb[data-state="listening"] { animation: orb-breathe 2.5s infinite; }
+    .voice-orb[data-state="user_speaking"] { animation: orb-speak .55s infinite alternate; filter: hue-rotate(30deg); }
+    .voice-orb[data-state="answering"] { animation: orb-pulse .8s infinite; filter: hue-rotate(85deg); }
+    .voice-orb[data-state="speaking"] { animation: orb-speak .45s infinite alternate; filter: hue-rotate(135deg); }
+    .voice-orb[data-state="muted"] { filter: grayscale(.9); opacity: .65; }
+    @keyframes orb-pulse { 50% { transform: scale(.93); opacity: .75; } }
+    @keyframes orb-breathe { 50% { transform: scale(1.06); } }
+    @keyframes orb-speak { to { transform: scale(1.1) rotate(2deg); border-radius: 43% 57% 52% 48%; } }
+    .voice-mode__status { min-height: 32px; margin: 0 0 20px; font-size: 20px; }
+    .voice-mode__error { min-height: 42px; margin: 0 0 12px; color: #ffd1cd; font-size: 14px; }
+    .voice-mode__controls { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+    .voice-mode button, .voice-mode select { min-height: 48px; border: 1px solid rgba(255,255,255,.2); border-radius: 24px; padding: 0 18px; color: white; background: rgba(255,255,255,.1); font: inherit; }
+    .voice-mode select option { color: #111; }
+    .voice-mode .end-call { background: #bf3c3c; }
+    .voice-transcript { width: 100%; margin-top: 20px; text-align: left; }
+    .voice-transcript summary { cursor: pointer; color: #b8c9d3; text-align: center; }
+    .voice-transcript__body { max-height: 160px; overflow: auto; margin-top: 10px; padding: 10px 16px; border-radius: 12px; background: rgba(0,0,0,.2); }
+    body.voice-mode-open { overflow: hidden; }
     @media (max-width: 520px) { #contactForm { grid-template-columns: 1fr; } #contactForm .wide { grid-column: auto; } .voice-panel { flex-wrap: wrap; } .voice-panel select { flex-basis: 55%; } }
   </style>
 </head>
@@ -45,10 +70,8 @@
       <button id="submitButton" type="submit">送出</button>
     </form>
     <div class="voice-panel" aria-label="Voice Assistant V3 即時真人對話模式">
-      <button id="microphone" type="button" aria-pressed="false" title="開始真人語音對話">🎙️ 語音</button>
-      <select id="voiceSelector" aria-label="選擇女性聲音"></select>
-      <button id="stopVoice" type="button" hidden>停止說話</button>
-      <span id="voiceStatus" role="status" aria-live="polite">語音待命</span>
+      <button id="microphone" type="button" title="進入即時語音對話">🎙️ 進入語音模式</button>
+      <span>與 AI 櫃檯即時自然對話</span>
     </div>
 
     <div id="answer" role="status" aria-live="polite">您好！請問今天有什麼可以協助您的呢？</div>
@@ -68,9 +91,28 @@
     </section>
   </main>
 
+  <section id="voiceMode" class="voice-mode" aria-label="即時語音模式" aria-hidden="true" hidden>
+    <div class="voice-mode__content">
+      <h2>希堤微旅 AI 智慧櫃台</h2>
+      <p class="voice-mode__hint">即時語音對話</p>
+      <div class="voice-orb" data-voice-orb data-state="idle" aria-hidden="true"></div>
+      <p class="voice-mode__status" data-voice-status role="status" aria-live="polite">語音待命</p>
+      <p class="voice-mode__error" data-voice-error role="alert"></p>
+      <div class="voice-mode__controls">
+        <button type="button" data-voice-mute aria-pressed="false">🎙️ 麥克風</button>
+        <select data-voice-selector aria-label="選擇 AI 語音"></select>
+        <button type="button" class="end-call" data-voice-end>結束對話</button>
+      </div>
+      <details class="voice-transcript">
+        <summary>查看對話紀錄</summary>
+        <div class="voice-transcript__body" data-voice-transcript></div>
+      </details>
+    </div>
+  </section>
+
   <script type="module">
     import { dateFromConversation, renderTextWithLinks, summaryFromConversation } from "./chat-ui.js";
-    import { loadSelectedVoice, saveSelectedVoice, VOICE_OPTIONS, RealtimeVoiceSession } from "./voice-assistant.js";
+    import { VoiceMode } from "./voice-mode.js";
 
     const form = document.getElementById("chatForm");
     const input = document.getElementById("question");
@@ -81,53 +123,8 @@
     const contactForm = document.getElementById("contactForm");
     const contactStatus = document.getElementById("contactStatus");
     const microphone = document.getElementById("microphone");
-    const voiceSelector = document.getElementById("voiceSelector");
-    const voiceStatus = document.getElementById("voiceStatus");
-    const stopVoice = document.getElementById("stopVoice");
-
-    for (const voice of VOICE_OPTIONS) {
-      const option = document.createElement("option");
-      option.value = voice.id;
-      option.textContent = `${voice.label} — ${voice.description}`;
-      voiceSelector.append(option);
-    }
-    voiceSelector.value = loadSelectedVoice(localStorage);
-    voiceSelector.addEventListener("change", async () => {
-      saveSelectedVoice(localStorage, voiceSelector.value);
-      // A realtime voice is fixed for a session, so reconnect to apply the
-      // server-side neural voice instead of swapping a browser TTS voice.
-      if (voice?.active) {
-        voice.stop();
-        await voice.start(voiceSelector.value);
-      }
-    });
-
-    const stateLabels = { idle: "語音待命", connecting: "正在準備語音…", listening: "正在聽您說話", answering: "正在回答", speaking: "正在回答" };
-    const setVoiceState = state => {
-      voiceStatus.textContent = stateLabels[state] || state;
-      stopVoice.hidden = state !== "speaking" && state !== "answering";
-    };
-    const voice = new RealtimeVoiceSession({
-      onState: setVoiceState,
-      onTranscript: turn => {
-        // The realtime model speaks its own concise answer. /api/chat runs separately
-        // for the richer on-screen answer, links, history, and handoff summary.
-        if (turn.role === "user") sendMessage(turn.text, true);
-      },
-      onError: message => { voiceStatus.textContent = message; }
-    });
-
-    microphone.addEventListener("click", async () => {
-      if (voice.active) {
-        voice.stop();
-        microphone.setAttribute("aria-pressed", "false");
-        microphone.textContent = "🎙️ 語音";
-      } else if (await voice.start(voiceSelector.value)) {
-        microphone.setAttribute("aria-pressed", "true");
-        microphone.textContent = "🎙️ 對話中";
-      }
-    });
-    stopVoice.addEventListener("click", () => voice.interrupt());
+    const voiceMode = new VoiceMode({ root: document.getElementById("voiceMode"), home: document.querySelector("main") });
+    microphone.addEventListener("click", () => voiceMode.open());
 
     async function sendMessage(rawMessage, fromVoice = false) {
       const message = rawMessage.trim();
