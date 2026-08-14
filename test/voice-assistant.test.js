@@ -1,93 +1,87 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  languageFromText, loadSelectedVoice, saveSelectedVoice, spokenText,
-  VoiceConversation, voiceLocaleFor, VOICE_STORAGE_KEY
-} from "../voice-assistant.js";
-import { speechPayload } from "../api/voice.js";
+import { languageFromText, loadSelectedVoice, saveSelectedVoice, spokenText, RealtimeVoiceSession, VOICE_STORAGE_KEY } from "../voice-assistant.js";
+import realtimeHandler, { realtimeSession, voiceInstructions } from "../api/realtime.js";
 
-test("maps all supported languages to recognition locales", () => {
-  assert.equal(voiceLocaleFor("zh-TW"), "zh-TW");
-  assert.equal(voiceLocaleFor("en"), "en-US");
-  assert.equal(voiceLocaleFor("ja"), "ja-JP");
-  assert.equal(voiceLocaleFor("ko"), "ko-KR");
-  assert.equal(languageFromText("好的，請問幾位？"), "zh-TW");
-  assert.equal(languageFromText("How many guests?"), "en");
-  assert.equal(languageFromText("何名様ですか？"), "ja");
-  assert.equal(languageFromText("몇 분이세요?"), "ko");
+test("supports the four guest languages", () => {
+  assert.equal(languageFromText("早餐幾點？"), "zh-TW");
+  assert.equal(languageFromText("What time is breakfast?"), "en");
+  assert.equal(languageFromText("朝食は何時ですか？"), "ja");
+  assert.equal(languageFromText("조식은 몇 시예요?"), "ko");
+  assert.match(voiceInstructions(), /繁體中文、English、日本語或한국어/);
 });
 
-test("persists a valid selected voice and safely defaults invalid storage", () => {
+test("selected voice controls the server-side realtime neural voice", () => {
   const values = new Map();
   const storage = { getItem: key => values.get(key), setItem: (key, value) => values.set(key, value) };
   assert.equal(loadSelectedVoice(storage), "coral");
-  assert.equal(saveSelectedVoice(storage, "shimmer"), true);
-  assert.equal(values.get(VOICE_STORAGE_KEY), "shimmer");
-  assert.equal(loadSelectedVoice(storage), "shimmer");
-  values.set(VOICE_STORAGE_KEY, "invalid");
-  assert.equal(loadSelectedVoice(storage), "coral");
-  assert.equal(saveSelectedVoice(storage, "invalid"), false);
+  assert.equal(saveSelectedVoice(storage, "marin"), true);
+  assert.equal(values.get(VOICE_STORAGE_KEY), "marin");
+  assert.equal(realtimeSession("marin").session.audio.output.voice, "marin");
+  assert.equal(realtimeSession("invalid").session.audio.output.voice, "coral");
 });
 
-test("removes URLs, Markdown, and HTML from speech while retaining screen-link guidance", () => {
-  const result = spokenText("## 房況\n<strong>請查看</strong> [官網](https://example.com) `checkInDate=2026-08-20`\nhttps://book-directonline.com/?checkInDate=2026-08-20", "zh-TW");
-  assert.doesNotMatch(result, /https?:|<strong>|##|\[官網\]|book-directonline/u);
-  assert.match(result, /點畫面上的官方訂房連結/);
+test("voice and rich screen text are separated and URLs are never spoken", () => {
+  const screen = "早餐 08:00–10:00，訂房：https://example.com/book?date=2026-08-20";
+  const voice = spokenText(screen, "zh-TW");
+  assert.match(screen, /https:\/\//);
+  assert.doesNotMatch(voice, /https?:|example\.com|2026-08-20/);
+  assert.match(voice, /點畫面上的官方訂房連結/);
+  assert.match(voiceInstructions(), /不要朗讀網址、URL/);
 });
 
-test("neural provider receives only conversational sanitized speech", () => {
-  const payload = speechPayload("**您好** https://example.com/book", "coral", "zh-TW");
-  assert.equal(payload.voice, "coral");
-  assert.equal(payload.model, "gpt-4o-mini-tts");
-  assert.doesNotMatch(payload.input, /https?:|\*\*/u);
-  assert.match(payload.instructions, /Taiwanese style/);
+test("realtime session keeps context and uses fast server VAD interruption", () => {
+  const session = realtimeSession("coral").session;
+  assert.match(session.instructions, /整個 session 的對話歷史/);
+  assert.match(session.instructions, /那小朋友呢/);
+  assert.equal(session.audio.input.turn_detection.type, "server_vad");
+  assert.equal(session.audio.input.turn_detection.silence_duration_ms, 450);
+  assert.equal(session.audio.input.turn_detection.create_response, true);
+  assert.equal(session.audio.input.turn_detection.interrupt_response, true);
 });
 
-function recognitionDouble() {
-  return { starts: 0, aborts: 0, start() { this.starts++; }, abort() { this.aborts++; } };
-}
+test("speech-start immediately cancels response and clears buffered audio", () => {
+  const sent = [];
+  const states = [];
+  const session = new RealtimeVoiceSession({ onState: state => states.push(state) });
+  session.channel = { readyState: "open", send: value => sent.push(JSON.parse(value)) };
+  session.handleEvent({ type: "input_audio_buffer.speech_started" });
+  assert.deepEqual(sent.map(item => item.type), ["response.cancel", "output_audio_buffer.clear"]);
+  assert.equal(states.at(-1), "listening");
+});
 
-test("unsupported recognition falls back without affecting text chat", () => {
+test("transcripts preserve user turns while provider errors fall back to text", () => {
+  const turns = [];
   const errors = [];
-  const controller = new VoiceConversation({ recognition: null, onError: error => errors.push(error) });
-  assert.equal(controller.start("zh-TW"), false);
+  const session = new RealtimeVoiceSession({ onTranscript: turn => turns.push(turn), onError: error => errors.push(error) });
+  session.handleEvent({ type: "conversation.item.input_audio_transcription.completed", transcript: "早餐幾點？" });
+  session.handleEvent({ type: "conversation.item.input_audio_transcription.completed", transcript: "那小朋友呢？" });
+  session.handleEvent({ type: "error", error: { message: "down" } });
+  assert.deepEqual(turns.map(turn => turn.text), ["早餐幾點？", "那小朋友呢？"]);
   assert.match(errors[0], /文字聊天/);
 });
 
-test("neural voice failure automatically uses the browser TTS fallback", async () => {
-  const spoken = [];
+test("ephemeral credential endpoint keeps the server API key out of its response", async () => {
+  const originalKey = process.env.OPENAI_API_KEY;
+  const originalFetch = global.fetch;
+  process.env.OPENAI_API_KEY = "server-secret";
+  let authorization;
+  global.fetch = async (_url, options) => {
+    authorization = options.headers.Authorization;
+    return { ok: true, json: async () => ({ value: "ephemeral-secret", expires_at: 123 }) };
+  };
+  const result = {};
+  const res = { setHeader() {}, status(code) { result.status = code; return this; }, json(body) { result.body = body; return this; } };
+  try { await realtimeHandler({ method: "POST", body: { voice: "coral" } }, res); }
+  finally { global.fetch = originalFetch; process.env.OPENAI_API_KEY = originalKey; }
+  assert.equal(authorization, "Bearer server-secret");
+  assert.deepEqual(result, { status: 200, body: { value: "ephemeral-secret", expires_at: 123 } });
+  assert.doesNotMatch(JSON.stringify(result), /server-secret/);
+});
+
+test("unsupported browsers cleanly fall back without breaking text chat", async () => {
   const errors = [];
-  const controller = new VoiceConversation({
-    recognition: null,
-    playNeural: async () => { throw new Error("provider down"); },
-    speakFallback: async (text, locale) => spoken.push({ text, locale }),
-    onError: error => errors.push(error)
-  });
-  await controller.speak("您好，我來幫您。", { voice: "coral", language: "zh-TW" });
-  assert.deepEqual(spoken, [{ text: "您好，我來幫您。", locale: "zh-TW" }]);
-  assert.match(errors[0], /裝置語音/);
-});
-
-test("barge-in and a new question stop existing audio", () => {
-  const recognition = recognitionDouble();
-  let stopped = 0;
-  const controller = new VoiceConversation({ recognition, onTranscript() {} });
-  controller.active = true;
-  controller.playback = { stop() { stopped++; } };
-  recognition.onspeechstart();
-  assert.equal(stopped, 1);
-
-  controller.playback = { stop() { stopped++; } };
-  controller.stopSpeaking();
-  assert.equal(stopped, 2);
-});
-
-test("final recognition results continue the same multi-turn conversation callback", () => {
-  const recognition = recognitionDouble();
-  const turns = [];
-  const controller = new VoiceConversation({ recognition, onTranscript: text => turns.push(text) });
-  controller.start("zh-TW");
-  recognition.onresult({ resultIndex: 0, results: [{ isFinal: true, 0: { transcript: "8 月 20 號有房嗎？" } }] });
-  recognition.onresult({ resultIndex: 0, results: [{ isFinal: true, 0: { transcript: "兩晚。" } }] });
-  assert.deepEqual(turns, ["8 月 20 號有房嗎？", "兩晚。​".replace("\u200b", "")]);
+  const session = new RealtimeVoiceSession({ mediaDevices: null, RTCPeerConnectionImpl: null, onError: error => errors.push(error) });
+  assert.equal(await session.start(), false);
+  assert.match(errors[0], /文字聊天/);
 });

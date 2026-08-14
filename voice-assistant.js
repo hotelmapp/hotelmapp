@@ -1,14 +1,10 @@
 export const VOICE_OPTIONS = Object.freeze([
   { id: "coral", label: "珊瑚 Coral", description: "親切自然（推薦）", recommended: true },
-  { id: "shimmer", label: "微光 Shimmer", description: "清晰沉穩" },
-  { id: "sage", label: "青蕙 Sage", description: "溫暖專業" }
+  { id: "marin", label: "海風 Marin", description: "明亮專業" },
+  { id: "shimmer", label: "微光 Shimmer", description: "清晰沉穩" }
 ]);
 
-export const VOICE_STORAGE_KEY = "hotelmapp.voice.v2";
-
-export function voiceLocaleFor(language) {
-  return ({ "zh-TW": "zh-TW", en: "en-US", ja: "ja-JP", ko: "ko-KR" })[language] || "zh-TW";
-}
+export const VOICE_STORAGE_KEY = "hotelmapp.voice.v3";
 
 export function languageFromText(text) {
   if (/[\uac00-\ud7af]/u.test(text)) return "ko";
@@ -21,22 +17,11 @@ export function spokenText(text, language = languageFromText(text)) {
   let result = String(text || "")
     .replace(/\[([^\]]+)\]\(https?:\/\/[^)]*\)/giu, "$1")
     .replace(/https?:\/\/[^\s<>"']+/giu, "")
-    .replace(/<[^>]*>/gu, " ")
-    .replace(/```[\s\S]*?```/gu, " ")
-    .replace(/`[^`]*`/gu, " ")
-    .replace(/^\s{0,3}(?:#{1,6}|[-*+] |\d+[.)] )/gmu, "")
-    .replace(/\b(?:checkInDate|checkOutDate|locale)\s*=\s*[^\s]+/giu, " ")
-    .replace(/[|*_~]/gu, "")
-    .replace(/\s+/gu, " ")
-    .trim();
+    .replace(/<[^>]*>/gu, " ").replace(/```[\s\S]*?```/gu, " ").replace(/`[^`]*`/gu, " ")
+    .replace(/^\s{0,3}(?:#{1,6}|[-*+] |\d+[.)] )/gmu, "").replace(/[|*_~]/gu, "").replace(/\s+/gu, " ").trim();
   if (/https?:\/\//iu.test(text)) {
-    const prompt = {
-      "zh-TW": "您可以點畫面上的官方訂房連結，查看最新房況和價格。",
-      en: "You can use the official booking link on screen to check the latest availability and rates.",
-      ja: "画面の公式予約リンクから、最新の空室状況と料金をご確認いただけます。",
-      ko: "화면의 공식 예약 링크에서 최신 객실 상황과 요금을 확인하실 수 있어요."
-    }[language] || "";
-    result = `${result} ${prompt}`.trim();
+    const prompt = { "zh-TW": "您可以點畫面上的官方訂房連結。", en: "You can use the official booking link on screen.", ja: "画面の公式予約リンクをご利用ください。", ko: "화면의 공식 예약 링크를 이용해 주세요." }[language];
+    result = `${result} ${prompt || ""}`.trim();
   }
   return result;
 }
@@ -53,88 +38,91 @@ export function saveSelectedVoice(storage, voice) {
   try { storage?.setItem(VOICE_STORAGE_KEY, voice); return true; } catch { return false; }
 }
 
-export class VoiceConversation {
-  constructor({ recognition, playNeural, speakFallback, onTranscript, onState, onError }) {
-    this.recognition = recognition;
-    this.playNeural = playNeural;
-    this.speakFallback = speakFallback;
-    this.onTranscript = onTranscript;
+// A single WebRTC connection carries microphone audio in and model audio out.
+// OpenAI's server VAD owns turn boundaries, so no browser STT/TTS pipeline is involved.
+export class RealtimeVoiceSession {
+  constructor({ fetchImpl = globalThis.fetch, mediaDevices = globalThis.navigator?.mediaDevices,
+    RTCPeerConnectionImpl = globalThis.RTCPeerConnection, audioFactory, onState, onTranscript, onError }) {
+    this.fetch = fetchImpl;
+    this.mediaDevices = mediaDevices;
+    this.RTCPeerConnection = RTCPeerConnectionImpl;
+    this.audioFactory = audioFactory || (() => new Audio());
     this.onState = onState || (() => {});
+    this.onTranscript = onTranscript || (() => {});
     this.onError = onError || (() => {});
     this.active = false;
-    this.playback = null;
-    this.request = null;
-    if (recognition) this.bindRecognition();
+    this.state = "idle";
   }
 
-  bindRecognition() {
-    this.recognition.continuous = false;
-    this.recognition.interimResults = true;
-    this.recognition.onstart = () => this.onState("listening");
-    this.recognition.onspeechstart = () => this.stopSpeaking();
-    this.recognition.onresult = event => {
-      const result = event.results[event.resultIndex];
-      if (result?.isFinal && result[0]?.transcript?.trim()) this.onTranscript(result[0].transcript.trim());
-    };
-    this.recognition.onend = () => { if (this.active && !this.playback && !this.request) this.listen(); };
-    this.recognition.onerror = event => {
-      if (event.error === "aborted") return;
-      this.onError(event.error === "not-allowed" ? "麥克風權限未開啟，仍可使用文字聊天。" : "沒有聽清楚，請再說一次或使用文字輸入。");
-      if (event.error === "not-allowed") this.active = false;
-    };
+  setState(state) { this.state = state; this.onState(state); }
+  send(event) { if (this.channel?.readyState === "open") this.channel.send(JSON.stringify(event)); }
+
+  handleEvent(event) {
+    if (event.type === "input_audio_buffer.speech_started") {
+      // Clear already-buffered sound as well as cancelling generation: this is true barge-in.
+      this.send({ type: "response.cancel" });
+      this.send({ type: "output_audio_buffer.clear" });
+      this.setState("listening");
+    } else if (event.type === "input_audio_buffer.speech_stopped") {
+      this.setState("answering");
+    } else if (event.type === "response.created") {
+      this.setState("answering");
+    } else if (event.type === "response.output_audio.delta" || event.type === "response.audio.delta" ||
+      event.type === "response.output_audio_transcript.delta" || event.type === "response.audio_transcript.delta") {
+      this.setState("speaking");
+    } else if (event.type === "response.done") {
+      this.setState("listening");
+    } else if (event.type === "conversation.item.input_audio_transcription.completed" && event.transcript?.trim()) {
+      this.onTranscript({ role: "user", text: event.transcript.trim() });
+    } else if ((event.type === "response.output_audio_transcript.done" || event.type === "response.audio_transcript.done") && event.transcript?.trim()) {
+      this.onTranscript({ role: "assistant", text: spokenText(event.transcript.trim()) });
+    } else if (event.type === "error") {
+      this.onError("即時語音暫時無法使用，您仍可繼續使用文字聊天。");
+    }
   }
 
-  start(locale) {
-    if (!this.recognition) { this.onError("此瀏覽器不支援語音辨識，請使用文字聊天。"); return false; }
-    this.active = true;
-    this.recognition.lang = locale;
-    this.listen();
-    return true;
+  async start(voice = VOICE_OPTIONS[0].id) {
+    if (this.active) return true;
+    if (!this.mediaDevices?.getUserMedia || !this.RTCPeerConnection) {
+      this.onError("此瀏覽器不支援即時語音，請使用文字聊天。"); return false;
+    }
+    this.setState("connecting");
+    try {
+      const tokenResponse = await this.fetch("/api/realtime", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ voice }) });
+      const token = await tokenResponse.json();
+      if (!tokenResponse.ok || !token.value) throw new Error("session unavailable");
+      this.pc = new this.RTCPeerConnection();
+      this.audio = this.audioFactory();
+      this.audio.autoplay = true;
+      this.pc.ontrack = event => { this.audio.srcObject = event.streams[0]; };
+      this.stream = await this.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      for (const track of this.stream.getTracks()) this.pc.addTrack(track, this.stream);
+      this.channel = this.pc.createDataChannel("oai-events");
+      this.channel.onmessage = message => { try { this.handleEvent(JSON.parse(message.data)); } catch { /* ignore malformed provider events */ } };
+      const offer = await this.pc.createOffer();
+      await this.pc.setLocalDescription(offer);
+      const sdpResponse = await this.fetch("https://api.openai.com/v1/realtime/calls", {
+        method: "POST", headers: { Authorization: `Bearer ${token.value}`, "Content-Type": "application/sdp" }, body: offer.sdp
+      });
+      if (!sdpResponse.ok) throw new Error("realtime negotiation failed");
+      await this.pc.setRemoteDescription({ type: "answer", sdp: await sdpResponse.text() });
+      this.active = true;
+      this.setState("listening");
+      return true;
+    } catch (error) {
+      this.stop();
+      this.onError(error?.name === "NotAllowedError" ? "麥克風權限未開啟，仍可使用文字聊天。" : "即時語音暫時無法使用，請使用文字聊天。");
+      return false;
+    }
   }
 
-  listen() {
-    if (!this.active) return;
-    try { this.recognition.start(); } catch { /* recognition is already starting */ }
-  }
-
-  stopSpeaking() {
-    this.request?.abort();
-    this.request = null;
-    this.playback?.stop?.();
-    this.playback = null;
-    globalThis.speechSynthesis?.cancel?.();
-    if (this.active) this.listen(); else this.onState("idle");
-  }
-
+  interrupt() { this.handleEvent({ type: "input_audio_buffer.speech_started" }); }
   stop() {
     this.active = false;
-    this.stopSpeaking();
-    try { this.recognition?.abort(); } catch { /* already stopped */ }
-    this.onState("idle");
-  }
-
-  async speak(text, { voice, language }) {
-    this.stopSpeaking();
-    try { this.recognition?.abort(); } catch { /* already stopped */ }
-    const clean = spokenText(text, language);
-    if (!clean) return;
-    this.onState("speaking");
-    const controller = new AbortController();
-    this.request = controller;
-    try {
-      this.playback = await this.playNeural(clean, { voice, language, signal: controller.signal });
-      await this.playback.finished;
-    } catch (error) {
-      if (error?.name !== "AbortError") {
-        this.onError("高品質語音暫時無法使用，已切換為裝置語音。");
-        await this.speakFallback?.(clean, voiceLocaleFor(language));
-      }
-    } finally {
-      if (this.request === controller) {
-        this.request = null;
-        this.playback = null;
-        if (this.active) this.listen(); else this.onState("idle");
-      }
-    }
+    for (const track of this.stream?.getTracks?.() || []) track.stop();
+    this.channel?.close?.(); this.pc?.close?.();
+    if (this.audio) { this.audio.pause?.(); this.audio.srcObject = null; }
+    this.stream = this.channel = this.pc = this.audio = null;
+    this.setState("idle");
   }
 }

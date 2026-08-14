@@ -44,7 +44,7 @@
       <input id="question" name="message" type="text" placeholder="請輸入您的問題" autocomplete="off" required>
       <button id="submitButton" type="submit">送出</button>
     </form>
-    <div class="voice-panel" aria-label="Voice Assistant V2 真人對話模式">
+    <div class="voice-panel" aria-label="Voice Assistant V3 即時真人對話模式">
       <button id="microphone" type="button" aria-pressed="false" title="開始真人語音對話">🎙️ 語音</button>
       <select id="voiceSelector" aria-label="選擇女性聲音"></select>
       <button id="stopVoice" type="button" hidden>停止說話</button>
@@ -70,7 +70,7 @@
 
   <script type="module">
     import { dateFromConversation, renderTextWithLinks, summaryFromConversation } from "./chat-ui.js";
-    import { languageFromText, loadSelectedVoice, saveSelectedVoice, VOICE_OPTIONS, VoiceConversation, voiceLocaleFor } from "./voice-assistant.js";
+    import { loadSelectedVoice, saveSelectedVoice, VOICE_OPTIONS, RealtimeVoiceSession } from "./voice-assistant.js";
 
     const form = document.getElementById("chatForm");
     const input = document.getElementById("question");
@@ -84,7 +84,6 @@
     const voiceSelector = document.getElementById("voiceSelector");
     const voiceStatus = document.getElementById("voiceStatus");
     const stopVoice = document.getElementById("stopVoice");
-    let responseLanguage = "zh-TW";
 
     for (const voice of VOICE_OPTIONS) {
       const option = document.createElement("option");
@@ -93,73 +92,50 @@
       voiceSelector.append(option);
     }
     voiceSelector.value = loadSelectedVoice(localStorage);
-    voiceSelector.addEventListener("change", () => saveSelectedVoice(localStorage, voiceSelector.value));
+    voiceSelector.addEventListener("change", async () => {
+      saveSelectedVoice(localStorage, voiceSelector.value);
+      // A realtime voice is fixed for a session, so reconnect to apply the
+      // server-side neural voice instead of swapping a browser TTS voice.
+      if (voice?.active) {
+        voice.stop();
+        await voice.start(voiceSelector.value);
+      }
+    });
 
-    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const recognition = Recognition ? new Recognition() : null;
-    const stateLabels = { idle: "語音待命", listening: "正在聆聽…", thinking: "正在思考…", speaking: "正在回答…" };
+    const stateLabels = { idle: "語音待命", connecting: "正在準備語音…", listening: "正在聽您說話", answering: "正在回答", speaking: "正在回答" };
     const setVoiceState = state => {
       voiceStatus.textContent = stateLabels[state] || state;
-      stopVoice.hidden = state !== "speaking";
+      stopVoice.hidden = state !== "speaking" && state !== "answering";
     };
-    const playNeural = async (text, options) => {
-      const response = await fetch("/api/voice", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, voice: options.voice, language: options.language }),
-        signal: options.signal
-      });
-      if (!response.ok) throw new Error("voice provider failed");
-      const url = URL.createObjectURL(await response.blob());
-      const audio = new Audio(url);
-      let finish;
-      const finished = new Promise((resolve, reject) => {
-        finish = resolve;
-        audio.onended = resolve;
-        audio.onerror = () => reject(new Error("audio playback failed"));
-      }).finally(() => URL.revokeObjectURL(url));
-      await audio.play();
-      return { finished, stop() { audio.pause(); audio.currentTime = 0; finish(); } };
-    };
-    const speakFallback = (text, locale) => new Promise((resolve, reject) => {
-      if (!window.speechSynthesis || !window.SpeechSynthesisUtterance) return reject(new Error("TTS unsupported"));
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = locale;
-      utterance.rate = .98;
-      utterance.onend = resolve;
-      utterance.onerror = reject;
-      window.speechSynthesis.speak(utterance);
-    });
-    const voice = new VoiceConversation({
-      recognition,
-      playNeural,
-      speakFallback,
-      onTranscript: transcript => sendMessage(transcript, true),
+    const voice = new RealtimeVoiceSession({
       onState: setVoiceState,
+      onTranscript: turn => {
+        // The realtime model speaks its own concise answer. /api/chat runs separately
+        // for the richer on-screen answer, links, history, and handoff summary.
+        if (turn.role === "user") sendMessage(turn.text, true);
+      },
       onError: message => { voiceStatus.textContent = message; }
     });
 
-    microphone.addEventListener("click", () => {
+    microphone.addEventListener("click", async () => {
       if (voice.active) {
         voice.stop();
         microphone.setAttribute("aria-pressed", "false");
         microphone.textContent = "🎙️ 語音";
-      } else if (voice.start(voiceLocaleFor(responseLanguage))) {
+      } else if (await voice.start(voiceSelector.value)) {
         microphone.setAttribute("aria-pressed", "true");
         microphone.textContent = "🎙️ 對話中";
       }
     });
-    stopVoice.addEventListener("click", () => voice.stopSpeaking());
+    stopVoice.addEventListener("click", () => voice.interrupt());
 
     async function sendMessage(rawMessage, fromVoice = false) {
       const message = rawMessage.trim();
       if (!message) return;
 
-      voice.stopSpeaking();
-      try { recognition?.abort(); } catch { /* already stopped */ }
       button.disabled = true;
       answer.textContent = "AI 正在思考中，請稍候…";
-      if (fromVoice) setVoiceState("thinking");
+
 
       try {
         const response = await fetch("/api/chat", {
@@ -184,7 +160,6 @@
           throw new Error("AI 未回傳文字答案");
         }
         const assistantAnswer = body.answer.trim();
-        responseLanguage = languageFromText(assistantAnswer);
         renderTextWithLinks(answer, assistantAnswer);
         conversationHistory.push(
           { role: "user", content: message },
@@ -197,10 +172,8 @@
         if (!stayDateInput.value) stayDateInput.value = dateFromConversation(conversationHistory);
         contactForm.elements.namedItem("summary").value = summaryFromConversation(conversationHistory);
         input.value = "";
-        if (fromVoice || voice.active) await voice.speak(assistantAnswer, { voice: voiceSelector.value, language: responseLanguage });
       } catch (error) {
         answer.textContent = `目前無法取得回答：${error.message || "未知錯誤"}`;
-        if (voice.active) voice.listen();
       } finally {
         button.disabled = false;
       }
