@@ -13,6 +13,11 @@
     #question { min-width: 0; flex: 1; padding: 14px; border-radius: 10px; border: 1px solid #ccc; font-size: 16px; }
     button { border: 0; border-radius: 10px; padding: 0 22px; background: #222; color: white; font-size: 16px; cursor: pointer; }
     button:disabled { cursor: wait; opacity: .6; }
+    .voice-panel { display: flex; align-items: center; gap: 9px; margin-top: 14px; padding: 10px; border: 1px solid #e4e4e4; border-radius: 12px; background: #fafafa; }
+    .voice-panel button { min-height: 42px; padding: 0 14px; }
+    .voice-panel select { min-width: 0; flex: 1; padding: 9px; border: 1px solid #ccc; border-radius: 8px; background: white; }
+    #voiceStatus { font-size: 13px; color: #666; white-space: nowrap; }
+    #stopVoice { background: #666; }
     #answer { margin-top: 25px; min-height: 1.7em; text-align: left; line-height: 1.7; background: #fafafa; padding: 18px; border-radius: 12px; white-space: pre-wrap; }
     .notice { margin-top: 30px; font-size: 13px; color: #777; }
     .contact { margin-top: 34px; padding-top: 24px; border-top: 1px solid #ddd; text-align: left; }
@@ -24,7 +29,7 @@
     #contactForm textarea { min-height: 90px; resize: vertical; }
     #contactForm button { min-height: 44px; }
     #contactStatus { min-height: 1.5em; margin-top: 12px; text-align: center; }
-    @media (max-width: 520px) { #contactForm { grid-template-columns: 1fr; } #contactForm .wide { grid-column: auto; } }
+    @media (max-width: 520px) { #contactForm { grid-template-columns: 1fr; } #contactForm .wide { grid-column: auto; } .voice-panel { flex-wrap: wrap; } .voice-panel select { flex-basis: 55%; } }
   </style>
 </head>
 <body>
@@ -39,6 +44,12 @@
       <input id="question" name="message" type="text" placeholder="請輸入您的問題" autocomplete="off" required>
       <button id="submitButton" type="submit">送出</button>
     </form>
+    <div class="voice-panel" aria-label="Voice Assistant V2 真人對話模式">
+      <button id="microphone" type="button" aria-pressed="false" title="開始真人語音對話">🎙️ 語音</button>
+      <select id="voiceSelector" aria-label="選擇女性聲音"></select>
+      <button id="stopVoice" type="button" hidden>停止說話</button>
+      <span id="voiceStatus" role="status" aria-live="polite">語音待命</span>
+    </div>
 
     <div id="answer" role="status" aria-live="polite">您好！請問今天有什麼可以協助您的呢？</div>
     <div class="notice">AI 提供一般旅宿資訊。訂房修改、退款、設備故障或其他特殊需求，請聯絡真人櫃台協助。</div>
@@ -59,6 +70,7 @@
 
   <script type="module">
     import { dateFromConversation, renderTextWithLinks, summaryFromConversation } from "./chat-ui.js";
+    import { languageFromText, loadSelectedVoice, saveSelectedVoice, VOICE_OPTIONS, VoiceConversation, voiceLocaleFor } from "./voice-assistant.js";
 
     const form = document.getElementById("chatForm");
     const input = document.getElementById("question");
@@ -68,14 +80,86 @@
     const conversationHistory = [];
     const contactForm = document.getElementById("contactForm");
     const contactStatus = document.getElementById("contactStatus");
+    const microphone = document.getElementById("microphone");
+    const voiceSelector = document.getElementById("voiceSelector");
+    const voiceStatus = document.getElementById("voiceStatus");
+    const stopVoice = document.getElementById("stopVoice");
+    let responseLanguage = "zh-TW";
 
-    form.addEventListener("submit", async event => {
-      event.preventDefault();
-      const message = input.value.trim();
+    for (const voice of VOICE_OPTIONS) {
+      const option = document.createElement("option");
+      option.value = voice.id;
+      option.textContent = `${voice.label} — ${voice.description}`;
+      voiceSelector.append(option);
+    }
+    voiceSelector.value = loadSelectedVoice(localStorage);
+    voiceSelector.addEventListener("change", () => saveSelectedVoice(localStorage, voiceSelector.value));
+
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = Recognition ? new Recognition() : null;
+    const stateLabels = { idle: "語音待命", listening: "正在聆聽…", thinking: "正在思考…", speaking: "正在回答…" };
+    const setVoiceState = state => {
+      voiceStatus.textContent = stateLabels[state] || state;
+      stopVoice.hidden = state !== "speaking";
+    };
+    const playNeural = async (text, options) => {
+      const response = await fetch("/api/voice", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, voice: options.voice, language: options.language }),
+        signal: options.signal
+      });
+      if (!response.ok) throw new Error("voice provider failed");
+      const url = URL.createObjectURL(await response.blob());
+      const audio = new Audio(url);
+      let finish;
+      const finished = new Promise((resolve, reject) => {
+        finish = resolve;
+        audio.onended = resolve;
+        audio.onerror = () => reject(new Error("audio playback failed"));
+      }).finally(() => URL.revokeObjectURL(url));
+      await audio.play();
+      return { finished, stop() { audio.pause(); audio.currentTime = 0; finish(); } };
+    };
+    const speakFallback = (text, locale) => new Promise((resolve, reject) => {
+      if (!window.speechSynthesis || !window.SpeechSynthesisUtterance) return reject(new Error("TTS unsupported"));
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = locale;
+      utterance.rate = .98;
+      utterance.onend = resolve;
+      utterance.onerror = reject;
+      window.speechSynthesis.speak(utterance);
+    });
+    const voice = new VoiceConversation({
+      recognition,
+      playNeural,
+      speakFallback,
+      onTranscript: transcript => sendMessage(transcript, true),
+      onState: setVoiceState,
+      onError: message => { voiceStatus.textContent = message; }
+    });
+
+    microphone.addEventListener("click", () => {
+      if (voice.active) {
+        voice.stop();
+        microphone.setAttribute("aria-pressed", "false");
+        microphone.textContent = "🎙️ 語音";
+      } else if (voice.start(voiceLocaleFor(responseLanguage))) {
+        microphone.setAttribute("aria-pressed", "true");
+        microphone.textContent = "🎙️ 對話中";
+      }
+    });
+    stopVoice.addEventListener("click", () => voice.stopSpeaking());
+
+    async function sendMessage(rawMessage, fromVoice = false) {
+      const message = rawMessage.trim();
       if (!message) return;
 
+      voice.stopSpeaking();
+      try { recognition?.abort(); } catch { /* already stopped */ }
       button.disabled = true;
       answer.textContent = "AI 正在思考中，請稍候…";
+      if (fromVoice) setVoiceState("thinking");
 
       try {
         const response = await fetch("/api/chat", {
@@ -100,6 +184,7 @@
           throw new Error("AI 未回傳文字答案");
         }
         const assistantAnswer = body.answer.trim();
+        responseLanguage = languageFromText(assistantAnswer);
         renderTextWithLinks(answer, assistantAnswer);
         conversationHistory.push(
           { role: "user", content: message },
@@ -112,11 +197,18 @@
         if (!stayDateInput.value) stayDateInput.value = dateFromConversation(conversationHistory);
         contactForm.elements.namedItem("summary").value = summaryFromConversation(conversationHistory);
         input.value = "";
+        if (fromVoice || voice.active) await voice.speak(assistantAnswer, { voice: voiceSelector.value, language: responseLanguage });
       } catch (error) {
         answer.textContent = `目前無法取得回答：${error.message || "未知錯誤"}`;
+        if (voice.active) voice.listen();
       } finally {
         button.disabled = false;
       }
+    }
+
+    form.addEventListener("submit", event => {
+      event.preventDefault();
+      sendMessage(input.value);
     });
 
     contactForm.addEventListener("submit", async event => {

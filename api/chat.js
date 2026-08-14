@@ -121,7 +121,7 @@ function additionalHotelNeeds(message, language = "zh-TW") {
 }
 
 export function availabilityReply(message, now = new Date()) {
-  if (!/(有房|空房|房況|訂房|入住|住宿|room|availab|book|check[ -]?in|stay|予約|空室|宿泊|チェックイン|객실|예약|숙박|체크인)/iu.test(message)) return null;
+  if (!/(有房|空房|房況|訂房|入住|住宿|(?:要|想|會)住|room|availab|book|check[ -]?in|stay|予約|空室|宿泊|\d+\s*泊|チェックイン|객실|예약|숙박|체크인)/iu.test(message)) return null;
   const dates = bookingDates(message, now);
   if (!dates) return null;
   const language = detectGuestLanguage(message);

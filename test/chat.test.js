@@ -103,6 +103,23 @@ test("answers an English booking and crib request without promising the crib", (
   assert.doesNotMatch(reply, /一定能提供/);
 });
 
+test("handles the Voice V2 booking-and-crib scenario in every supported language", () => {
+  const now = new Date("2026-08-14T00:00:00Z");
+  const cases = [
+    ["我 8/20 要住兩晚，還要嬰兒床。", /嬰兒床/u],
+    ["I need a room for two nights starting August 20. Can I also request a baby crib?", /baby crib/i],
+    ["8月20日から2泊したいです。ベビーベッドもお願いできますか？", /ベビーベッド/u],
+    ["8월 20일부터 2박 숙박하고 싶어요. 아기 침대도 요청할 수 있나요?", /아기 침대/u]
+  ];
+  for (const [message, equipment] of cases) {
+    const reply = availabilityReply(message, now);
+    assert.match(reply, equipment);
+    assert.match(reply, /2026-08-2[02]/u);
+    assert.match(reply, /https:\/\/book-directonline\.com/u);
+    assert.doesNotMatch(reply, /(?:保證提供|guaranteed available|必ずご用意|반드시 제공)/iu);
+  }
+});
+
 test("puts the requested stay length in the dated booking link and AI reply", () => {
   const reply = availabilityReply("2026/8/20 入住兩晚有房嗎？", new Date("2026-08-13T00:00:00Z"));
   assert.match(reply, /2026-08-20 入住、2026-08-22 退房/);
