@@ -1,6 +1,6 @@
 export const VOICE_OPTIONS = Object.freeze([
-  { id: "coral", label: "珊瑚 Coral", description: "爽朗親切、自然有精神（推薦）", recommended: true },
-  { id: "marin", label: "海風 Marin", description: "明亮專業" },
+  { id: "marin", label: "海風 Marin", description: "明亮專業（推薦）", recommended: true },
+  { id: "coral", label: "珊瑚 Coral", description: "爽朗親切、自然有精神" },
   { id: "cedar", label: "雪松 Cedar", description: "自然穩定" },
   { id: "sage", label: "鼠尾草 Sage", description: "溫暖俐落" },
   { id: "verse", label: "詩語 Verse", description: "輕快口語" },
