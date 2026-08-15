@@ -1,11 +1,10 @@
-import { hotelKnowledge, knowledgeForPrompt } from "../data/hotel-info.js";
+import { hotelKnowledge, KNOWLEDGE_VERSION, groundedKnowledgePrompt } from "../ai-core/knowledge.js";
+import { bookingDates, datedBookingUrl, hasBookingIntent } from "../ai-core/booking.js";
 import { detectGuestLanguage } from "../guest-language.js";
-import { bookingDatesFromText } from "../stay-dates.js";
 
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const OPENAI_MODEL = process.env.OPENAI_MODEL?.trim() || "gpt-4.1-mini";
 const REQUEST_TIMEOUT_MS = 25_000;
-const KNOWLEDGE_VERSION = "2.0";
 const MAX_HISTORY_MESSAGES = 20;
 const MAX_MESSAGE_LENGTH = 2_000;
 
@@ -28,16 +27,7 @@ export function normalizedHistory(history) {
     .slice(-MAX_HISTORY_MESSAGES);
 }
 
-export function bookingDates(message, now = new Date()) {
-  return bookingDatesFromText(message, now);
-}
-
-export function datedBookingUrl(dates) {
-  const url = new URL(hotelKnowledge.identity.bookingUrl);
-  url.searchParams.set("checkInDate", dates.checkInDate);
-  url.searchParams.set("checkOutDate", dates.checkOutDate);
-  return url.toString();
-}
+export { bookingDates, datedBookingUrl };
 
 const REPLY_TEXT = Object.freeze({
   "zh-TW": {
@@ -121,7 +111,7 @@ function additionalHotelNeeds(message, language = "zh-TW") {
 }
 
 export function availabilityReply(message, now = new Date()) {
-  if (!/(有房|空房|房況|訂房|入住|住宿|(?:要|想|會)住|room|availab|book|check[ -]?in|stay|予約|空室|宿泊|\d+\s*泊|チェックイン|객실|예약|숙박|체크인)/iu.test(message)) return null;
+  if (!hasBookingIntent(message)) return null;
   const dates = bookingDates(message, now);
   if (!dates) return null;
   const language = detectGuestLanguage(message);
@@ -212,8 +202,7 @@ export function responsesPayload(message, history = []) {
 餐廳具體店名屬變動資訊；若無法即時查證，先詢問餐飲偏好並說明須查詢最新營業資訊，不可編造店家。
 請連貫理解下方對話脈絡。旅客使用「那」、「這個」、「兩個人呢」、「如果晚一點呢」等承接語時，應依最近對話判斷所指主題；計算仍只能使用正式知識庫已確認的數字。
 
-正式知識庫（V${KNOWLEDGE_VERSION}）：
-${knowledgeForPrompt()}${relevant ? `\n\n從正式知識庫擷取的本題相關欄位（內容完全相同，回答時優先核對）：\n${JSON.stringify(relevant, null, 2)}` : ""}`,
+${groundedKnowledgePrompt()}${relevant ? `\n\n從正式知識庫擷取的本題相關欄位（內容完全相同，回答時優先核對）：\n${JSON.stringify(relevant, null, 2)}` : ""}`,
     input: [...conversation, { role: "user", content: message }]
   };
 }
