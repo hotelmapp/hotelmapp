@@ -6,7 +6,7 @@ import {
   hospitalityPersonalityInstructions,
   channelPresentationInstructions
 } from "../ai-core/hospitality-personality.js";
-import { breakfastReply, informationalReply, responsesPayload } from "../ai-core/guest-response.js";
+import { breakfastReply, informationalReply, responsesPayload, sensitiveSituationReply } from "../ai-core/guest-response.js";
 import { voiceInstructions } from "../api/realtime.js";
 
 test("Web and LINE compose the same shared hospitality personality with presentation-only differences", () => {
@@ -41,6 +41,39 @@ test("unknown information stays warm and is never invented", () => {
   assert.match(answer, /目前沒有確認到/);
   assert.match(answer, /櫃檯確認/);
   assert.doesNotMatch(answer, /(?:NT\$|元|價格是)\s*\d+/u);
+});
+
+test("simple breakfast time stays concise and naturally friendly", () => {
+  assert.equal(breakfastReply("早餐幾點？"), "早餐時間是 08:00–10:00 喔～");
+});
+
+test("vegetarian breakfast offers the confirmed arrangement in a service-first tone", () => {
+  const answer = breakfastReply("早餐可以素食嗎？");
+  assert.match(answer, /^可以喔～/);
+  assert.match(answer, /提前告知櫃台.*蛋奶素餐點/);
+});
+
+test("parking gives a useful next step without guaranteeing a space", () => {
+  const answer = informationalReply("停車怎麼辦？");
+  assert.match(answer, /3 個車位.*配合停車場/);
+  assert.match(answer, /依當天現場狀況與車位情形協助安排/);
+  assert.doesNotMatch(answer, /保證|一定有/);
+});
+
+test("equipment trouble and complaints use restrained handoff language", () => {
+  for (const message of ["房間冷氣壞掉了", "我要客訴，真的很不滿"]) {
+    const answer = sensitiveSituationReply(message);
+    assert.match(answer, /櫃檯|飯店同仁/);
+    assert.doesNotMatch(answer, /😊|沒問題喔|～/u);
+  }
+});
+
+test("payment, refund, and booking changes never claim an unperformed result", () => {
+  const payment = sensitiveSituationReply("重複扣款了，請幫我退款");
+  assert.match(payment, /不會先承諾退款或款項已處理/);
+  const booking = sensitiveSituationReply("請幫我修改訂房日期");
+  assert.match(booking, /還沒有替您完成變更/);
+  assert.match(booking, /原平台申請/);
 });
 
 test("handoff honesty and booking, payment, and refund guardrails remain in shared instructions", () => {

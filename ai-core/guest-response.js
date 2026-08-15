@@ -33,7 +33,7 @@ const REPLY_TEXT = Object.freeze({
   "zh-TW": {
     booking: (dates, url) => `當然可以！如果您預計 ${dates.checkInDate} 入住、${dates.checkOutDate} 退房，可以透過下方官方訂房頁面查看最新房價與空房：\n${url}`,
     baby: name => `${name}可以協助提出需求；建議在入住前一天告知，會依數量與現場狀況安排，因此無法事先保證。`,
-    parking: `有喔～飯店有 ${hotelKnowledge.parking.hotelSpaces} 個車位，另外也有配合停車場。如果您是開車過來，可以先跟我們說一聲；車位還是會依當天現場狀況協助安排 😊`,
+    parking: `有喔～飯店有 ${hotelKnowledge.parking.hotelSpaces} 個車位，另外也有配合停車場。如果您是開車過來，可以先跟我們說一聲，我們會依當天現場狀況與車位情形協助安排 😊`,
     breakfast: `有的～早餐供應時間為 ${hotelKnowledge.breakfast.serviceHours}；如果房價沒有含早餐，也可以用 ${hotelKnowledge.breakfast.pricePerPerson} 加購。`,
     confirm: summary => `如果您需要，我可以幫您把${summary}整理好，透過下方「留言給飯店人員」表單交給飯店人員確認。`
   },
@@ -158,9 +158,9 @@ export function breakfastReply(message) {
     return breakfast.takeawayAvailable ? `可以外帶，請${breakfast.notes.find(note => note.includes("外帶")).replace(/^如需外帶，可/, "")}` : "目前沒有提供早餐外帶。";
   }
   if (/(素食|蛋奶素|吃素)/u.test(message)) {
-    return breakfast.vegetarianOption.replace("；旅客須", "，請").replace("由餐廳", "餐廳會");
+    return `可以喔～如果您有素食需求，可以提前告知櫃台，我們會請餐廳協助調整成蛋奶素餐點。`;
   }
-  if (/(幾點|時間|供應到|開始|結束)/u.test(message)) return `早餐供應時間是 ${breakfast.serviceHours}。`;
+  if (/(幾點|時間|供應到|開始|結束)/u.test(message)) return `早餐時間是 ${breakfast.serviceHours} 喔～`;
   if (/(多少|價格|費用|價錢|加購)/u.test(message)) return `早餐加購是 ${breakfast.pricePerPerson}。`;
   if (/(哪裡|地點|幾樓)/u.test(message)) return `早餐在${breakfast.location}用餐。`;
   return REPLY_TEXT["zh-TW"].breakfast;
@@ -174,6 +174,24 @@ export function informationalReply(message) {
   if (asksBreakfast && !asksParking) return breakfastReply(message);
   if (asksParking && !asksBreakfast) return copy.parking;
   if (asksBreakfast && asksParking) return `${copy.parking}\n\n${breakfastReply(message)}`;
+  return null;
+}
+
+// Deterministic safety replies for situations where friendly wording must never
+// imply that an operational action has already happened.
+export function sensitiveSituationReply(message) {
+  if (/(冷氣|空調|電視|熱水|門鎖|房內設備).*(壞|故障|沒反應|無法使用)|(?:壞|故障|沒反應|無法使用).*(冷氣|空調|電視|熱水|門鎖|房內設備)/u.test(message)) {
+    return "了解，這個情況需要請櫃檯協助您處理。您可以直接聯絡櫃檯，我們會請同仁協助確認。";
+  }
+  if (/(客訴|投訴|抱怨|很不滿|太糟|非常生氣)/u.test(message)) {
+    return "了解您的感受，這個情況需要由飯店同仁進一步了解。請直接聯絡櫃檯，讓同仁確認狀況並協助您處理。";
+  }
+  if (/(退款|退費|重複扣款|付款異常|刷卡失敗|扣款).*(幫我|處理|怎麼辦|還沒|沒有|問題|異常|失敗)?/u.test(message)) {
+    return "了解，付款或退款狀況需要由原付款管道確認。請聯絡櫃檯；如果是透過訂房平台付款，也請向原平台查詢，我這邊不會先承諾退款或款項已處理。";
+  }
+  if (/(修改|更改|取消).*(訂房|預訂|日期|入住)|(?:訂房|預訂).*(修改|更改|取消)/u.test(message)) {
+    return "可以協助確認修改方式，但我這邊還沒有替您完成變更。若是向飯店或官網訂房，請聯絡櫃檯；若是透過訂房平台預訂，原則上請向原平台申請。";
+  }
   return null;
 }
 
@@ -226,7 +244,7 @@ export function responseText(response) {
 export async function answerGuestMessage(message, { history = [], channel = "web" } = {}) {
   const trimmed = typeof message === "string" ? message.trim().slice(0, MAX_MESSAGE_LENGTH) : "";
   if (!trimmed) throw new TypeError("A non-empty guest message is required");
-  const directAnswer = availabilityReply(trimmed) || specialRequestReply(trimmed) || informationalReply(trimmed);
+  const directAnswer = sensitiveSituationReply(trimmed) || availabilityReply(trimmed) || specialRequestReply(trimmed) || informationalReply(trimmed);
   if (directAnswer) return directAnswer;
 
   const payload = responsesPayload(trimmed, history, channel);
