@@ -1,6 +1,9 @@
 import { VOICE_OPTIONS } from "../voice-assistant.js";
 import { groundedKnowledgePrompt } from "../ai-core/knowledge.js";
 import { styledInstructions } from "../ai-core/hospitality-personality.js";
+import { decideHandoff } from "../ai-core/handoff.js";
+
+export { decideHandoff };
 
 const CLIENT_SECRETS_URL = "https://api.openai.com/v1/realtime/client_secrets";
 export const config = { maxDuration: 15 };
@@ -25,7 +28,7 @@ export function voiceInstructions() {
 像真人聊天，不像客服 IVR、主播、朗讀機或 TTS。先直接回答客人的重點，再視需要補充；一次通常只回答一到三個口語短句，必要時只追問一個簡短問題。可以偶爾自然使用「好的」、「可以」、「沒問題」、「嗯，我幫您確認一下」這類短銜接，但不要每次都使用，也不要形成固定開場。語速自然，句子之間允許短暫停頓，不要刻意拖長、過度甜膩或使用誇張情緒。
 不要重述客人的問題，不要使用條列、Markdown、標題，不要朗讀網址、URL、畫面文字、符號、欄位名稱、系統資訊或完整文章。訂房時只自然說「可以點畫面上的官方訂房連結」，完整日期、價格與網址會另外顯示在畫面。
 務必連貫理解整個 session 的對話歷史；「那小朋友呢」等承接問題須延續上一個主題。若客人插話，立刻停下並聽完新問題。
-不得猜測房價、空房或未記載資訊。需要真人處理的特殊需求、訂單、退款、設備問題，親切引導客人使用畫面下方留言表單或洽櫃檯，不可聲稱已經送出。保留嬰兒床等需求的現場確認限制。
+不得猜測房價、空房或未記載資訊。需要真人處理的特殊需求、訂單、退款、設備問題，必須依 shared handoff decision 判定並交由 shared handoff service 寄信；只有收到寄送成功結果才可說已留言，失敗時提供櫃檯聯絡方式。不得聲稱已保留車位、修改訂房、付款或退款。保留嬰兒床等需求的現場確認限制。
 ${groundedKnowledgePrompt()}`;
 }
 
@@ -36,6 +39,12 @@ export function realtimeSession(voice) {
       type: "realtime",
       model: process.env.OPENAI_REALTIME_MODEL?.trim() || "gpt-realtime",
       instructions: voiceInstructions(),
+      tools: [{
+        type: "function", name: "handoff_to_front_desk",
+        description: "For a request requiring human action, send the guest request to the shared front-desk handoff service. Always speak exactly from the returned delivery result.",
+        parameters: { type: "object", properties: { message: { type: "string", description: "A concise summary of the guest request and necessary recent context" } }, required: ["message"], additionalProperties: false }
+      }],
+      tool_choice: "auto",
       audio: {
         input: { transcription: { model: "gpt-4o-mini-transcribe" }, turn_detection: { type: "semantic_vad", eagerness: "high", create_response: true, interrupt_response: true } },
         output: { voice: selected }

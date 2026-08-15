@@ -1,9 +1,8 @@
 import { contactDetails, stayDateFromHistory } from "../ai-core/handoff.js";
+import { sendEmail, EmailDeliveryError } from "../ai-core/email-transport.js";
+import { frontDeskEmail } from "../ai-core/operational-config.js";
 
-const RESEND_EMAILS_URL = "https://api.resend.com/emails";
-const RECIPIENT = "hotel.mapp158@gmail.com";
 const SENDER = "希堤微旅 AI 智慧櫃台 <onboarding@resend.dev>";
-const REQUEST_TIMEOUT_MS = 15_000;
 
 const LIMITS = Object.freeze({
   name: 80,
@@ -54,7 +53,7 @@ function singleLine(value) {
 export function emailForContact(data, now = new Date()) {
   return {
     from: SENDER,
-    to: [RECIPIENT],
+    to: [frontDeskEmail()],
     subject: `【AI 客人留言】${singleLine(data.reason)}－${singleLine(data.name)}`,
     text: [
       `留言時間：${now.toISOString()}`,
@@ -94,46 +93,14 @@ export default async function handler(req, res) {
     summary: validation.data.summary || generated.summary
   };
 
-  const apiKey = process.env.RESEND_API_KEY?.trim();
-  if (!apiKey) {
-    console.error("[api/contact] RESEND_API_KEY is not configured");
-    return reply(res, 500, {
-      error: "目前留言未成功送出，請直接聯絡櫃台",
-      code: "email_service_unavailable"
-    });
-  }
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  let upstream;
   try {
-    upstream = await fetch(RESEND_EMAILS_URL, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify(emailForContact(validation.data)),
-      signal: controller.signal
-    });
+    await sendEmail(emailForContact(validation.data));
   } catch (error) {
-    console.error("[api/contact] Resend request failed", { name: error?.name });
-    return reply(res, 502, {
+    const code = error instanceof EmailDeliveryError ? error.code : "email_send_failed";
+    console.error("[api/contact] Email delivery failed", { code });
+    return reply(res, code === "email_service_unavailable" ? 500 : 502, {
       error: "目前留言未成功送出，請直接聯絡櫃台",
-      code: error?.name === "AbortError" ? "email_timeout" : "email_connection_failed"
-    });
-  } finally {
-    clearTimeout(timeout);
-  }
-
-  let body;
-  try {
-    body = await upstream.json();
-  } catch {
-    body = null;
-  }
-  if (!upstream.ok || typeof body?.id !== "string" || !body.id.trim()) {
-    console.error("[api/contact] Resend rejected email", { status: upstream.status });
-    return reply(res, 502, {
-      error: "目前留言未成功送出，請直接聯絡櫃台",
-      code: "email_send_failed"
+      code
     });
   }
 
