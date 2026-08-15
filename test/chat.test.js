@@ -355,7 +355,7 @@ test("answers breakfast regressions from structured facts without inventing menu
     ["早餐有什麼菜？", /4 種口味.*當天 Menu/u],
     ["早餐可以外帶嗎？", /可以外帶.*提前告知櫃台/u],
     ["早餐有素食嗎？", /提前告知櫃台.*蛋奶素/u],
-    ["小朋友早餐多少錢？", /沒有確認的兒童早餐價格.*詢問櫃台/u]
+    ["小朋友早餐多少錢？", /兒童早餐的價格.*沒有確認到.*櫃檯確認/u]
   ];
   for (const [question, expected] of cases) assert.match(breakfastReply(question), expected);
   assert.doesNotMatch(breakfastReply("早餐有什麼菜？"), /吐司|沙拉|培根|稀飯|饅頭/u);

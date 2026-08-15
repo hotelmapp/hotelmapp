@@ -90,7 +90,7 @@ test("does not guess an unknown child breakfast price", async t => {
     return new Response("{}", { status: 200 });
   };
   await processLineEvent({ webhookEventId: "child-1", type: "message", replyToken: "r", message: { type: "text", text: "小朋友早餐多少錢？" } }, { accessToken: "token" });
-  assert.match(text, /沒有確認的兒童早餐價格/);
+  assert.match(text, /兒童早餐的價格.*沒有確認到/);
   assert.doesNotMatch(text, /NT\$\s*\d+/u);
 });
 

@@ -2,6 +2,7 @@ import { hotelKnowledge, KNOWLEDGE_VERSION, groundedKnowledgePrompt } from "./kn
 import { bookingDates, datedBookingUrl, hasBookingIntent } from "./booking.js";
 import { detectGuestLanguage } from "../guest-language.js";
 import { requestGroundedResponse } from "./response-service.js";
+import { styledInstructions } from "./hospitality-personality.js";
 
 const OPENAI_MODEL = process.env.OPENAI_MODEL?.trim() || "gpt-4.1-mini";
 const MAX_HISTORY_MESSAGES = 20;
@@ -32,8 +33,8 @@ const REPLY_TEXT = Object.freeze({
   "zh-TW": {
     booking: (dates, url) => `當然可以！如果您預計 ${dates.checkInDate} 入住、${dates.checkOutDate} 退房，可以透過下方官方訂房頁面查看最新房價與空房：\n${url}`,
     baby: name => `${name}可以協助提出需求；建議在入住前一天告知，會依數量與現場狀況安排，因此無法事先保證。`,
-    parking: `飯店有 ${hotelKnowledge.parking.hotelSpaces} 個車位，另有配合停車場；實際車位仍需依當日現場狀況安排。`,
-    breakfast: `早餐供應時間為 ${hotelKnowledge.breakfast.serviceHours}，未含早餐也可以加購，${hotelKnowledge.breakfast.pricePerPerson}。`,
+    parking: `有喔～飯店有 ${hotelKnowledge.parking.hotelSpaces} 個車位，另外也有配合停車場。如果您是開車過來，可以先跟我們說一聲；車位還是會依當天現場狀況協助安排 😊`,
+    breakfast: `有的～早餐供應時間為 ${hotelKnowledge.breakfast.serviceHours}；如果房價沒有含早餐，也可以用 ${hotelKnowledge.breakfast.pricePerPerson} 加購。`,
     confirm: summary => `如果您需要，我可以幫您把${summary}整理好，透過下方「留言給飯店人員」表單交給飯店人員確認。`
   },
   en: {
@@ -151,7 +152,7 @@ export function breakfastReply(message) {
     return `主餐有 ${breakfast.menuChoiceCount} 種口味可選，餐點內容會不定時更換，請以當天 Menu 為準。`;
   }
   if (/(兒童|小朋友|小孩).*(多少|價格|費用|價錢)|(?:多少|價格|費用|價錢).*(兒童|小朋友|小孩)/u.test(message)) {
-    return breakfast.childPrice === null ? "目前沒有確認的兒童早餐價格資訊，建議詢問櫃台。" : `兒童早餐價格是 ${breakfast.childPrice}。`;
+    return breakfast.childPrice === null ? "兒童早餐的價格我這邊目前沒有確認到耶～如果您需要，建議再跟櫃檯確認一下，這樣會比較準確。" : `有的～兒童早餐價格是 ${breakfast.childPrice}。`;
   }
   if (/(外帶|帶走)/u.test(message)) {
     return breakfast.takeawayAvailable ? `可以外帶，請${breakfast.notes.find(note => note.includes("外帶")).replace(/^如需外帶，可/, "")}` : "目前沒有提供早餐外帶。";
@@ -176,14 +177,16 @@ export function informationalReply(message) {
   return null;
 }
 
-export function responsesPayload(message, history = []) {
+export function responsesPayload(message, history = [], channel = "web") {
   const conversation = normalizedHistory(history);
   const responseLanguage = detectGuestLanguage(message, conversation);
   const contextText = [...conversation.map(item => item.content), message].join("\n");
   const relevant = relevantKnowledge(contextText);
   return {
     model: OPENAI_MODEL,
-    instructions: `你是希堤微旅專業、親切、自然的智慧櫃台人員。支援繁體中文（zh-TW）、English（en）、日本語（ja）、한국어（ko）。本次判定旅客主要語言為 ${responseLanguage}，必須使用該語言並全程以該語言簡潔回答；不要因下方飯店資料是繁體中文而改用中文，也不要夾雜其他語言。專有名詞、飯店名稱與網址可保留原文。若語言無法可靠判斷則使用繁體中文。
+    instructions: `${styledInstructions(channel)}
+
+支援繁體中文（zh-TW）、English（en）、日本語（ja）、한국어（ko）。本次判定旅客主要語言為 ${responseLanguage}，必須使用該語言並全程以該語言簡潔回答；不要因下方飯店資料是繁體中文而改用中文，也不要夾雜其他語言。專有名詞、飯店名稱與網址可保留原文。若語言無法可靠判斷則使用繁體中文。
 判斷時以旅客目前訊息為優先，並參考最近對話；回答原則上跟隨目前訊息的語言。
 先自然回應旅客的需求，再提供必要資訊與下一步。只抽取與旅客這次實際詢問直接相關的知識，不要整段複述知識來源，也不要自行增加同類用品（例如只問嬰兒床時，不得順帶列出床圍、消毒鍋或澡盆）。一般回答控制在 2～4 個短段落，每段只聚焦一件事，避免重複同義提醒。使用親切、簡潔、有服務感但不過度客套的語氣；不要採用系統公告、FAQ、制式標題或機械式編號清單。不要以「AI 無法」、「系統無法」、「AI cannot」或其他負面能力聲明開頭，也不要在每段重複致謝或「很高興為您服務」等客套話。
 只有旅客表達明確訂房或住宿意圖時，才在回答問題後自然提供一次官方訂房入口；單純詢問早餐、停車、交通或其他一般資訊時不得附上訂房連結，也不要重複貼連結或過度推銷。
@@ -226,9 +229,6 @@ export async function answerGuestMessage(message, { history = [], channel = "web
   const directAnswer = availabilityReply(trimmed) || specialRequestReply(trimmed) || informationalReply(trimmed);
   if (directAnswer) return directAnswer;
 
-  const payload = responsesPayload(trimmed, history);
-  if (channel === "line") {
-    payload.instructions += "\n\n此回答將透過 LINE 傳送；請保持自然精簡、純文字且適合手機閱讀，不使用網頁 UI 專屬措辭。";
-  }
+  const payload = responsesPayload(trimmed, history, channel);
   return (await requestGroundedResponse({ payload })).answer;
 }
