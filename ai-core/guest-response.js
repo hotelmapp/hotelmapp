@@ -3,7 +3,7 @@ import { bookingDates, datedBookingUrl, hasBookingIntent } from "./booking.js";
 import { detectGuestLanguage } from "../guest-language.js";
 import { requestGroundedResponse } from "./response-service.js";
 import { styledInstructions } from "./hospitality-personality.js";
-import { performHandoff } from "./handoff-service.js";
+import { gatedHandoffReply, HANDOFF_SUCCESS_PATTERN, performHandoff } from "./handoff-service.js";
 
 const OPENAI_MODEL = process.env.OPENAI_MODEL?.trim() || "gpt-4.1-mini";
 const MAX_HISTORY_MESSAGES = 20;
@@ -251,5 +251,11 @@ export async function answerGuestMessage(message, { history = [], channel = "web
   if (directAnswer) return directAnswer;
 
   const payload = responsesPayload(trimmed, history, channel);
-  return (await requestGroundedResponse({ payload })).answer;
+  const answer = (await requestGroundedResponse({ payload })).answer;
+  // Model text is never evidence of an operational delivery. Even for a
+  // missed/novel intent phrase, a success-like claim is replaced rather than
+  // being allowed to escape through the general response path.
+  return HANDOFF_SUCCESS_PATTERN.test(answer)
+    ? gatedHandoffReply({ delivered: false, channel })
+    : answer;
 }

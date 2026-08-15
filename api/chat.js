@@ -1,6 +1,8 @@
 import { KNOWLEDGE_VERSION } from "../ai-core/knowledge.js";
 import { OpenAIResponseError } from "../ai-core/response-service.js";
 import { answerGuestMessage } from "../ai-core/guest-response.js";
+import { decideHandoff } from "../ai-core/handoff.js";
+import { performHandoff } from "../ai-core/handoff-service.js";
 
 export * from "../ai-core/guest-response.js";
 
@@ -26,6 +28,28 @@ export default async function handler(req, res) {
   }
 
   try {
+    // Operational intents are resolved before any informational or model path.
+    // This keeps Email delivery observable and makes the shared service the
+    // only possible source of a delivery-success claim.
+    const handoffDecision = decideHandoff(message, req.body?.history);
+    if (handoffDecision.required) {
+      const handoff = await performHandoff({ message, history: req.body?.history, channel: "web" });
+      const answer = await answerGuestMessage(message, {
+        history: req.body?.history,
+        channel: "web",
+        // Reuse the already completed deterministic operation while retaining
+        // any factual/direct answer that should accompany it.
+        handoffService: async () => handoff
+      });
+      return res.status(200).json({
+        answer,
+        diagnostic: {
+          knowledgeVersion: KNOWLEDGE_VERSION,
+          commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) || "local",
+          handoff: { attempted: handoff.attempted, delivered: handoff.delivered }
+        }
+      });
+    }
     const answer = await answerGuestMessage(message, { history: req.body?.history, channel: "web" });
     return res.status(200).json({
       answer,
