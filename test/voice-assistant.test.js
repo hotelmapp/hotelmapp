@@ -258,3 +258,37 @@ test("unsupported browsers cleanly fall back without breaking text chat", async 
   assert.equal(await session.start(), false);
   assert.match(errors[0], /文字聊天/);
 });
+
+const FALSE_HANDOFF_SUCCESS = /已留言|已通知|已送出|已經幫您.*留言/u;
+
+for (const [name, fetchImpl] of [
+  ["delivered false", async () => ({ ok: true, json: async () => ({ delivered: false, answer: "已留言" }) })],
+  ["non-2xx", async () => ({ ok: false, json: async () => ({ delivered: true, answer: "已通知" }) })],
+  ["invalid JSON", async () => ({ ok: true, json: async () => { throw new SyntaxError("bad"); } })],
+  ["fetch rejection", async () => { throw new Error("network"); }]
+]) test(`voice handoff ${name} gates function output and spoken output`, async () => {
+  const sent = [];
+  const transcripts = [];
+  const session = new RealtimeVoiceSession({ fetchImpl, onTranscript: turn => transcripts.push(turn) });
+  session.channel = { readyState: "open", send: value => sent.push(JSON.parse(value)) };
+  await session.runHandoffTool({ call_id: "call-1", arguments: JSON.stringify({ message: "請幫我留言給櫃台，我要客訴" }) });
+  const tool = sent.find(item => item.type === "conversation.item.create");
+  const output = JSON.parse(tool.item.output);
+  assert.equal(output.delivered, false);
+  assert.match(output.answer, /04-2707-8378.*07:00–22:00/u);
+  assert.doesNotMatch(output.answer, FALSE_HANDOFF_SUCCESS);
+  assert.match(sent.at(-1).response.instructions, /Say exactly this server answer, verbatim/);
+  session.handleEvent({ type: "response.output_audio_transcript.done", transcript: "已經幫您留言給櫃台" });
+  assert.equal(transcripts.at(-1).text, output.answer);
+  assert.doesNotMatch(transcripts.at(-1).text, FALSE_HANDOFF_SUCCESS);
+});
+
+test("deterministic voice handoff intent bypasses tool_choice auto at application level", async () => {
+  const sent = [];
+  const session = new RealtimeVoiceSession({ fetchImpl: async () => ({ ok: true, json: async () => ({ delivered: false }) }) });
+  session.channel = { readyState: "open", send: value => sent.push(JSON.parse(value)) };
+  session.handleEvent({ type: "conversation.item.input_audio_transcription.completed", transcript: "請幫我留言給櫃台，我要客訴" });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(sent.slice(0, 2).map(item => item.type), ["response.cancel", "output_audio_buffer.clear"]);
+  assert.ok(sent.some(item => item.type === "conversation.item.create"));
+});

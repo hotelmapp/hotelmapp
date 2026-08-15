@@ -62,15 +62,24 @@ export function handoffGuestReply({ delivered, category, channel = "web" }) {
   return channel === "voice" ? response.replace("可以喔～", "好的，") : response;
 }
 
+export const HANDOFF_SUCCESS_PATTERN = /(?:已(?:經)?(?:幫您)?(?:把)?.{0,20}(?:留言|通知|送出|轉交)|已留言|已通知|已送出)/u;
+
+// Delivery is an allow-list, not a best-effort interpretation: only the
+// literal boolean `true` may unlock delivery-confirming language.
+export function gatedHandoffReply({ delivered, category, channel = "web" }) {
+  return handoffGuestReply({ delivered: delivered === true, category, channel });
+}
+
 export async function performHandoff({ message, history = [], channel = "web", identity, now }, { send = sendEmail } = {}) {
   const decision = decideHandoff(message, history);
   if (!decision.required) return { attempted: false, delivered: false, decision };
   const email = handoffEmail({ channel, message, history, category: decision.category, identity, now });
   try {
-    await send(email);
-    return { attempted: true, delivered: true, decision, answer: handoffGuestReply({ delivered: true, category: decision.category, channel }) };
+    const delivery = await send(email);
+    if (delivery?.delivered !== true) throw new Error("email_delivery_unconfirmed");
+    return { attempted: true, delivered: true, decision, answer: gatedHandoffReply({ delivered: true, category: decision.category, channel }) };
   } catch (error) {
     console.error("[handoff] Email delivery failed", { code: error?.code || "email_send_failed", channel, category: decision.category });
-    return { attempted: true, delivered: false, decision, answer: handoffGuestReply({ delivered: false, category: decision.category, channel }) };
+    return { attempted: true, delivered: false, decision, answer: gatedHandoffReply({ delivered: false, category: decision.category, channel }) };
   }
 }

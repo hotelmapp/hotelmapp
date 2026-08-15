@@ -1,3 +1,6 @@
+import { decideHandoff } from "./ai-core/handoff.js";
+import { gatedHandoffReply } from "./ai-core/handoff-service.js";
+
 export const VOICE_OPTIONS = Object.freeze([
   { id: "marin", label: "海風 Marin", description: "明亮專業（推薦）", recommended: true },
   { id: "coral", label: "珊瑚 Coral", description: "爽朗親切、自然有精神" },
@@ -129,13 +132,20 @@ export class RealtimeVoiceSession {
     let args;
     try { args = JSON.parse(event.arguments || "{}"); } catch { args = {}; }
     let output;
+    const decision = decideHandoff(args.message || "");
     try {
       const response = await this.fetch("/api/handoff", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ channel: "voice", message: args.message }), signal: this.abortController?.signal });
-      const body = await response.json().catch(() => ({}));
-      output = { delivered: response.ok && body.delivered === true, answer: body.answer || "不好意思，目前無法把留言送到櫃台，請直接聯絡櫃台。" };
-    } catch { output = { delivered: false, answer: "不好意思，目前無法把留言送到櫃台，請直接聯絡櫃台。" }; }
+      const body = await response.json();
+      const delivered = response.ok && body?.delivered === true;
+      output = { delivered, answer: delivered && typeof body.answer === "string"
+        ? body.answer
+        : gatedHandoffReply({ delivered: false, category: decision.category, channel: "voice" }) };
+    } catch {
+      output = { delivered: false, answer: gatedHandoffReply({ delivered: false, category: decision.category, channel: "voice" }) };
+    }
+    this.lastHandoffAnswer = output.answer;
     this.send({ type: "conversation.item.create", item: { type: "function_call_output", call_id: event.call_id, output: JSON.stringify(output) } });
-    this.send({ type: "response.create", response: { instructions: "Use the tool answer verbatim. Do not claim any hotel operation was completed." } });
+    this.send({ type: "response.create", response: { instructions: `Say exactly this server answer, verbatim, with no additions or paraphrase: ${JSON.stringify(output.answer)}` } });
   }
 
   handleEvent(event) {
@@ -161,9 +171,19 @@ export class RealtimeVoiceSession {
       this.responseActive = false;
       this.setState("listening");
     } else if (event.type === "conversation.item.input_audio_transcription.completed" && event.transcript?.trim()) {
-      this.onTranscript({ role: "user", text: event.transcript.trim() });
+      const transcript = event.transcript.trim();
+      this.onTranscript({ role: "user", text: transcript });
+      const decision = decideHandoff(transcript);
+      if (decision.required) {
+        // Application-level routing wins over Realtime tool_choice and prompt
+        // compliance for deterministic handoff intents.
+        this.send({ type: "response.cancel" });
+        this.send({ type: "output_audio_buffer.clear" });
+        void this.runHandoffTool({ call_id: `forced-handoff-${Date.now()}`, arguments: JSON.stringify({ message: transcript }) });
+      }
     } else if ((event.type === "response.output_audio_transcript.done" || event.type === "response.audio_transcript.done") && event.transcript?.trim()) {
-      this.onTranscript({ role: "assistant", text: spokenText(event.transcript.trim()) });
+      this.onTranscript({ role: "assistant", text: this.lastHandoffAnswer || spokenText(event.transcript.trim()) });
+      this.lastHandoffAnswer = null;
     } else if (event.type === "error") {
       const diagnostic = safeRealtimeError(event.error);
       if (isBenignCancellationError(event.error)) {

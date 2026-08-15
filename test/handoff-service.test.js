@@ -31,15 +31,15 @@ for (const [message, category] of [
 
 test("success is confirmed only after delivery and never promises operations", async () => {
   let delivered = false;
-  const parking = await performHandoff({ message: "幫我保留車位", channel: "web" }, { send: async () => { delivered = true; } });
+  const parking = await performHandoff({ message: "幫我保留車位", channel: "web" }, { send: async () => { delivered = true; return { delivered: true }; } });
   assert.equal(delivered, true);
   assert.match(parking.answer, /已經幫您把停車需求留言給櫃台/);
   assert.match(parking.answer, /不代表已保留車位/);
   assert.doesNotMatch(parking.answer, /(?:^|[。！\n])已(?:經)?保留車位[。！]/);
 
-  const booking = await performHandoff({ message: "幫我修改訂房", channel: "line" }, { send: async () => {} });
+  const booking = await performHandoff({ message: "幫我修改訂房", channel: "line" }, { send: async () => ({ delivered: true }) });
   assert.match(booking.answer, /尚未完成任何訂房變更/);
-  const payment = await performHandoff({ message: "請幫我退款", channel: "line" }, { send: async () => {} });
+  const payment = await performHandoff({ message: "請幫我退款", channel: "line" }, { send: async () => ({ delivered: true }) });
   assert.match(payment.answer, /尚未完成任何款項處理/);
 });
 
@@ -49,6 +49,14 @@ test("delivery failure is honest and includes front desk contact", async () => {
   assert.match(result.answer, /沒辦法成功把留言送到櫃台/);
   assert.match(result.answer, /04-2707-8378/);
   assert.doesNotMatch(result.answer, /已經幫您.*留言/);
+});
+
+test("only an explicit delivered true transport result unlocks success wording", async () => {
+  for (const transportResult of [undefined, null, {}, { delivered: false }, { delivered: "true" }]) {
+    const result = await performHandoff({ message: "請幫我留言給櫃台，我要客訴", channel: "web" }, { send: async () => transportResult });
+    assert.equal(result.delivered, false);
+    assert.doesNotMatch(result.answer, /已留言|已通知|已送出/u);
+  }
 });
 
 test("LINE, Web, and Voice share service and decision without Resend adapter logic", async () => {
@@ -84,7 +92,7 @@ test("FRONT_DESK_EMAIL controls operational routing with one documented legacy f
 test("success wording confirms mailbox delivery without implying reading or acceptance", () => {
   const email = handoffEmail({ channel: "web", message: "我要客訴", category: "客訴" });
   assert.equal(email.to[0], process.env.FRONT_DESK_EMAIL?.trim() || LEGACY_FRONT_DESK_EMAIL);
-  return performHandoff({ message: "我要客訴", channel: "web" }, { send: async () => {} }).then(result => {
+  return performHandoff({ message: "我要客訴", channel: "web" }, { send: async () => ({ delivered: true }) }).then(result => {
     assert.match(result.answer, /請等櫃台確認/);
     assert.doesNotMatch(result.answer, /已讀|已接受|一定|保證|後續會/);
   });
