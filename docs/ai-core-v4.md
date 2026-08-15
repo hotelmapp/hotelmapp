@@ -6,7 +6,7 @@
 - `ai-core/knowledge.js` gives every channel the same knowledge version, serialized facts, and rules for unknown facts, breakfast grounding, live availability, and human escalation.
 - `ai-core/hospitality-personality.js` is the single shared Hospitality Personality / Response Style layer. It defines the channel-independent Taiwanese hospitality voice and composes it with presentation-only constraints for Web, LINE, and Voice. It does not contain hotel facts or decide what may be said.
 - `ai-core/booking.js` owns booking-intent detection, date extraction, and safe construction of dated URLs from the canonical booking URL. `stay-dates.js` remains the low-level multilingual date parser.
-- `ai-core/handoff.js` owns channel-neutral conversation normalization, stay-date extraction, handoff category, and summary generation.
+- `ai-core/handoff.js` owns the channel-neutral handoff decision, conversation normalization, stay-date extraction, category, and summary generation. `ai-core/handoff-service.js` builds the privacy-filtered payload, calls the single `ai-core/email-transport.js` Resend transport, and selects an honest channel presentation from the delivery result.
 - `ai-core/guest-response.js` owns deterministic grounded replies and builds the shared Responses API payload; `ai-core/response-service.js` owns the channel-independent OpenAI transport.
 - `ai-core/index.js` is the public interface used by channel adapters.
 
@@ -14,7 +14,10 @@
 
 - `api/chat.js` retains only web HTTP validation and diagnostics, then calls the shared guest-response service.
 - `api/realtime.js` retains ephemeral credential transport and the proven Realtime model, Marin fallback, WebRTC client contract, semantic VAD, and interruption behavior. It requests the shared personality with voice presentation constraints around the shared grounding and knowledge.
-- `api/contact.js` retains Resend validation and email delivery. Handoff classification and summary generation now come from the core.
+- Realtime Voice exposes only a `handoff_to_front_desk` function. The browser forwards that function call to `api/handoff.js`, which re-runs the shared deterministic decision and service; the model receives the actual delivery result before speaking.
+- `api/contact.js` retains contact-form validation and reuses the same shared Resend email transport as automatic Web/LINE/Voice handoff; no adapter contains Resend logic.
+- Operational delivery uses `FRONT_DESK_EMAIL`. During rollout only, an unset or blank value falls back to the legacy `hotel.mapp158@gmail.com` address centralized in `ai-core/operational-config.js`; adapters and handoff code must not duplicate that address.
+- Handoff emails never include raw LINE user IDs. Only guest-provided display name, email, or phone may be included, and payment/private-booking messages redact long numbers and omit unrelated history.
 
 ## LINE Messaging API adapter (phase 2)
 

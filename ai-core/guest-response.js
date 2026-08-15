@@ -3,6 +3,7 @@ import { bookingDates, datedBookingUrl, hasBookingIntent } from "./booking.js";
 import { detectGuestLanguage } from "../guest-language.js";
 import { requestGroundedResponse } from "./response-service.js";
 import { styledInstructions } from "./hospitality-personality.js";
+import { performHandoff } from "./handoff-service.js";
 
 const OPENAI_MODEL = process.env.OPENAI_MODEL?.trim() || "gpt-4.1-mini";
 const MAX_HISTORY_MESSAGES = 20;
@@ -241,10 +242,12 @@ export function responseText(response) {
     .join("\n");
 }
 
-export async function answerGuestMessage(message, { history = [], channel = "web" } = {}) {
+export async function answerGuestMessage(message, { history = [], channel = "web", identity, handoffService = performHandoff } = {}) {
   const trimmed = typeof message === "string" ? message.trim().slice(0, MAX_MESSAGE_LENGTH) : "";
   if (!trimmed) throw new TypeError("A non-empty guest message is required");
   const directAnswer = sensitiveSituationReply(trimmed) || availabilityReply(trimmed) || specialRequestReply(trimmed) || informationalReply(trimmed);
+  const handoff = await handoffService({ message: trimmed, history, channel, identity });
+  if (handoff.attempted) return [directAnswer, handoff.answer].filter(Boolean).join("\n\n");
   if (directAnswer) return directAnswer;
 
   const payload = responsesPayload(trimmed, history, channel);

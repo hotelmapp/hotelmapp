@@ -125,6 +125,19 @@ export class RealtimeVoiceSession {
     });
   }
 
+  async runHandoffTool(event) {
+    let args;
+    try { args = JSON.parse(event.arguments || "{}"); } catch { args = {}; }
+    let output;
+    try {
+      const response = await this.fetch("/api/handoff", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ channel: "voice", message: args.message }), signal: this.abortController?.signal });
+      const body = await response.json().catch(() => ({}));
+      output = { delivered: response.ok && body.delivered === true, answer: body.answer || "不好意思，目前無法把留言送到櫃台，請直接聯絡櫃台。" };
+    } catch { output = { delivered: false, answer: "不好意思，目前無法把留言送到櫃台，請直接聯絡櫃台。" }; }
+    this.send({ type: "conversation.item.create", item: { type: "function_call_output", call_id: event.call_id, output: JSON.stringify(output) } });
+    this.send({ type: "response.create", response: { instructions: "Use the tool answer verbatim. Do not claim any hotel operation was completed." } });
+  }
+
   handleEvent(event) {
     if (event.type === "input_audio_buffer.speech_started") {
       // Clear already-buffered sound as well as cancelling generation: this is true barge-in.
@@ -142,6 +155,8 @@ export class RealtimeVoiceSession {
     } else if (event.type === "response.output_audio.delta" || event.type === "response.audio.delta" ||
       event.type === "response.output_audio_transcript.delta" || event.type === "response.audio_transcript.delta") {
       this.setState("speaking");
+    } else if (event.type === "response.function_call_arguments.done" && event.name === "handoff_to_front_desk") {
+      void this.runHandoffTool(event);
     } else if (event.type === "response.done") {
       this.responseActive = false;
       this.setState("listening");

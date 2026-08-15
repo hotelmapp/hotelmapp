@@ -3,6 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test"
+    "lint": "git diff --check && find ai-core api test -name '*.js' -print0 | xargs -0 -n1 node --check",
+    "typecheck": "find ai-core api -name '*.js' -print0 | xargs -0 -n1 node --check",
+    "test": "node --test",
+    "build": "find . -maxdepth 2 -name '*.js' -not -path './node_modules/*' -print0 | xargs -0 -n1 node --check"
   }
 }
