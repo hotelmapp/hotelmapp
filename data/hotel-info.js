@@ -21,10 +21,23 @@ export const hotelKnowledge = {
     access: "22:00 後進出須使用房卡；外出按銀色按鈕，返回以房卡感應黑色感應區。"
   },
   breakfast: {
-    hours: "08:00–10:00", location: "二樓餐廳", includedProcedure: "持餐券直接至二樓用餐。",
-    addOn: "未含早餐可加購，NT$150／客。", menu: "目前提供四種不同餐點，品項可能調整，以當日櫃檯／餐廳選項為準。",
-    ordering: "建議前一天向櫃檯選餐；10:00 前完成點餐即可，用餐時間不另設限。",
-    takeaway: true, vegetarian: "可提前告知，餐廳依需求調整。"
+    serviceHours: "08:00–10:00",
+    pricePerPerson: "NT$150／人／份",
+    serviceStyle: "Brunch 式套餐，一人一套，並非整套自助式早餐。",
+    cuisineStyle: "中西式，整體較偏西式。",
+    location: "二樓餐廳",
+    takeawayAvailable: true,
+    menuChoiceCount: 4,
+    menuPolicy: "實際餐點內容會不定時更換，以當天 Menu 為準；不得列舉未記載的菜色。",
+    selfServiceDrinks: "部分飲料（例如咖啡）採自助式。",
+    vegetarianOption: "可以安排；旅客須提前告知櫃台，由餐廳將肉類更換為蛋奶素餐點。",
+    childPrice: null,
+    preorderRecommendation: "若預訂含早餐方案或另外加購早餐，建議提前洽櫃台選擇餐點，讓餐廳提前備餐，可減少現場等待時間。",
+    notes: [
+      "餐點美味且超值，有吃早餐習慣的旅客可考慮預訂。",
+      "如需外帶，可提前告知櫃台，由櫃台通知餐廳準備。",
+      "兒童早餐價格目前未知，須詢問櫃台，不得推算。"
+    ]
   },
   parking: {
     hotelSpaces: 3,
@@ -91,7 +104,7 @@ export const hotelKnowledge = {
     equipmentDuringDeskHours: "07:00–22:00 遇到設備問題，先表示願意協助，不自行判斷故障原因，優先請旅客聯絡櫃檯。",
     equipmentAfterHours: "22:00–翌日 07:00 遇到冷氣、電視、熱水、門鎖、房內設備故障或其他設備問題，直接請旅客撥後勤客服 0927-708-908，洽陳先生。"
   },
-  missing: ["配合停車場完整地址", "停車場客服電話", "家庭房是否有浴缸", "Wi-Fi／網路連線資訊", "具體取消與退款條件", "床墊與寢具的品牌、型號、尺寸及售價"],
+  missing: ["配合停車場完整地址", "停車場客服電話", "家庭房是否有浴缸", "Wi-Fi／網路連線資訊", "兒童早餐價格", "具體取消與退款條件", "床墊與寢具的品牌、型號、尺寸及售價"],
   review: { contradictions: [], notes: ["家庭房浴缸欄原記載「依現場資料」，正式版列為尚未提供。", "餐廳、房價、房況、優惠及營業狀況是變動資料，不固化為事實。"] }
 };
 

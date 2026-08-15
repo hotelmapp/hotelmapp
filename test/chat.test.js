@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import handler, { availabilityReply, bookingDates, datedBookingUrl, informationalReply, normalizedHistory, relevantKnowledge, responseText, responsesPayload, specialRequestReply } from "../api/chat.js";
-import { hotelKnowledge } from "../data/hotel-info.js";
+import handler, { availabilityReply, bookingDates, breakfastReply, datedBookingUrl, informationalReply, normalizedHistory, relevantKnowledge, responseText, responsesPayload, specialRequestReply } from "../api/chat.js";
+import { hotelKnowledge, knowledgeForPrompt } from "../data/hotel-info.js";
+import { voiceInstructions } from "../api/realtime.js";
 import { detectGuestLanguage } from "../guest-language.js";
 
 function recorder() {
@@ -335,7 +336,7 @@ test("contains confirmed V2.0 answers for the required guest scenarios", () => {
   assert.match(hotelKnowledge.contact.afterHoursEquipment, /0927-708-908.*陳先生/);
   assert.match(hotelKnowledge.contact.afterHoursSameDayBooking, /0927-708-908.*陳先生/);
   assert.match(hotelKnowledge.bedding.mattress, /五星級高級床墊/);
-  assert.equal(hotelKnowledge.breakfast.hours, "08:00–10:00");
+  assert.equal(hotelKnowledge.breakfast.serviceHours, "08:00–10:00");
   assert.equal(hotelKnowledge.stay.checkOut, "11:00 前");
   assert.equal(hotelKnowledge.parking.hotelSpaces, 3);
   assert.match(hotelKnowledge.amenities.tv, /智慧電視/);
@@ -343,6 +344,37 @@ test("contains confirmed V2.0 answers for the required guest scenarios", () => {
   assert.match(hotelKnowledge.booking.hotelOrWebsite, /聯繫櫃檯/);
   assert.match(hotelKnowledge.escalation.equipment, /不自行判斷/);
   assert.match(hotelKnowledge.booking.livePriceAndAvailability, /即時房價/);
+});
+
+test("answers breakfast regressions from structured facts without inventing menu items", () => {
+  const cases = [
+    ["早餐是自助式嗎？", /Brunch 式套餐，一人一套.*部分飲料像咖啡是自助式/u],
+    ["早餐是中式的嗎？", /中西式.*比較偏西式/u],
+    ["早餐多少錢？", /NT\$150／人／份/u],
+    ["早餐幾點？", /08:00–10:00/u],
+    ["早餐有什麼菜？", /4 種口味.*當天 Menu/u],
+    ["早餐可以外帶嗎？", /可以外帶.*提前告知櫃台/u],
+    ["早餐有素食嗎？", /提前告知櫃台.*蛋奶素/u],
+    ["小朋友早餐多少錢？", /沒有確認的兒童早餐價格.*詢問櫃台/u]
+  ];
+  for (const [question, expected] of cases) assert.match(breakfastReply(question), expected);
+  assert.doesNotMatch(breakfastReply("早餐有什麼菜？"), /吐司|沙拉|培根|稀飯|饅頭/u);
+});
+
+test("keeps all required breakfast fields structured and unknown child pricing null", () => {
+  assert.deepEqual(Object.keys(hotelKnowledge.breakfast), [
+    "serviceHours", "pricePerPerson", "serviceStyle", "cuisineStyle", "location",
+    "takeawayAvailable", "menuChoiceCount", "menuPolicy", "selfServiceDrinks",
+    "vegetarianOption", "childPrice", "preorderRecommendation", "notes"
+  ]);
+  assert.equal(hotelKnowledge.breakfast.childPrice, null);
+  assert.equal(hotelKnowledge.breakfast.menuChoiceCount, 4);
+});
+
+test("text chat and Realtime Voice embed the exact same factual knowledge source", () => {
+  const sharedKnowledge = knowledgeForPrompt();
+  assert.ok(responsesPayload("早餐有什麼？").instructions.includes(sharedKnowledge));
+  assert.ok(voiceInstructions().includes(sharedKnowledge));
 });
 
 test("keeps facts still missing from V2.0 explicitly unknown", () => {
@@ -377,7 +409,7 @@ test("sends recent multi-turn context in Responses API message format", () => {
 
   assert.deepEqual(payload.input, [...history, { role: "user", content: "兩個人呢？" }]);
   assert.match(payload.instructions, /連貫理解下方對話脈絡/);
-  assert.match(payload.instructions, /NT\$150／客/);
+  assert.match(payload.instructions, /NT\$150／人／份/);
 });
 
 test("validates and limits conversation history to the latest 20 messages", () => {
