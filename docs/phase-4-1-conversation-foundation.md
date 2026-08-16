@@ -11,4 +11,4 @@ Records use a 24-hour sliding TTL, non-extendable 48-hour absolute expiry, at mo
 
 If Redis is unavailable, public FAQ answers may run stateless. State-dependent handoff is denied rather than sent, and memory failure never triggers email. This phase creates neither a permanent guest profile nor a new conversational email flow.
 
-Conversation records retain the resolved topic for reference continuity. Before an answer, the shared grounding layer resolves the topic primarily from guest turns and reloads current authoritative facts. Generated assistant turns remain non-authoritative transcript content and cannot override current hotel knowledge.
+Conversation records retain the resolved topic and requested intent for reference continuity. Before an answer, the shared grounding layer resolves both primarily from guest turns and reloads only the current authoritative fact subset. For example, parking distinguishes availability, fee, process, and problem intents. Generated assistant turns remain non-authoritative transcript content and cannot override current hotel knowledge.

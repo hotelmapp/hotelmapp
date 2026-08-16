@@ -53,8 +53,10 @@ export const hotelKnowledge = {
   },
   parking: {
     hotelSpaces: 3,
+    hotelSpacesLocation: "飯店門口",
+    overflowRule: "飯店門口停滿時可使用配合停車場。",
     alternatives: ["配合的全國電子停車場", "智慧街家樂福後門之智慧街停車場"],
-    rules: ["停妥後務必告知櫃檯車牌號碼，由櫃檯輸入辦理折抵。", "每房配合 1 個車位；第二台車加收 NT$200。", "無法進出時聯絡停車場客服，告知為希堤微旅住客。"],
+    rules: ["停妥後務必告知櫃檯車牌號碼，由櫃檯輸入辦理折抵。", "每間客房提供 1 台免費停車；第 2 台車加收 NT$200 停車費。", "無法進出時聯絡停車場客服，告知為希堤微旅住客。"],
     addresses: null, supportPhone: null
   },
   rooms: [

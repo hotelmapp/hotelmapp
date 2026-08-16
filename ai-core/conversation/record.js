@@ -18,7 +18,7 @@ export function lineConversationId(source, secret) {
 export function createConversationRecord({ id, channel, now = new Date(), limits = CONVERSATION_LIMITS }) {
   if (!id || !CHANNELS.includes(channel)) throw new TypeError("invalid_conversation_identity");
   const createdAt = now.toISOString();
-  return { id, channel, turns: [], topic: null, state: "active", handoff: { state: "none" }, revision: 0, createdAt, updatedAt: createdAt, expiresAt: new Date(now.getTime() + limits.absoluteTtlMs).toISOString() };
+  return { id, channel, turns: [], topic: null, intent: null, state: "active", handoff: { state: "none" }, revision: 0, createdAt, updatedAt: createdAt, expiresAt: new Date(now.getTime() + limits.absoluteTtlMs).toISOString() };
 }
 
 const SECRET_PATTERNS = [

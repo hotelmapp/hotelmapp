@@ -16,10 +16,12 @@ export function configuredConversationService(options = {}) {
 export async function answerWithConversation({ id, channel, message, service, identity, answer = answerGuestMessage }) {
   let history;
   let storedTopic = null;
+  let storedIntent = null;
   try {
     const context = service.context ? await service.context(id) : null;
     history = context?.turns?.map(({ role, content }) => ({ role, content })) || await service.history(id);
     storedTopic = context?.topic || null;
+    storedIntent = context?.intent || null;
   } catch (error) {
     // FAQ remains available without Redis. Any action whose authorization or
     // idempotency depends on conversation state is explicitly denied.
@@ -27,10 +29,10 @@ export async function answerWithConversation({ id, channel, message, service, id
     const response = await answer(message, { history: [], channel, identity, handoffService });
     return { answer: response, durable: false, memoryError: error };
   }
-  const grounding = resolveKnowledgeGrounding(message, history, storedTopic);
+  const grounding = resolveKnowledgeGrounding(message, history, storedTopic, storedIntent);
   const response = await answer(message, { history, channel, identity, grounding });
   try {
-    await service.append(id, channel, [{ role: "user", content: message }, { role: "assistant", content: response }], { topic: grounding.topic });
+    await service.append(id, channel, [{ role: "user", content: message }, { role: "assistant", content: response }], { topic: grounding.topic, intent: grounding.intent });
     return { answer: response, durable: true };
   } catch (error) {
     // Never repeat response generation or a handoff after an uncertain write:
