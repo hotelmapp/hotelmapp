@@ -22,7 +22,7 @@ function extractResponseText(response) {
 
 // Channel-independent OpenAI transport. Adapters provide an already-grounded
 // payload, so web chat and messaging channels cannot drift into separate calls.
-export async function requestGroundedResponse({ payload, apiKey = process.env.OPENAI_API_KEY?.trim(), fetchImpl = fetch, timeoutMs = REQUEST_TIMEOUT_MS }) {
+export async function requestGroundedResponse({ payload, validate, apiKey = process.env.OPENAI_API_KEY?.trim(), fetchImpl = fetch, timeoutMs = REQUEST_TIMEOUT_MS }) {
   if (!apiKey) throw new OpenAIResponseError("missing_api_key");
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -52,5 +52,6 @@ export async function requestGroundedResponse({ payload, apiKey = process.env.OP
   }
   const answer = extractResponseText(body);
   if (!answer) throw new OpenAIResponseError("empty_response", { status: 502, requestId });
+  if (validate && !validate(answer)) throw new OpenAIResponseError("grounding_violation", { status: 502, requestId });
   return { answer, status: response.status, requestId };
 }

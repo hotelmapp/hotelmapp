@@ -9,3 +9,4 @@ export { HOTEL_TIME_ZONE, FRONT_DESK_HOURS, TemporalContextProvider, temporalCon
 export { CONVERSATION_LIMITS, CHANNELS, opaqueConversationId, lineConversationId, createConversationRecord, appendTurn, minimizeConversationText } from "./conversation/record.js";
 export { ConversationStore, RedisConversationStore, ConversationStoreError, ConversationConflictError, conversationStoreFromEnv } from "./conversation/store.js";
 export { ConversationService } from "./conversation/service.js";
+export { explicitTopic, resolveConversationTopic, factsForTopic, factualContract, resolveKnowledgeGrounding, knowledgeGroundingInstructions, validateGroundedResponse } from "./knowledge-grounding.js";

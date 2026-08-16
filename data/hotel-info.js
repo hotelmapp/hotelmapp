@@ -22,6 +22,15 @@ export const hotelKnowledge = {
   },
   breakfast: {
     serviceHours: "08:00–10:00",
+    serviceStart: { time: "08:00", modality: "hard_rule" },
+    orderCheckInCutoff: {
+      time: "10:00", modality: "hard_rule",
+      meaning: "10:00 是點餐／報到截止時間，不是用餐結束時間。"
+    },
+    diningAfterCutoff: {
+      allowed: true, modality: "hard_rule",
+      rule: "客人只要在 10:00 前完成點餐／報到，即可繼續用餐，用餐時間不受 10:00 限制。"
+    },
     pricePerPerson: "NT$150／人／份",
     serviceStyle: "Brunch 式套餐，一人一套，並非整套自助式早餐。",
     cuisineStyle: "中西式，整體較偏西式。",
@@ -32,7 +41,10 @@ export const hotelKnowledge = {
     selfServiceDrinks: "部分飲料（例如咖啡）採自助式。",
     vegetarianOption: "可以安排；旅客須提前告知櫃台，由餐廳將肉類更換為蛋奶素餐點。",
     childPrice: null,
-    preorderRecommendation: "若預訂含早餐方案或另外加購早餐，建議提前洽櫃台選擇餐點，讓餐廳提前備餐，可減少現場等待時間。",
+    preorderRecommendation: {
+      timing: "前一天入住時", channel: "櫃台", modality: "recommendation", required: false,
+      recommendation: "建議客人在前一天入住時至櫃台先點早餐，方便餐廳提前準備並減少等候時間。"
+    },
     notes: [
       "餐點美味且超值，有吃早餐習慣的旅客可考慮預訂。",
       "如需外帶，可提前告知櫃台，由櫃台通知餐廳準備。",

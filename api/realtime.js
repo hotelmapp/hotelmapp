@@ -4,6 +4,7 @@ import { styledInstructions } from "../ai-core/hospitality-personality.js";
 import { decideHandoff } from "../ai-core/handoff.js";
 import { opaqueConversationId } from "../ai-core/conversation/record.js";
 import { configuredConversationService } from "../ai-core/conversation/runtime.js";
+import { knowledgeGroundingInstructions } from "../ai-core/knowledge-grounding.js";
 
 export { decideHandoff };
 
@@ -25,6 +26,8 @@ export function ephemeralCredential(body) {
 
 export function voiceInstructions() {
   return `${styledInstructions("voice")}
+
+${knowledgeGroundingInstructions()}
 
 你正在與客人面對面交談。依客人目前使用的語言，自然使用繁體中文、English、日本語或한국어，客人在同一段對話換語言時也自然跟著切換。
 像真人聊天，不像客服 IVR、主播、朗讀機或 TTS。先直接回答客人的重點，再視需要補充；一次通常只回答一到三個口語短句，必要時只追問一個簡短問題。可以偶爾自然使用「好的」、「可以」、「沒問題」、「嗯，我幫您確認一下」這類短銜接，但不要每次都使用，也不要形成固定開場。語速自然，句子之間允許短暫停頓，不要刻意拖長、過度甜膩或使用誇張情緒。

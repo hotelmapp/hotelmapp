@@ -363,7 +363,7 @@ test("answers breakfast regressions from structured facts without inventing menu
 
 test("keeps all required breakfast fields structured and unknown child pricing null", () => {
   assert.deepEqual(Object.keys(hotelKnowledge.breakfast), [
-    "serviceHours", "pricePerPerson", "serviceStyle", "cuisineStyle", "location",
+    "serviceHours", "serviceStart", "orderCheckInCutoff", "diningAfterCutoff", "pricePerPerson", "serviceStyle", "cuisineStyle", "location",
     "takeawayAvailable", "menuChoiceCount", "menuPolicy", "selfServiceDrinks",
     "vegetarianOption", "childPrice", "preorderRecommendation", "notes"
   ]);
