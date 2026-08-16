@@ -2,7 +2,7 @@ import { hotelKnowledge, KNOWLEDGE_VERSION, groundedKnowledgePrompt } from "./kn
 import { bookingDates, datedBookingUrl, hasBookingIntent } from "./booking.js";
 import { detectGuestLanguage } from "../guest-language.js";
 import { requestGroundedResponse } from "./response-service.js";
-import { styledInstructions } from "./hospitality-personality.js";
+import { renderHospitalityFact, styledInstructions } from "./hospitality-personality.js";
 import { performHandoff } from "./handoff-service.js";
 import { temporalContextPrompt, temporalContextProvider } from "./temporal-context.js";
 import { breakfastArrivalReply, knowledgeGroundingInstructions, parkingReply, resolveKnowledgeGrounding, validateGroundedResponse } from "./knowledge-grounding.js";
@@ -184,10 +184,10 @@ export function informationalReply(message) {
 // imply that an operational action has already happened.
 export function sensitiveSituationReply(message) {
   if (/(冷氣|空調|電視|熱水|門鎖|房內設備).*(壞|故障|沒反應|無法使用)|(?:壞|故障|沒反應|無法使用).*(冷氣|空調|電視|熱水|門鎖|房內設備)/u.test(message)) {
-    return "了解，這個情況需要請櫃檯協助您處理。您可以直接聯絡櫃檯，我們會請同仁協助確認。";
+    return "房內設備不能使用真的會很不方便。請直接聯絡櫃檯，我們會請同仁盡快確認處理。";
   }
   if (/(客訴|投訴|抱怨|很不滿|太糟|非常生氣)/u.test(message)) {
-    return "了解您的感受，這個情況需要由飯店同仁進一步了解。請直接聯絡櫃檯，讓同仁確認狀況並協助您處理。";
+    return "很抱歉讓您有這麼不好的感受。可以告訴我現在最需要先處理的是什麼嗎？我會請飯店同仁了解狀況並協助您。";
   }
   if (/(退款|退費|重複扣款|付款異常|刷卡失敗|扣款).*(幫我|處理|怎麼辦|還沒|沒有|問題|異常|失敗)?/u.test(message)) {
     return "了解，付款或退款狀況需要由原付款管道確認。請聯絡櫃檯；如果是透過訂房平台付款，也請向原平台查詢，我這邊不會先承諾退款或款項已處理。";
@@ -196,6 +196,11 @@ export function sensitiveSituationReply(message) {
     return "可以協助確認修改方式，但我這邊還沒有替您完成變更。若是向飯店或官網訂房，請聯絡櫃檯；若是透過訂房平台預訂，原則上請向原平台申請。";
   }
   return null;
+}
+
+export function frontDeskContactReply(message) {
+  if (!/(櫃台|櫃檯|front desk|reception).*(電話|聯絡|怎麼找)|(?:電話|聯絡).*(櫃台|櫃檯)/iu.test(message)) return null;
+  return `可以直接撥櫃檯電話 ${hotelKnowledge.contact.frontDeskPhone}，服務時間是 ${hotelKnowledge.contact.deskHours}。需要我幫您通知櫃檯嗎？`;
 }
 
 export function responsesPayload(message, history = [], channel = "web", temporalContext = temporalContextProvider.getContext(), grounding = resolveKnowledgeGrounding(message, history)) {
@@ -251,7 +256,9 @@ export function responseText(response) {
 export async function answerGuestMessage(message, { history = [], channel = "web", identity, handoffService = performHandoff, temporalContext = temporalContextProvider.getContext(), grounding = resolveKnowledgeGrounding(message, history) } = {}) {
   const trimmed = typeof message === "string" ? message.trim().slice(0, MAX_MESSAGE_LENGTH) : "";
   if (!trimmed) throw new TypeError("A non-empty guest message is required");
-  const directAnswer = breakfastArrivalReply(trimmed, grounding) || parkingReply(grounding) || sensitiveSituationReply(trimmed) || availabilityReply(trimmed) || specialRequestReply(trimmed) || informationalReply(trimmed);
+  const language = detectGuestLanguage(trimmed, normalizedHistory(history));
+  const groundedHospitalityAnswer = renderHospitalityFact({ ...grounding, language, channel });
+  const directAnswer = breakfastArrivalReply(trimmed, grounding) || groundedHospitalityAnswer || parkingReply(grounding) || frontDeskContactReply(trimmed) || sensitiveSituationReply(trimmed) || availabilityReply(trimmed) || specialRequestReply(trimmed) || informationalReply(trimmed);
   const handoff = await handoffService({ message: trimmed, history, channel, identity });
   if (handoff.attempted) return [directAnswer, handoff.answer].filter(Boolean).join("\n\n");
   if (directAnswer) return directAnswer;
