@@ -120,6 +120,7 @@
     const answer = document.getElementById("answer");
     const MAX_HISTORY_MESSAGES = 20;
     const conversationHistory = [];
+    let conversationId = null;
     const contactForm = document.getElementById("contactForm");
     const contactStatus = document.getElementById("contactStatus");
     const microphone = document.getElementById("microphone");
@@ -138,7 +139,7 @@
         const response = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message, history: conversationHistory })
+          body: JSON.stringify({ message, history: conversationHistory, conversationId })
         });
         const rawBody = await response.text();
         let body;
@@ -157,6 +158,7 @@
           throw new Error("AI 未回傳文字答案");
         }
         const assistantAnswer = body.answer.trim();
+        if (typeof body.conversationId === "string") conversationId = body.conversationId;
         renderTextWithLinks(answer, assistantAnswer);
         conversationHistory.push(
           { role: "user", content: message },

@@ -4,6 +4,7 @@
 
 - `data/hotel-info.js` remains the single source of truth for hotel and breakfast facts. No channel owns a copy.
 - `ai-core/knowledge.js` gives every channel the same knowledge version, serialized facts, and rules for unknown facts, breakfast grounding, live availability, and human escalation.
+- `ai-core/knowledge-grounding.js` resolves follow-up topics from guest turns, reloads an authoritative fact subset, defines factual precedence/modality contracts, and rejects known operational-policy drift. Assistant history is context only and never a hotel fact.
 - `ai-core/hospitality-personality.js` is the single shared Hospitality Personality / Response Style layer. It defines the channel-independent Taiwanese hospitality voice and composes it with presentation-only constraints for Web, LINE, and Voice. It does not contain hotel facts or decide what may be said.
 - `ai-core/booking.js` owns booking-intent detection, date extraction, and safe construction of dated URLs from the canonical booking URL. `stay-dates.js` remains the low-level multilingual date parser.
 - `ai-core/handoff.js` owns the channel-neutral handoff decision, conversation normalization, stay-date extraction, category, and summary generation. `ai-core/handoff-service.js` builds the privacy-filtered payload, calls the single `ai-core/email-transport.js` Resend transport, and selects an honest channel presentation from the delivery result.

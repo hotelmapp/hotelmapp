@@ -22,6 +22,15 @@ export const hotelKnowledge = {
   },
   breakfast: {
     serviceHours: "08:00–10:00",
+    serviceStart: { time: "08:00", modality: "hard_rule" },
+    orderCheckInCutoff: {
+      time: "10:00", modality: "hard_rule",
+      meaning: "10:00 是點餐／報到截止時間，不是用餐結束時間。"
+    },
+    diningAfterCutoff: {
+      allowed: true, modality: "hard_rule",
+      rule: "客人只要在 10:00 前完成點餐／報到，即可繼續用餐，用餐時間不受 10:00 限制。"
+    },
     pricePerPerson: "NT$150／人／份",
     serviceStyle: "Brunch 式套餐，一人一套，並非整套自助式早餐。",
     cuisineStyle: "中西式，整體較偏西式。",
@@ -32,7 +41,10 @@ export const hotelKnowledge = {
     selfServiceDrinks: "部分飲料（例如咖啡）採自助式。",
     vegetarianOption: "可以安排；旅客須提前告知櫃台，由餐廳將肉類更換為蛋奶素餐點。",
     childPrice: null,
-    preorderRecommendation: "若預訂含早餐方案或另外加購早餐，建議提前洽櫃台選擇餐點，讓餐廳提前備餐，可減少現場等待時間。",
+    preorderRecommendation: {
+      timing: "前一天入住時", channel: "櫃台", modality: "recommendation", required: false,
+      recommendation: "建議客人在前一天入住時至櫃台先點早餐，方便餐廳提前準備並減少等候時間。"
+    },
     notes: [
       "餐點美味且超值，有吃早餐習慣的旅客可考慮預訂。",
       "如需外帶，可提前告知櫃台，由櫃台通知餐廳準備。",
@@ -41,8 +53,10 @@ export const hotelKnowledge = {
   },
   parking: {
     hotelSpaces: 3,
+    hotelSpacesLocation: "飯店門口",
+    overflowRule: "飯店門口停滿時可使用配合停車場。",
     alternatives: ["配合的全國電子停車場", "智慧街家樂福後門之智慧街停車場"],
-    rules: ["停妥後務必告知櫃檯車牌號碼，由櫃檯輸入辦理折抵。", "每房配合 1 個車位；第二台車加收 NT$200。", "無法進出時聯絡停車場客服，告知為希堤微旅住客。"],
+    rules: ["停妥後務必告知櫃檯車牌號碼，由櫃檯輸入辦理折抵。", "每間客房提供 1 台免費停車；第 2 台車加收 NT$200 停車費。", "無法進出時聯絡停車場客服，告知為希堤微旅住客。"],
     addresses: null, supportPhone: null
   },
   rooms: [

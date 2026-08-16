@@ -1,13 +1,12 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { answerGuestMessage } from "../../ai-core/index.js";
 import { OpenAIResponseError } from "../../ai-core/response-service.js";
+import { lineConversationId } from "../../ai-core/conversation/record.js";
+import { answerWithConversation, configuredConversationService } from "../../ai-core/conversation/runtime.js";
 
 const LINE_REPLY_URL = "https://api.line.me/v2/bot/message/reply";
 const MAX_BODY_BYTES = 1_000_000;
 const DEDUPE_TTL_MS = 10 * 60_000;
-const MAX_DEDUPE_ENTRIES = 1_000;
-const processedEvents = new Map();
-const inFlightEvents = new Set();
 
 export const config = { api: { bodyParser: false }, maxDuration: 30 };
 
@@ -41,11 +40,6 @@ function eventKey(event) {
   return `hash:${createHash("sha256").update(JSON.stringify(event)).digest("hex")}`;
 }
 
-function pruneDeduplication(now = Date.now()) {
-  for (const [key, timestamp] of processedEvents) if (now - timestamp > DEDUPE_TTL_MS) processedEvents.delete(key);
-  while (processedEvents.size > MAX_DEDUPE_ENTRIES) processedEvents.delete(processedEvents.keys().next().value);
-}
-
 async function replyText(replyToken, text, accessToken, fetchImpl = fetch) {
   const response = await fetchImpl(LINE_REPLY_URL, {
     method: "POST",
@@ -60,24 +54,30 @@ async function replyText(replyToken, text, accessToken, fetchImpl = fetch) {
   }
 }
 
-export async function processLineEvent(event, { accessToken, fetchImpl = fetch } = {}) {
+export async function processLineEvent(event, { accessToken, fetchImpl = fetch, conversationService, hmacSecret, answer = answerGuestMessage } = {}) {
   const key = eventKey(event);
-  pruneDeduplication();
-  if (processedEvents.has(key) || inFlightEvents.has(key)) return { outcome: "duplicate" };
-  inFlightEvents.add(key);
-  try {
+  if (conversationService) {
+    try {
+      if (!await conversationService.store.claimIdempotencyKey("line", key, DEDUPE_TTL_MS)) return { outcome: "duplicate" };
+    } catch {
+      // Continue only through answerWithConversation's stateless/fail-closed
+      // path; Redis failure must not become an implicit email handoff.
+      conversationService = { history: async () => { throw new Error("redis_unavailable"); } };
+    }
+  }
     if (event?.type !== "message" || event?.message?.type !== "text") {
-      processedEvents.set(key, Date.now());
       return { outcome: "ignored" };
     }
     if (typeof event.replyToken !== "string" || !event.replyToken) throw new Error("missing_reply_token");
-    const answer = await answerGuestMessage(event.message.text, { channel: "line" });
-    await replyText(event.replyToken, answer, accessToken, fetchImpl);
-    processedEvents.set(key, Date.now());
+    let response;
+    if (conversationService && hmacSecret) {
+      const id = lineConversationId(event.source, hmacSecret);
+      response = (await answerWithConversation({ id, channel: "line", message: event.message.text, service: conversationService, answer })).answer;
+    } else {
+      response = await answer(event.message.text, { channel: "line", handoffService: async () => ({ attempted: false }) });
+    }
+    await replyText(event.replyToken, response, accessToken, fetchImpl);
     return { outcome: "replied" };
-  } finally {
-    inFlightEvents.delete(key);
-  }
 }
 
 function json(res, status, body) { return res.status(status).json(body); }
@@ -90,6 +90,7 @@ export default async function handler(req, res) {
   }
   const secret = process.env.LINE_CHANNEL_SECRET?.trim();
   const accessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN?.trim();
+  const hmacSecret = process.env.CONVERSATION_HMAC_SECRET?.trim();
   if (!secret || !accessToken) {
     console.error("[api/line/webhook] LINE configuration is incomplete");
     return json(res, 500, { error: "LINE adapter is not configured", diagnostic: { source: "line", code: "missing_configuration" } });
@@ -113,7 +114,9 @@ export default async function handler(req, res) {
 
   const outcomes = [];
   try {
-    for (const event of events) outcomes.push(await processLineEvent(event, { accessToken }));
+    let conversationService;
+    try { conversationService = configuredConversationService(); } catch { conversationService = null; }
+    for (const event of events) outcomes.push(await processLineEvent(event, { accessToken, conversationService, hmacSecret }));
   } catch (error) {
     const diagnostic = error instanceof OpenAIResponseError
       ? { source: "openai", code: error.code, status: error.status }

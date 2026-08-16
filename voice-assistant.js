@@ -130,12 +130,17 @@ export class RealtimeVoiceSession {
     try { args = JSON.parse(event.arguments || "{}"); } catch { args = {}; }
     let output;
     try {
-      const response = await this.fetch("/api/handoff", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ channel: "voice", message: args.message }), signal: this.abortController?.signal });
+      const response = await this.fetch("/api/handoff", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ channel: "voice", conversationId: this.conversationId, message: args.message }), signal: this.abortController?.signal });
       const body = await response.json().catch(() => ({}));
       output = { delivered: response.ok && body.delivered === true, answer: body.answer || "不好意思，目前無法把留言送到櫃台，請直接聯絡櫃台。" };
     } catch { output = { delivered: false, answer: "不好意思，目前無法把留言送到櫃台，請直接聯絡櫃台。" }; }
     this.send({ type: "conversation.item.create", item: { type: "function_call_output", call_id: event.call_id, output: JSON.stringify(output) } });
     this.send({ type: "response.create", response: { instructions: "Use the tool answer verbatim. Do not claim any hotel operation was completed." } });
+  }
+
+  persistTurn(role, content) {
+    if (!this.conversationId || typeof content !== "string" || !content.trim()) return;
+    void this.fetch("/api/conversation", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ conversationId: this.conversationId, role, content }), signal: this.abortController?.signal }).catch(() => {});
   }
 
   handleEvent(event) {
@@ -161,9 +166,13 @@ export class RealtimeVoiceSession {
       this.responseActive = false;
       this.setState("listening");
     } else if (event.type === "conversation.item.input_audio_transcription.completed" && event.transcript?.trim()) {
-      this.onTranscript({ role: "user", text: event.transcript.trim() });
+      const transcript = event.transcript.trim();
+      this.persistTurn("user", transcript);
+      this.onTranscript({ role: "user", text: transcript });
     } else if ((event.type === "response.output_audio_transcript.done" || event.type === "response.audio_transcript.done") && event.transcript?.trim()) {
-      this.onTranscript({ role: "assistant", text: spokenText(event.transcript.trim()) });
+      const transcript = event.transcript.trim();
+      this.persistTurn("assistant", transcript);
+      this.onTranscript({ role: "assistant", text: spokenText(transcript) });
     } else if (event.type === "error") {
       const diagnostic = safeRealtimeError(event.error);
       if (isBenignCancellationError(event.error)) {
@@ -193,6 +202,7 @@ export class RealtimeVoiceSession {
           status: tokenResponse.status, code: token?.diagnostic?.code
         });
       }
+      this.conversationId = token.conversationId || null;
       try { this.pc = new this.RTCPeerConnection(); }
       catch (error) { throw new RealtimeConnectionError("peer_connection_failed", "瀏覽器無法建立 RTCPeerConnection", { name: error?.name }); }
       this.pc.onconnectionstatechange = () => {
@@ -267,7 +277,7 @@ export class RealtimeVoiceSession {
     for (const track of this.stream?.getTracks?.() || []) track.stop();
     this.channel?.close?.(); this.pc?.close?.();
     if (this.audio) { this.audio.pause?.(); this.audio.srcObject = null; }
-    this.stream = this.channel = this.pc = this.audio = this.abortController = this.channelTimer = null;
+    this.stream = this.channel = this.pc = this.audio = this.abortController = this.channelTimer = this.conversationId = null;
     this.setState("idle");
   }
 }

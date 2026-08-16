@@ -101,7 +101,10 @@ test("ephemeral credential endpoint keeps the server API key out of its response
   try { await realtimeHandler({ method: "POST", body: { voice: "coral" } }, res); }
   finally { global.fetch = originalFetch; process.env.OPENAI_API_KEY = originalKey; }
   assert.equal(authorization, "Bearer server-secret");
-  assert.deepEqual(result, { status: 200, body: { value: "ephemeral-secret", expires_at: 123 } });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.value, "ephemeral-secret");
+  assert.equal(result.body.expires_at, 123);
+  assert.match(result.body.conversationId, /^voice_[A-Za-z0-9_-]+$/);
   assert.doesNotMatch(JSON.stringify(result), /server-secret/);
 });
 
