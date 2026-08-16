@@ -30,6 +30,7 @@ export function resolveConversationTopic(message, history = [], storedTopic = nu
 const PARKING_INTENT_PATTERNS = Object.freeze({
   parking_problem: /無法進出|不能進出|出不去|進不去|柵欄|故障|異常|problem|stuck/iu,
   parking_fee: /收費|費用|多少錢|免費|第\s*2\s*台|第二台|兩台|兩部|fee|cost|charge|free/iu,
+  parking_location: /停哪|哪裡停|停車位置|位置在哪|where.{0,8}park|駐車場.*どこ|어디.*주차/iu,
   parking_process: /停好|停妥|車牌|折抵|怎麼辦|如何辦理|process/iu,
   parking_availability: /有(?:沒有)?(?:停車|車位)|幾個車位|幾台|停車場|滿了|availability|space/iu
 });
@@ -52,7 +53,8 @@ export function factsForTopic(topic, intent = null) {
     const parking = hotelKnowledge.parking;
     const subsets = {
       parking_availability: { hotelSpaces: parking.hotelSpaces, hotelSpacesLocation: parking.hotelSpacesLocation, overflowRule: parking.overflowRule, alternatives: parking.alternatives },
-      parking_fee: { feeRule: parking.rules[1] },
+      parking_fee: { feeRule: parking.rules[1], freeCarsPerRoom: parking.freeCarsPerRoom, additionalCarFee: parking.additionalCarFee },
+      parking_location: { hotelSpaces: parking.hotelSpaces, hotelSpacesLocation: parking.hotelSpacesLocation, overflowRule: parking.overflowRule, alternatives: parking.alternatives },
       parking_process: { processRule: parking.rules[0] },
       parking_problem: { problemRule: parking.rules[2], supportPhone: parking.supportPhone }
     };
@@ -73,7 +75,8 @@ export function factualContract(topic, intent = null) {
     breakfast: ["breakfast.serviceStart", "breakfast.orderCheckInCutoff", "breakfast.diningAfterCutoff", "breakfast.preorderRecommendation"],
     parking: {
       parking_availability: ["parking.hotelSpaces", "parking.hotelSpacesLocation", "parking.overflowRule", "parking.alternatives"],
-      parking_fee: ["parking.rules[1]"],
+      parking_fee: ["parking.rules[1]", "parking.freeCarsPerRoom", "parking.additionalCarFee"],
+      parking_location: ["parking.hotelSpaces", "parking.hotelSpacesLocation", "parking.overflowRule", "parking.alternatives"],
       parking_process: ["parking.rules[0]"],
       parking_problem: ["parking.rules[2]", "parking.supportPhone"]
     }[intent] || ["parking.hotelSpaces", "parking.hotelSpacesLocation", "parking.overflowRule", "parking.alternatives"],

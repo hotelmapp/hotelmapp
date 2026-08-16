@@ -6,7 +6,7 @@ import {
   hospitalityPersonalityInstructions,
   channelPresentationInstructions
 } from "../ai-core/hospitality-personality.js";
-import { breakfastReply, informationalReply, responsesPayload, sensitiveSituationReply } from "../ai-core/guest-response.js";
+import { answerGuestMessage, breakfastReply, frontDeskContactReply, informationalReply, responsesPayload, sensitiveSituationReply } from "../ai-core/guest-response.js";
 import { voiceInstructions } from "../api/realtime.js";
 
 test("Web and LINE compose the same shared hospitality personality with presentation-only differences", () => {
@@ -96,4 +96,34 @@ test("channel adapters contain presentation wiring, not duplicated personality r
   assert.doesNotMatch(realtime, /台灣待客|親切絕不能凌駕真實性/);
   assert.match(line, /answerGuestMessage/);
   assert.match(realtime, /styledInstructions\("voice"\)/);
+});
+
+test("parking fee is complete and hospitable without disclosing location", async () => {
+  const answer = await answerGuestMessage("停車要收費嗎？", { handoffService: async () => ({ attempted: false }) });
+  assert.match(answer, /每間客房都有 1 台免費停車/);
+  assert.match(answer, /第 2 台車.*NT\$200/);
+  assert.doesNotMatch(answer, /3 個車位|配合停車場/);
+});
+
+test("parking location is progressively disclosed on follow-up", async () => {
+  const history = [{ role: "user", content: "停車要收費嗎？" }, { role: "assistant", content: "每房一台免費。" }];
+  const answer = await answerGuestMessage("那要停哪裡？", { history, handoffService: async () => ({ attempted: false }) });
+  assert.match(answer, /門口.*3 個車位/);
+  assert.match(answer, /滿位.*配合停車場/);
+  assert.doesNotMatch(answer, /NT\$200/);
+});
+
+test("front desk contact is helpful but does not send until guest confirms", async () => {
+  let handoffs = 0;
+  const answer = await answerGuestMessage("櫃檯電話怎麼聯絡？", { handoffService: async () => { handoffs += 1; return { attempted: false }; } });
+  assert.match(answer, /04-2707-8378/);
+  assert.match(answer, /需要我幫您通知櫃檯嗎/);
+  assert.equal(handoffs, 1);
+  assert.doesNotMatch(answer, /已.*通知|已.*寄/);
+});
+
+test("complaint acknowledges the immediate experience before resolution", () => {
+  const answer = sensitiveSituationReply("房間真的太吵，我很不滿");
+  assert.match(answer, /很抱歉.*不好.*感受/);
+  assert.match(answer, /現在最需要先處理/);
 });

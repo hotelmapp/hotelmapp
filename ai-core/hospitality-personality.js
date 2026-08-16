@@ -24,3 +24,28 @@ export function channelPresentationInstructions(channel = "web") {
 export function styledInstructions(channel = "web") {
   return `${hospitalityPersonalityInstructions()}\n${channelPresentationInstructions(channel)}`;
 }
+
+// Renderers receive an already-selected authoritative fact subset. They must
+// never look up hotel data themselves: personality is presentation, not truth.
+export function renderHospitalityFact({ topic, intent, facts, language = "zh-TW", channel = "web" }) {
+  const voice = channel === "voice";
+  if (topic === "parking") {
+    const parking = facts?.parking || {};
+    if (intent === "parking_fee") {
+      const rule = parking.feeRule;
+      const freeCars = parking.freeCarsPerRoom;
+      const additionalFee = parking.additionalCarFee;
+      if (language === "en") return `Yes—${freeCars} car per room is complimentary. A second car is ${additionalFee}.`;
+      if (language === "ja") return `はい、1室につき${freeCars}台は無料です。2台目は${additionalFee}となります。`;
+      if (language === "ko") return `네, 객실당 차량 ${freeCars}대는 무료이고 두 번째 차량은 ${additionalFee}입니다.`;
+      return `有的${voice ? "，" : " 😊 "}${String(rule).replace("每間客房提供", "每間客房都有").replace("；", "喔！")}`;
+    }
+    if (intent === "parking_location") {
+      if (language === "en") return `There are ${parking.hotelSpaces} spaces ${parking.hotelSpacesLocation}. If they’re full, we’ll direct you to a partner parking lot.`;
+      if (language === "ja") return `${parking.hotelSpacesLocation}に${parking.hotelSpaces}台分ございます。満車の場合は提携駐車場をご案内します。`;
+      if (language === "ko") return `${parking.hotelSpacesLocation}에 ${parking.hotelSpaces}대 주차할 수 있습니다. 만차일 경우 제휴 주차장을 안내해 드립니다.`;
+      return `${parking.hotelSpacesLocation}有 ${parking.hotelSpaces} 個車位喔！如果滿位，我們會再引導您到配合停車場。`;
+    }
+  }
+  return null;
+}

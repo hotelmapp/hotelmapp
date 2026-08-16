@@ -53,6 +53,8 @@ export const hotelKnowledge = {
   },
   parking: {
     hotelSpaces: 3,
+    freeCarsPerRoom: 1,
+    additionalCarFee: "NT$200",
     hotelSpacesLocation: "飯店門口",
     overflowRule: "飯店門口停滿時可使用配合停車場。",
     alternatives: ["配合的全國電子停車場", "智慧街家樂福後門之智慧街停車場"],
