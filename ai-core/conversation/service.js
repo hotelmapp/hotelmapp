@@ -12,7 +12,7 @@ export class ConversationService {
       for (const turn of turns) next = appendTurn(next, turn, { now: this.now() });
       if (topic) next.topic = topic;
       if (intent) next.intent = intent;
-      if (state) next.state = state;
+      if (state) next.state = structuredClone(state);
       try { await this.store.compareAndSet(id, current?.revision ?? -1, next); return { ...next, revision: (current?.revision ?? -1) + 1 }; }
       catch (error) { if (!(error instanceof ConversationConflictError) || attempt === 3) throw error; }
     }

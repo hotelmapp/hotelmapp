@@ -3,7 +3,7 @@ import { hotelKnowledge, KNOWLEDGE_VERSION } from "./knowledge.js";
 const TOPIC_PATTERNS = Object.freeze({
   breakfast: /早餐|早午餐|餐點|菜色|咖啡|素食|breakfast|brunch|朝食|조식/iu,
   parking: /停車|車位|停好|車牌|折抵|parking|駐車|주차/iu,
-  check_in: /入住|check[ -]?in|チェックイン|체크인/iu,
+  check_in: /入住|抵達|到飯店|check[ -]?in|チェックイン|체크인/iu,
   front_desk_contact: /櫃台|櫃檯|服務時間|電話|聯絡|front desk|reception/iu,
   check_out: /退房|check[ -]?out|チェックアウト|체크아웃/iu
 });

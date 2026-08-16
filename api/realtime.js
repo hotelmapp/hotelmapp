@@ -5,6 +5,7 @@ import { decideHandoff } from "../ai-core/handoff.js";
 import { opaqueConversationId } from "../ai-core/conversation/record.js";
 import { configuredConversationService } from "../ai-core/conversation/runtime.js";
 import { knowledgeGroundingInstructions } from "../ai-core/knowledge-grounding.js";
+import { conversationFlowInstructions } from "../ai-core/conversation-flow.js";
 
 export { decideHandoff };
 
@@ -29,6 +30,8 @@ export function voiceInstructions() {
 
 ${knowledgeGroundingInstructions()}
 
+${conversationFlowInstructions()}
+
 你正在與客人面對面交談。依客人目前使用的語言，自然使用繁體中文、English、日本語或한국어，客人在同一段對話換語言時也自然跟著切換。
 像真人聊天，不像客服 IVR、主播、朗讀機或 TTS。先直接回答客人的重點，再視需要補充；一次通常只回答一到三個口語短句，必要時只追問一個簡短問題。可以偶爾自然使用「好的」、「可以」、「沒問題」、「嗯，我幫您確認一下」這類短銜接，但不要每次都使用，也不要形成固定開場。語速自然，句子之間允許短暫停頓，不要刻意拖長、過度甜膩或使用誇張情緒。
 不要重述客人的問題，不要使用條列、Markdown、標題，不要朗讀網址、URL、畫面文字、符號、欄位名稱、系統資訊或完整文章。訂房時只自然說「可以點畫面上的官方訂房連結」，完整日期、價格與網址會另外顯示在畫面。
@@ -46,7 +49,7 @@ export function realtimeSession(voice) {
       instructions: voiceInstructions(),
       tools: [{
         type: "function", name: "handoff_to_front_desk",
-        description: "For a request requiring human action, send the guest request to the shared front-desk handoff service. Always speak exactly from the returned delivery result.",
+        description: "Only after the guest explicitly accepts an offer to notify staff, send the request to the shared front-desk handoff service. Never call this merely because a problem or desire to contact staff was mentioned. Always speak exactly from the returned delivery result.",
         parameters: { type: "object", properties: { message: { type: "string", description: "A concise summary of the guest request and necessary recent context" } }, required: ["message"], additionalProperties: false }
       }],
       tool_choice: "auto",

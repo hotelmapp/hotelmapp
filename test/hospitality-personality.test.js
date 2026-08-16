@@ -118,7 +118,7 @@ test("front desk contact is helpful but does not send until guest confirms", asy
   const answer = await answerGuestMessage("櫃檯電話怎麼聯絡？", { handoffService: async () => { handoffs += 1; return { attempted: false }; } });
   assert.match(answer, /04-2707-8378/);
   assert.match(answer, /需要我幫您通知櫃檯嗎/);
-  assert.equal(handoffs, 1);
+  assert.equal(handoffs, 0);
   assert.doesNotMatch(answer, /已.*通知|已.*寄/);
 });
 

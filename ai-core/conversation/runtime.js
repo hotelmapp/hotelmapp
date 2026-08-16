@@ -3,6 +3,7 @@ import { decideHandoff } from "../handoff.js";
 import { ConversationService } from "./service.js";
 import { conversationStoreFromEnv } from "./store.js";
 import { resolveKnowledgeGrounding } from "../knowledge-grounding.js";
+import { planConversationTurn } from "../conversation-flow.js";
 
 const memoryUnavailableHandoff = async () => ({
   attempted: true, delivered: false,
@@ -17,11 +18,13 @@ export async function answerWithConversation({ id, channel, message, service, id
   let history;
   let storedTopic = null;
   let storedIntent = null;
+  let state = null;
   try {
     const context = service.context ? await service.context(id) : null;
     history = context?.turns?.map(({ role, content }) => ({ role, content })) || await service.history(id);
     storedTopic = context?.topic || null;
     storedIntent = context?.intent || null;
+    state = context?.state || null;
   } catch (error) {
     // FAQ remains available without Redis. Any action whose authorization or
     // idempotency depends on conversation state is explicitly denied.
@@ -29,10 +32,11 @@ export async function answerWithConversation({ id, channel, message, service, id
     const response = await answer(message, { history: [], channel, identity, handoffService });
     return { answer: response, durable: false, memoryError: error };
   }
-  const grounding = resolveKnowledgeGrounding(message, history, storedTopic, storedIntent);
-  const response = await answer(message, { history, channel, identity, grounding });
+  const plan = planConversationTurn({ message, history, storedTopic, storedIntent, state, channel });
+  const grounding = plan.grounding;
+  const response = await answer(message, { history, channel, identity, grounding, plan });
   try {
-    await service.append(id, channel, [{ role: "user", content: message }, { role: "assistant", content: response }], { topic: grounding.topic, intent: grounding.intent });
+    await service.append(id, channel, [{ role: "user", content: message }, { role: "assistant", content: response }], { topic: grounding.topic, intent: grounding.intent, state: plan.nextState });
     return { answer: response, durable: true };
   } catch (error) {
     // Never repeat response generation or a handoff after an uncertain write:
