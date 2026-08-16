@@ -2,6 +2,8 @@ import { VOICE_OPTIONS } from "../voice-assistant.js";
 import { groundedKnowledgePrompt } from "../ai-core/knowledge.js";
 import { styledInstructions } from "../ai-core/hospitality-personality.js";
 import { decideHandoff } from "../ai-core/handoff.js";
+import { opaqueConversationId } from "../ai-core/conversation/record.js";
+import { configuredConversationService } from "../ai-core/conversation/runtime.js";
 
 export { decideHandoff };
 
@@ -80,7 +82,9 @@ export default async function handler(req, res) {
       return sendError(res, 502, "credential_failed", "OpenAI 即時語音憑證格式不正確。", { requestId, reason: "schema_invalid" });
     }
     // Return only the short-lived client secret, never the server API key or session instructions.
-    return res.status(200).json({ value, expires_at: body.expires_at || body.client_secret?.expires_at });
+    const conversationId = opaqueConversationId("voice");
+    try { await configuredConversationService().append(conversationId, "voice", [{ role: "assistant", content: "Voice session initialized" }]); } catch {}
+    return res.status(200).json({ value, expires_at: body.expires_at || body.client_secret?.expires_at, conversationId });
   } catch (error) {
     const timedOut = error?.name === "TimeoutError";
     console.error("[api/realtime] credential request failed", { timedOut, name: error?.name });

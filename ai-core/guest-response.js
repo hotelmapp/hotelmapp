@@ -4,6 +4,7 @@ import { detectGuestLanguage } from "../guest-language.js";
 import { requestGroundedResponse } from "./response-service.js";
 import { styledInstructions } from "./hospitality-personality.js";
 import { performHandoff } from "./handoff-service.js";
+import { temporalContextPrompt, temporalContextProvider } from "./temporal-context.js";
 
 const OPENAI_MODEL = process.env.OPENAI_MODEL?.trim() || "gpt-4.1-mini";
 const MAX_HISTORY_MESSAGES = 20;
@@ -196,7 +197,7 @@ export function sensitiveSituationReply(message) {
   return null;
 }
 
-export function responsesPayload(message, history = [], channel = "web") {
+export function responsesPayload(message, history = [], channel = "web", temporalContext = temporalContextProvider.getContext()) {
   const conversation = normalizedHistory(history);
   const responseLanguage = detectGuestLanguage(message, conversation);
   const contextText = [...conversation.map(item => item.content), message].join("\n");
@@ -204,6 +205,8 @@ export function responsesPayload(message, history = [], channel = "web") {
   return {
     model: OPENAI_MODEL,
     instructions: `${styledInstructions(channel)}
+
+${temporalContextPrompt(temporalContext)}
 
 支援繁體中文（zh-TW）、English（en）、日本語（ja）、한국어（ko）。本次判定旅客主要語言為 ${responseLanguage}，必須使用該語言並全程以該語言簡潔回答；不要因下方飯店資料是繁體中文而改用中文，也不要夾雜其他語言。專有名詞、飯店名稱與網址可保留原文。若語言無法可靠判斷則使用繁體中文。
 判斷時以旅客目前訊息為優先，並參考最近對話；回答原則上跟隨目前訊息的語言。
@@ -242,7 +245,7 @@ export function responseText(response) {
     .join("\n");
 }
 
-export async function answerGuestMessage(message, { history = [], channel = "web", identity, handoffService = performHandoff } = {}) {
+export async function answerGuestMessage(message, { history = [], channel = "web", identity, handoffService = performHandoff, temporalContext = temporalContextProvider.getContext() } = {}) {
   const trimmed = typeof message === "string" ? message.trim().slice(0, MAX_MESSAGE_LENGTH) : "";
   if (!trimmed) throw new TypeError("A non-empty guest message is required");
   const directAnswer = sensitiveSituationReply(trimmed) || availabilityReply(trimmed) || specialRequestReply(trimmed) || informationalReply(trimmed);
@@ -250,6 +253,6 @@ export async function answerGuestMessage(message, { history = [], channel = "web
   if (handoff.attempted) return [directAnswer, handoff.answer].filter(Boolean).join("\n\n");
   if (directAnswer) return directAnswer;
 
-  const payload = responsesPayload(trimmed, history, channel);
+  const payload = responsesPayload(trimmed, history, channel, temporalContext);
   return (await requestGroundedResponse({ payload })).answer;
 }

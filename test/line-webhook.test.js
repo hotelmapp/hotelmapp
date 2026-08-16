@@ -124,8 +124,10 @@ test("suppresses an obvious duplicate event in the current instance", async t =>
   let calls = 0;
   globalThis.fetch = async () => { calls += 1; return new Response("{}", { status: 200 }); };
   const event = { webhookEventId: "duplicate-1", type: "message", replyToken: "r", message: { type: "text", text: "早餐在哪裡？" } };
-  assert.equal((await processLineEvent(event, { accessToken: "token" })).outcome, "replied");
-  assert.equal((await processLineEvent(event, { accessToken: "token" })).outcome, "duplicate");
+  const claimed = new Set();
+  const conversationService = { store: { claimIdempotencyKey: async (_scope, key) => claimed.has(key) ? false : (claimed.add(key), true) } };
+  assert.equal((await processLineEvent(event, { accessToken: "token", conversationService })).outcome, "replied");
+  assert.equal((await processLineEvent(event, { accessToken: "token", conversationService })).outcome, "duplicate");
   assert.equal(calls, 1);
 });
 

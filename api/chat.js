@@ -1,6 +1,8 @@
 import { KNOWLEDGE_VERSION } from "../ai-core/knowledge.js";
 import { OpenAIResponseError } from "../ai-core/response-service.js";
 import { answerGuestMessage } from "../ai-core/guest-response.js";
+import { opaqueConversationId } from "../ai-core/conversation/record.js";
+import { answerWithConversation, configuredConversationService } from "../ai-core/conversation/runtime.js";
 
 export * from "../ai-core/guest-response.js";
 
@@ -26,12 +28,20 @@ export default async function handler(req, res) {
   }
 
   try {
-    const answer = await answerGuestMessage(message, { history: req.body?.history, channel: "web" });
+    const suppliedId = typeof req.body?.conversationId === "string" && /^web_[A-Za-z0-9_-]{24,80}$/.test(req.body.conversationId) ? req.body.conversationId : null;
+    const conversationId = suppliedId || opaqueConversationId("web");
+    let service;
+    try { service = configuredConversationService(); } catch { service = null; }
+    const result = service
+      ? await answerWithConversation({ id: conversationId, channel: "web", message, service })
+      : { answer: await answerGuestMessage(message, { history: req.body?.history, channel: "web" }), durable: false };
     return res.status(200).json({
-      answer,
+      answer: result.answer,
+      conversationId,
       diagnostic: {
         knowledgeVersion: KNOWLEDGE_VERSION,
-        commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) || "local"
+        commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) || "local",
+        conversationMemory: result.durable ? "durable" : "stateless"
       }
     });
   } catch (error) {
