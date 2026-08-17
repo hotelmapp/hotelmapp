@@ -72,7 +72,10 @@ export async function processLineEvent(event, { accessToken, fetchImpl = fetch, 
     let response;
     if (conversationService && hmacSecret) {
       const id = lineConversationId(event.source, hmacSecret);
-      response = (await answerWithConversation({ id, channel: "line", message: event.message.text, service: conversationService, answer })).answer;
+      const conversation = createHash("sha256").update(id).digest("hex").slice(0, 16);
+      response = (await answerWithConversation({ id, channel: "line", message: event.message.text, service: conversationService, answer,
+        onDiagnostic: diagnostic => console.info("[conversation]", { channel: "line", conversation, ...diagnostic })
+      })).answer;
     } else {
       response = await answer(event.message.text, { channel: "line", handoffService: async () => ({ attempted: false }) });
     }
@@ -91,8 +94,10 @@ export default async function handler(req, res) {
   const secret = process.env.LINE_CHANNEL_SECRET?.trim();
   const accessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN?.trim();
   const hmacSecret = process.env.CONVERSATION_HMAC_SECRET?.trim();
-  if (!secret || !accessToken) {
-    console.error("[api/line/webhook] LINE configuration is incomplete");
+  const redisConfigured = Boolean((process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL)?.trim()
+    && (process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN)?.trim());
+  if (!secret || !accessToken || !hmacSecret || !redisConfigured) {
+    console.error("[api/line/webhook] LINE production configuration is incomplete", { line: Boolean(secret && accessToken), conversationHmac: Boolean(hmacSecret), redis: redisConfigured });
     return json(res, 500, { error: "LINE adapter is not configured", diagnostic: { source: "line", code: "missing_configuration" } });
   }
 

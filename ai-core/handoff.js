@@ -7,7 +7,7 @@ const HANDOFF_CATEGORIES = Object.freeze([
   ["停車需求", /(?:幫我|可以|能否|想|需要|要).{0,12}(?:留|保留|預約|安排).{0,6}(?:車位|停車)|(?:車位|停車).{0,12}(?:留|保留|預約|安排)/iu],
   ["訂房修改／取消", /(?:修改|更改|取消|改期).{0,12}(?:訂房|預訂|日期|入住)|(?:訂房|預訂).{0,12}(?:修改|更改|取消|改期)/iu],
   ["付款／退款爭議", /退款|退費|重複扣款|付款爭議|付款異常|刷卡失敗|不明扣款|款項.{0,8}(?:異常|爭議|處理)/iu],
-  ["設備故障", /(?:冷氣|空調|電視|熱水|門鎖|設備|wifi|網路).{0,12}(?:壞|故障|沒反應|無法使用)|(?:壞|故障|沒反應|無法使用).{0,12}(?:冷氣|空調|電視|熱水|門鎖|設備|wifi|網路)/iu],
+  ["設備故障", /(?:冷氣|空調|電視|熱水|門鎖|設備|wifi|網路).{0,12}(?:不冷|壞|故障|沒反應|無法使用)|(?:不冷|壞|故障|沒反應|無法使用).{0,12}(?:冷氣|空調|電視|熱水|門鎖|設備|wifi|網路)/iu],
   ["遺失物", /遺失|忘了帶走|掉了|失物|lost\s*(?:item|property)/iu],
   ["客訴", /客訴|投訴|抱怨|很不滿|太糟|非常生氣/iu],
   ["私人訂房資料", /訂房編號|預訂編號|訂單資料|私人資料|個人資料/iu],
@@ -18,7 +18,11 @@ const HANDOFF_CATEGORIES = Object.freeze([
 export function decideHandoff(message, history = []) {
   const current = typeof message === "string" ? message.trim().slice(0, MAX_MESSAGE_LENGTH) : "";
   if (!current) return { required: false, category: null };
-  const category = HANDOFF_CATEGORIES.find(([, pattern]) => pattern.test(current))?.[0];
+  let category = HANDOFF_CATEGORIES.find(([, pattern]) => pattern.test(current))?.[0];
+  if (!category && /(?:可以幫我處理|請幫我處理|幫我處理|同意(?:轉接|通知))/u.test(current)) {
+    const recentUserContext = normalizedGuestMessages(history).slice(-3).join("\n");
+    if (HANDOFF_CATEGORIES.find(([name, pattern]) => name === "設備故障" && pattern.test(recentUserContext))) category = "設備故障";
+  }
   return category ? { required: true, category } : { required: false, category: null };
 }
 

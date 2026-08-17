@@ -20,13 +20,27 @@ function signedRequest(payload, secret = "line-secret") {
   };
 }
 
+function redisOr(fallback) {
+  return async (url, options) => {
+    if (url === "https://redis.example") {
+      const command = JSON.parse(options.body);
+      const result = command[0] === "GET" ? null : command[0] === "EVAL" ? 1 : "OK";
+      return new Response(JSON.stringify({ result }), { status: 200 });
+    }
+    return fallback(url, options);
+  };
+}
+
 async function withConfig(t) {
-  const previous = { secret: process.env.LINE_CHANNEL_SECRET, token: process.env.LINE_CHANNEL_ACCESS_TOKEN, key: process.env.OPENAI_API_KEY, fetch: globalThis.fetch };
+  const previous = { secret: process.env.LINE_CHANNEL_SECRET, token: process.env.LINE_CHANNEL_ACCESS_TOKEN, key: process.env.OPENAI_API_KEY, hmac: process.env.CONVERSATION_HMAC_SECRET, redisUrl: process.env.UPSTASH_REDIS_REST_URL, redisToken: process.env.UPSTASH_REDIS_REST_TOKEN, fetch: globalThis.fetch };
   process.env.LINE_CHANNEL_SECRET = "line-secret";
   process.env.LINE_CHANNEL_ACCESS_TOKEN = "line-access-token";
   process.env.OPENAI_API_KEY = "openai-secret";
+  process.env.CONVERSATION_HMAC_SECRET = "conversation-secret";
+  process.env.UPSTASH_REDIS_REST_URL = "https://redis.example";
+  process.env.UPSTASH_REDIS_REST_TOKEN = "redis-token";
   t.after(() => {
-    for (const [name, value] of [["LINE_CHANNEL_SECRET", previous.secret], ["LINE_CHANNEL_ACCESS_TOKEN", previous.token], ["OPENAI_API_KEY", previous.key]]) value === undefined ? delete process.env[name] : process.env[name] = value;
+    for (const [name, value] of [["LINE_CHANNEL_SECRET", previous.secret], ["LINE_CHANNEL_ACCESS_TOKEN", previous.token], ["OPENAI_API_KEY", previous.key], ["CONVERSATION_HMAC_SECRET", previous.hmac], ["UPSTASH_REDIS_REST_URL", previous.redisUrl], ["UPSTASH_REDIS_REST_TOKEN", previous.redisToken]]) value === undefined ? delete process.env[name] : process.env[name] = value;
     globalThis.fetch = previous.fetch;
   });
 }
@@ -56,6 +70,16 @@ test("fails safely when LINE configuration is missing", async t => {
   assert.equal(res.statusCode, 500);
   assert.equal(res.body.diagnostic.code, "missing_configuration");
   assert.doesNotMatch(JSON.stringify(res.body), /line-secret|line-access-token/u);
+});
+
+test("reports deployment configuration errors when durable memory identity or Redis is missing", async t => {
+  await withConfig(t);
+  delete process.env.CONVERSATION_HMAC_SECRET;
+  delete process.env.UPSTASH_REDIS_REST_TOKEN;
+  const res = recorder();
+  await handler(signedRequest({ events: [{ type: "message", message: { type: "text", text: "10點半" }, replyToken: "r" }] }), res);
+  assert.equal(res.statusCode, 500);
+  assert.equal(res.body.diagnostic.code, "missing_configuration");
 });
 
 test("accepts verification and empty-event webhooks without external calls", async t => {
@@ -107,11 +131,11 @@ test("reuses shared booking intent, date parsing, and dated official URL", async
 test("ignores unsupported messages and processes multiple events", async t => {
   await withConfig(t);
   let replies = 0;
-  globalThis.fetch = async () => { replies += 1; return new Response("{}", { status: 200 }); };
+  globalThis.fetch = redisOr(async () => { replies += 1; return new Response("{}", { status: 200 }); });
   const res = recorder();
   await handler(signedRequest({ events: [
     { webhookEventId: "sticker-1", type: "message", replyToken: "secret-sticker-token", message: { type: "sticker", id: "1" } },
-    { webhookEventId: "text-multi-1", type: "message", replyToken: "secret-text-token", message: { type: "text", text: "早餐幾點？" } }
+    { webhookEventId: "text-multi-1", type: "message", replyToken: "secret-text-token", source: { type: "user", userId: "U-multi" }, message: { type: "text", text: "早餐幾點？" } }
   ] }), res);
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.processed, 1);
@@ -133,17 +157,17 @@ test("suppresses an obvious duplicate event in the current instance", async t =>
 
 test("returns safe diagnostics for OpenAI and LINE reply failures", async t => {
   await withConfig(t);
-  globalThis.fetch = async url => url.includes("openai.com")
+  globalThis.fetch = redisOr(async url => url.includes("openai.com")
     ? new Response(JSON.stringify({ error: { message: "openai-secret reply-sensitive", type: "server_error", code: "internal" } }), { status: 500 })
-    : new Response(JSON.stringify({ message: "line-access-token reply-sensitive" }), { status: 500, headers: { "x-line-request-id": "line_req_1" } });
+    : new Response(JSON.stringify({ message: "line-access-token reply-sensitive" }), { status: 500, headers: { "x-line-request-id": "line_req_1" } }));
 
   const aiRes = recorder();
-  await handler(signedRequest({ events: [{ webhookEventId: "ai-fail-1", type: "message", replyToken: "reply-sensitive", message: { type: "text", text: "飯店地址在哪裡？" } }] }), aiRes);
+  await handler(signedRequest({ events: [{ webhookEventId: "ai-fail-1", type: "message", replyToken: "reply-sensitive", source: { type: "user", userId: "U-ai" }, message: { type: "text", text: "飯店地址在哪裡？" } }] }), aiRes);
   assert.equal(aiRes.statusCode, 502);
   assert.equal(aiRes.body.diagnostic.source, "openai");
 
   const lineRes = recorder();
-  await handler(signedRequest({ events: [{ webhookEventId: "line-fail-1", type: "message", replyToken: "reply-sensitive", message: { type: "text", text: "早餐幾點？" } }] }), lineRes);
+  await handler(signedRequest({ events: [{ webhookEventId: "line-fail-1", type: "message", replyToken: "reply-sensitive", source: { type: "user", userId: "U-line" }, message: { type: "text", text: "早餐幾點？" } }] }), lineRes);
   assert.equal(lineRes.statusCode, 502);
   assert.equal(lineRes.body.diagnostic.code, "reply_failed");
   const diagnostics = JSON.stringify([aiRes.body, lineRes.body]);

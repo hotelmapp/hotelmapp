@@ -5,10 +5,11 @@ const TOPIC_PATTERNS = Object.freeze({
   parking: /停車|車位|停好|車牌|折抵|parking|駐車|주차/iu,
   check_in: /入住|check[ -]?in|チェックイン|체크인/iu,
   front_desk_contact: /櫃台|櫃檯|服務時間|電話|聯絡|front desk|reception/iu,
-  check_out: /退房|check[ -]?out|チェックアウト|체크아웃/iu
+  check_out: /退房|check[ -]?out|チェックアウト|체크아웃/iu,
+  equipment_problem: /冷氣|空調|電視|熱水|門鎖|wifi|網路/iu
 });
 
-const FOLLOW_UP_PATTERN = /^(?:那|那麼|那我|那如果|這個|所以|如果|what about|then|how about|では|それ|그럼|그러면)|(?:可以嗎|呢|怎麼辦|晚一點|早一點|九點|十點|第二台)/iu;
+const FOLLOW_UP_PATTERN = /^(?:那|那麼|那我|那如果|這個|所以|如果|好(?:啊|的)?|麻煩你|可以幫我處理嗎|可以(?:幫我)?嗎|what about|then|how about|では|それ|그럼|그러면)|(?:可以嗎|呢|怎麼辦|晚一點|早一點|[0-2]?\d\s*(?:[:：]\s*\d{2}|點(?:半)?)|第二台)/iu;
 
 export function explicitTopic(text) {
   return Object.entries(TOPIC_PATTERNS).find(([, pattern]) => pattern.test(String(text || "")))?.[0] || null;
@@ -64,7 +65,8 @@ export function factsForTopic(topic, intent = null) {
     breakfast: () => ({ breakfast: hotelKnowledge.breakfast }),
     check_in: () => ({ stay: { checkIn: hotelKnowledge.stay.checkIn, afterHoursCheckIn: hotelKnowledge.stay.afterHoursCheckIn, access: hotelKnowledge.stay.access }, contact: { deskHours: hotelKnowledge.contact.deskHours } }),
     front_desk_contact: () => ({ contact: hotelKnowledge.contact, escalation: hotelKnowledge.escalation }),
-    check_out: () => ({ stay: { checkOut: hotelKnowledge.stay.checkOut, lateCheckOut: hotelKnowledge.stay.lateCheckOut } })
+    check_out: () => ({ stay: { checkOut: hotelKnowledge.stay.checkOut, lateCheckOut: hotelKnowledge.stay.lateCheckOut } }),
+    equipment_problem: () => ({ contact: { deskHours: hotelKnowledge.contact.deskHours, afterHoursEquipment: hotelKnowledge.contact.afterHoursEquipment }, escalation: hotelKnowledge.escalation })
   };
   return selectors[topic]?.() || null;
 }
@@ -82,7 +84,8 @@ export function factualContract(topic, intent = null) {
     }[intent] || ["parking.hotelSpaces", "parking.hotelSpacesLocation", "parking.overflowRule", "parking.alternatives"],
     check_in: ["stay.checkIn", "stay.afterHoursCheckIn", "stay.access", "contact.deskHours"],
     front_desk_contact: ["contact.frontDeskPhone", "contact.deskHours", "contact.afterHoursEquipment", "contact.afterHoursSameDayBooking"],
-    check_out: ["stay.checkOut", "stay.lateCheckOut"]
+    check_out: ["stay.checkOut", "stay.lateCheckOut"],
+    equipment_problem: ["contact.deskHours", "contact.afterHoursEquipment", "escalation"]
   }[topic] || [];
   return Object.freeze({
     topic, intent, knowledgeVersion: KNOWLEDGE_VERSION, requiredFactIds,

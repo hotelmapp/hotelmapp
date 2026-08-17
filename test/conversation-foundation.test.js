@@ -58,3 +58,39 @@ test("memory outage permits FAQ but fails closed before handoff", async () => {
   const service = { history: async () => { throw new Error("redis down"); } }; const faq = await answerWithConversation({ id: "web_x", channel: "web", message: "早餐幾點？", service }); assert.equal(faq.durable, false); assert.match(faq.answer, /08:00–10:00/);
   const handoff = await answerWithConversation({ id: "web_x", channel: "web", message: "幫我取消訂房", service }); assert.equal(handoff.durable, false); assert.match(handoff.answer, /尚未.*執行/); assert.doesNotMatch(handoff.answer, /已經幫您.*留言/);
 });
+
+async function lineSequence(messages) {
+  const store = new DurableFakeStore();
+  const service = new ConversationService({ store });
+  const source = { type: "user", userId: "private-line-user" };
+  const hmacSecret = "stable-production-secret";
+  const ids = [];
+  const groundings = [];
+  const fetchImpl = async () => ({ ok: true, headers: { get: () => null } });
+  const answer = async (_message, options) => { groundings.push(options.grounding); return `${options.grounding?.topic || "none"}:${options.grounding?.intent || "none"}`; };
+  for (const [index, message] of messages.entries()) {
+    ids.push(lineConversationId(source, hmacSecret));
+    await processLineEvent({ webhookEventId: `sequence-${message}-${index}`, type: "message", message: { type: "text", text: message }, replyToken: `r${index}`, source }, { accessToken: "token", fetchImpl, conversationService: service, hmacSecret, answer });
+  }
+  return { store, id: ids[0], ids, groundings };
+}
+
+test("LINE late-arrival ellipsis retains check-in context for three durable turns", async () => {
+  const result = await lineSequence(["我今天入住晚上10點半才會到可以嗎？", "10點半", "那如果11點呢？"]);
+  assert.equal(new Set(result.ids).size, 1);
+  assert.deepEqual(result.groundings.map(item => item.topic), ["check_in", "check_in", "check_in"]);
+  const record = await result.store.get(result.id);
+  assert.equal(record.turns.length, 6);
+  assert.equal(record.topic, "check_in");
+});
+
+test("LINE parking follow-ups retain topic while resolving fee then location intent", async () => {
+  const result = await lineSequence(["停車要收費嗎？", "那第二台呢？", "那我要停哪裡？"]);
+  assert.deepEqual(result.groundings.map(item => [item.topic, item.intent]), [["parking", "parking_fee"], ["parking", "parking_fee"], ["parking", "parking_location"]]);
+});
+
+test("LINE equipment flow stores pending consent and avoids duplicate handoff", async () => {
+  const result = await lineSequence(["房間冷氣好像不冷", "可以幫我處理嗎", "好，麻煩你"]);
+  assert.deepEqual(result.groundings.map(item => item.topic), ["equipment_problem", "equipment_problem", "equipment_problem"]);
+  assert.equal((await result.store.get(result.id)).pendingAction.status, "completed");
+});
