@@ -5,9 +5,103 @@ import { frontDeskEmail } from "./operational-config.js";
 
 const SENDER = "希堤微旅 AI 智慧櫃台 <onboarding@resend.dev>";
 const SAFE_IDENTIFIER_KEYS = new Set(["displayName", "email", "phone"]);
+const PHONE_PATTERN = /(?<!\d)(?:\+?886[- ]?)?0?9\d{2}[- ]?\d{3}[- ]?\d{3}(?!\d)/u;
+const EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/iu;
+const CONFIRM_PATTERN = /^(?:好|好的|可以|確認|確認送出|同意|送出|麻煩送出|ok|okay|yes|可以送出)[！!。,.\s]*$/iu;
+const CANCEL_PATTERN = /^(?:不要|不用|取消|先不用|不用了|no|cancel)[！!。,.\s]*$/iu;
 
 function clean(value, limit = 2_000) {
   return typeof value === "string" ? value.trim().slice(0, limit).replace(/[\r\n\u2028\u2029]+/g, " ") : "";
+}
+
+function normalizePhone(value) {
+  const raw = clean(value, 40);
+  if (!raw) return "";
+  const match = raw.match(PHONE_PATTERN)?.[0] || "";
+  return match.replace(/[ -]/g, "");
+}
+
+function normalizeEmail(value) {
+  return clean(value, 254).match(EMAIL_PATTERN)?.[0]?.toLowerCase() || "";
+}
+
+function normalizeDisplayName(value) {
+  return clean(value, 80).replace(/[，,;；].*$/u, "");
+}
+
+export function extractHandoffContact(message, identity = {}) {
+  const text = clean(message, 1_000);
+  const phone = normalizePhone(identity?.phone) || normalizePhone(text);
+  const email = normalizeEmail(identity?.email) || normalizeEmail(text);
+  let displayName = normalizeDisplayName(identity?.displayName);
+  if (!displayName && (phone || email)) {
+    const beforeContact = text.split(phone || email)[0].replace(/[，,：:\s]+$/u, "").trim();
+    if (beforeContact && beforeContact.length <= 40 && !/^(?:電話|手機|email|e-mail)$/iu.test(beforeContact)) displayName = beforeContact;
+  }
+  return { ...(displayName ? { displayName } : {}), ...(phone ? { phone } : {}), ...(email ? { email } : {}) };
+}
+
+export function hasRequiredHandoffContact(contact = {}) {
+  return Boolean(clean(contact.displayName, 80) && (normalizePhone(contact.phone) || normalizeEmail(contact.email)));
+}
+
+function maskedContact(contact = {}) {
+  const phone = normalizePhone(contact.phone);
+  const email = normalizeEmail(contact.email);
+  const name = clean(contact.displayName, 80);
+  const phoneText = phone ? `${phone.slice(0, 4)}***${phone.slice(-3)}` : "";
+  const emailText = email ? email.replace(/^(.{1,2}).*(@.*)$/u, "$1***$2") : "";
+  return [name, phoneText || emailText].filter(Boolean).join("／");
+}
+
+function confirmationReply({ category, contact }) {
+  return `好的，我先幫您整理好了。這次要送交櫃檯的是「${clean(category, 80)}」，聯絡資料是 ${maskedContact(contact)}。為了避免誤送，請您最後確認一次：回覆「確認送出」後，我才會正式送交櫃檯。`;
+}
+
+function collectContactReply() {
+  return "好的，我可以幫您整理給櫃檯。送出前需要先確認必要聯絡資料，請提供您的姓名，以及聯絡電話或 Email；收到後我會再整理內容請您做最後確認。";
+}
+
+/**
+ * Durable handoff state machine. Guest prose is never authorization by itself:
+ * contact collection and an explicit final confirmation are separate states.
+ */
+export function advanceHandoffAuthorization({ message, history = [], identity, current } = {}) {
+  const existing = current && typeof current === "object" ? current : { state: "none" };
+  const state = existing.state || "none";
+  const decision = decideHandoff(message, history);
+
+  if (state === "ready_for_confirmation") {
+    if (CANCEL_PATTERN.test(clean(message, 80))) return { handoff: { state: "none" }, reply: "沒問題，我先不送出。如果之後需要櫃檯協助，再告訴我就可以了。", authorized: false };
+    if (CONFIRM_PATTERN.test(clean(message, 80)) && hasRequiredHandoffContact(existing.contact)) {
+      return { handoff: { ...existing, state: "confirmed" }, authorized: true };
+    }
+    return { handoff: existing, reply: confirmationReply(existing), authorized: false };
+  }
+
+  if (state === "collecting_required_fields") {
+    const contact = { ...(existing.contact || {}), ...extractHandoffContact(message, identity) };
+    if (!hasRequiredHandoffContact(contact)) return { handoff: { ...existing, contact, state: "collecting_required_fields" }, reply: collectContactReply(), authorized: false };
+    const handoff = { ...existing, contact, state: "ready_for_confirmation" };
+    return { handoff, reply: confirmationReply(handoff), authorized: false };
+  }
+
+  if (state === "confirmed") return { handoff: existing, authorized: true };
+  if (state === "sent" || state === "failed") {
+    if (!decision.required) return { handoff: existing, authorized: false };
+  }
+  if (!decision.required) return { handoff: existing, authorized: false };
+
+  const contact = extractHandoffContact(message, identity);
+  if (!hasRequiredHandoffContact(contact)) {
+    return {
+      handoff: { state: "collecting_required_fields", category: decision.category, contact },
+      reply: collectContactReply(),
+      authorized: false
+    };
+  }
+  const handoff = { state: "ready_for_confirmation", category: decision.category, contact };
+  return { handoff, reply: confirmationReply(handoff), authorized: false };
 }
 
 function safeIdentity(identity) {
@@ -54,16 +148,16 @@ export function handoffGuestReply({ delivered, category, channel = "web" }) {
   const contact = `櫃檯電話 ${hotelKnowledge.contact.frontDeskPhone}（07:00–22:00）`;
   if (!delivered) return `不好意思，我這邊目前沒辦法成功把留言送到櫃台。您可以直接聯絡櫃台，我把聯絡方式提供給您：${contact}。`;
   const responses = {
-    "停車需求": "可以喔～我已經幫您把停車需求留言給櫃台同仁了。不過車位仍會依當天現場狀況安排，這則留言不代表已保留車位 😊",
-    "訂房修改／取消": "我已經幫您把修改需求留言給櫃台同仁了，請等櫃台確認；目前尚未完成任何訂房變更。",
-    "付款／退款爭議": "我已經幫您把付款或退款需求留言給櫃台同仁了，請等櫃台確認；目前尚未完成任何款項處理。"
+    "停車需求": "好的～您的停車需求已成功送交櫃檯信箱，請等櫃檯確認；車位仍採現場安排，這不代表已保留車位。",
+    "訂房修改／取消": "好的，您的修改需求已成功送交櫃檯信箱，請等櫃檯確認；目前尚未完成任何訂房變更。",
+    "付款／退款爭議": "好的，您的付款或退款需求已成功送交櫃檯信箱，請等櫃檯確認；目前尚未完成任何款項處理。"
   };
-  const response = responses[category] || "可以喔～我已經幫您把需求留言給櫃台同仁了，請等櫃台確認後再協助您處理。";
-  return channel === "voice" ? response.replace("可以喔～", "好的，") : response;
+  const response = responses[category] || "好的～您的需求已成功送交櫃檯信箱，請等櫃檯確認後再協助您處理。";
+  return channel === "voice" ? response.replace("好的～", "好的，") : response;
 }
 
-export async function performHandoff({ message, history = [], channel = "web", identity, now }, { send = sendEmail } = {}) {
-  const decision = decideHandoff(message, history);
+export async function performHandoff({ message, history = [], channel = "web", identity, now, category }, { send = sendEmail } = {}) {
+  const decision = category ? { required: true, category } : decideHandoff(message, history);
   if (!decision.required) return { attempted: false, delivered: false, decision };
   const email = handoffEmail({ channel, message, history, category: decision.category, identity, now });
   try {
@@ -85,13 +179,15 @@ export const HANDOFF_AUTHORIZATION_STATES = Object.freeze([
  * server-side confirmation state. Transport history and guest prose never count.
  */
 export async function performAuthorizedHandoff(request, { authorization } = {}, dependencies) {
-  const decision = decideHandoff(request?.message, request?.history);
+  const decision = authorization?.category
+    ? { required: true, category: authorization.category }
+    : decideHandoff(request?.message, request?.history);
   if (!decision.required) return { attempted: false, delivered: false, decision };
-  if (authorization?.state !== "confirmed") {
+  if (authorization?.state !== "confirmed" || !hasRequiredHandoffContact(authorization?.contact)) {
     return {
-      attempted: true, delivered: false, authorized: false, decision,
-      answer: "我可以先幫您整理這項需求；在送交飯店人員前，還需要由您確認要送出的內容與必要聯絡資料，目前尚未送出。"
+      attempted: false, delivered: false, authorized: false, decision,
+      answer: "目前尚未送出。需要先完成聯絡資料與最後確認，我才會正式送交櫃檯。"
     };
   }
-  return performHandoff(request, dependencies);
+  return performHandoff({ ...request, category: decision.category, identity: { ...(request?.identity || {}), ...authorization.contact } }, dependencies);
 }

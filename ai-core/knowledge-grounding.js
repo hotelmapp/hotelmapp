@@ -5,7 +5,15 @@ const TOPIC_PATTERNS = Object.freeze({
   parking: /停車|車位|停哪|停好|車牌|折抵|parking|駐車|주차/iu,
   check_in: /入住|check[ -]?in|チェックイン|체크인/iu,
   front_desk_contact: /櫃台|櫃檯|服務時間|電話|聯絡|front desk|reception/iu,
-  check_out: /退房|check[ -]?out|チェックアウト|체크아웃/iu
+  late_checkout: /延後退房|晚點退房|late[ -]?check[ -]?out/iu,
+  check_out: /退房|check[ -]?out|チェックアウト|체크아웃/iu,
+  luggage: /行李|寄放|luggage|baggage/iu,
+  room_type: /房型|雙人房|家庭房|room type|bed type/iu,
+  baby_equipment: /嬰兒床|床圍|消毒鍋|澡盆|baby (?:crib|cot|equipment)/iu,
+  transportation: /交通|計程車|叫車|接駁|taxi|transport|shuttle/iu,
+  cancellation: /取消|退款條件|cancellation/iu,
+  payment: /付款|信用卡|現金|LINE Pay|payment|pay by/iu,
+  complaint: /客訴|投訴|抱怨|不滿|complaint/iu
 });
 
 const FOLLOW_UP_PATTERN = /^(?:那|那麼|那我|那如果|這個|所以|如果|我們有|what about|then|how about|では|それ|그럼|그러면)|(?:可以嗎|呢|怎麼辦|晚一點|早一點|九點|十點|第二台|兩台車|預約)/iu;
@@ -66,7 +74,15 @@ export function factsForTopic(topic, intent = null) {
     breakfast: () => ({ breakfast: hotelKnowledge.breakfast }),
     check_in: () => ({ stay: { checkIn: hotelKnowledge.stay.checkIn, afterHoursCheckIn: hotelKnowledge.stay.afterHoursCheckIn, access: hotelKnowledge.stay.access }, contact: { deskHours: hotelKnowledge.contact.deskHours } }),
     front_desk_contact: () => ({ contact: hotelKnowledge.contact, escalation: hotelKnowledge.escalation }),
-    check_out: () => ({ stay: { checkOut: hotelKnowledge.stay.checkOut, lateCheckOut: hotelKnowledge.stay.lateCheckOut } })
+    check_out: () => ({ stay: { checkOut: hotelKnowledge.stay.checkOut, lateCheckOut: hotelKnowledge.stay.lateCheckOut } }),
+    late_checkout: () => ({ stay: { lateCheckOut: hotelKnowledge.stay.lateCheckOut } }),
+    luggage: () => ({ guestServices: { luggage: hotelKnowledge.guestServices.luggage } }),
+    room_type: () => ({ rooms: hotelKnowledge.rooms }),
+    baby_equipment: () => ({ extraBed: { babyEquipment: hotelKnowledge.extraBed.babyEquipment } }),
+    transportation: () => ({ guestServices: { taxi: hotelKnowledge.guestServices.taxi } }),
+    cancellation: () => ({ booking: { hotelOrWebsite: hotelKnowledge.booking.hotelOrWebsite, platforms: hotelKnowledge.booking.platforms, cancellationPolicy: hotelKnowledge.booking.cancellationPolicy } }),
+    payment: () => ({ payment: hotelKnowledge.payment }),
+    complaint: () => ({ escalation: { always: hotelKnowledge.escalation.always, unknownDuringDeskHours: hotelKnowledge.escalation.unknownDuringDeskHours }, contact: { frontDeskPhone: hotelKnowledge.contact.frontDeskPhone, deskHours: hotelKnowledge.contact.deskHours } })
   };
   return selectors[topic]?.() || null;
 }
@@ -98,7 +114,10 @@ export function factualContract(topic, intent = null) {
 export function resolveKnowledgeGrounding(message, history = [], storedTopic = null, storedIntent = null) {
   const topic = resolveConversationTopic(message, history, storedTopic);
   const intent = resolveRequestedIntent(message, topic, history, storedIntent);
-  return { topic, intent, facts: factsForTopic(topic, intent), contract: factualContract(topic, intent) };
+  const facts = topic === "transportation" && /接駁|shuttle/iu.test(String(message || ""))
+    ? { transportation: { shuttle: null } }
+    : factsForTopic(topic, intent);
+  return { topic, intent, facts, contract: factualContract(topic, intent) };
 }
 
 export function knowledgeGroundingInstructions(grounding = null) {

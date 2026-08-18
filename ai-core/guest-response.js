@@ -6,7 +6,7 @@ import { applyCorePersonalityContract, renderHospitalityFact, styledInstructions
 import { performHandoff } from "./handoff-service.js";
 import { temporalContextPrompt, temporalContextProvider } from "./temporal-context.js";
 import { breakfastArrivalReply, knowledgeGroundingInstructions, parkingReply, resolveKnowledgeGrounding, validateGroundedResponse } from "./knowledge-grounding.js";
-import { tryAiFirstParking } from "./ai-orchestrator.js";
+import { tryAiFirstReasoning } from "./ai-orchestrator.js";
 
 const OPENAI_MODEL = process.env.OPENAI_MODEL?.trim() || "gpt-4.1-mini";
 const MAX_HISTORY_MESSAGES = 20;
@@ -266,10 +266,8 @@ export async function answerGuestMessage(message, { history = [], channel = "web
   // Side effects and authorization remain deterministic and are evaluated
   // outside model orchestration. The model never decides whether checks run.
   const handoff = await handoffService({ message: trimmed, history, channel, identity });
-  if (grounding.topic === "parking") {
-    const aiFirst = await tryAiFirstParking({ message: trimmed, history: normalizedHistory(history), channel, identity, grounding, orchestrate, env, logger });
-    if (aiFirst) return finalizeGuestAnswer([aiFirst.answer, handoff.attempted ? handoff.answer : null].filter(Boolean).join("\n\n"), { message: trimmed, history, channel });
-  }
+  const aiFirst = await tryAiFirstReasoning({ message: trimmed, history: normalizedHistory(history), channel, identity, grounding, orchestrate, env, logger });
+  if (aiFirst) return finalizeGuestAnswer([aiFirst.answer, handoff.attempted ? handoff.answer : null].filter(Boolean).join("\n\n"), { message: trimmed, history, channel });
   const groundedHospitalityAnswer = renderHospitalityFact({ ...grounding, language, channel });
   const directAnswer = breakfastArrivalReply(trimmed, grounding) || groundedHospitalityAnswer || parkingReply(grounding) || frontDeskContactReply(trimmed) || sensitiveSituationReply(trimmed) || availabilityReply(trimmed) || specialRequestReply(trimmed) || informationalReply(trimmed);
   if (handoff.attempted) return finalizeGuestAnswer([directAnswer, handoff.answer].filter(Boolean).join("\n\n"), { message: trimmed, history, channel });
