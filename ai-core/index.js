@@ -10,3 +10,4 @@ export { CONVERSATION_LIMITS, CHANNELS, opaqueConversationId, lineConversationId
 export { ConversationStore, RedisConversationStore, ConversationStoreError, ConversationConflictError, conversationStoreFromEnv } from "./conversation/store.js";
 export { ConversationService } from "./conversation/service.js";
 export { explicitTopic, resolveConversationTopic, resolveRequestedIntent, factsForTopic, factualContract, resolveKnowledgeGrounding, knowledgeGroundingInstructions, parkingReply, validateGroundedResponse } from "./knowledge-grounding.js";
+export { AI_FIRST_FEATURE_FLAG, ORCHESTRATION_VERSION, MODEL_DECISION_SCHEMA, aiFirstEnabled, groundingFactEntries, validateModelDecision, toolPermissions, orchestrateHospitalityTurn, tryAiFirstParking } from "./ai-orchestrator.js";
