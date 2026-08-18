@@ -2,9 +2,10 @@ import { detectGuestLanguage } from "../guest-language.js";
 import { KNOWLEDGE_VERSION } from "./knowledge.js";
 import { CORE_PERSONALITY_CONTRACT_VERSION, styledInstructions } from "./hospitality-personality.js";
 import { requestGroundedResponse } from "./response-service.js";
+import { availableCapabilities, responseProvenance, verifyFinalResponse } from "./reasoning-core.js";
 
 export const AI_FIRST_FEATURE_FLAG = "AI_FIRST_ORCHESTRATOR_ENABLED";
-export const ORCHESTRATION_VERSION = "1.0";
+export const ORCHESTRATION_VERSION = "2.0";
 const MAX_DECISION_FACTS = 6;
 
 export const MODEL_DECISION_SCHEMA = Object.freeze({
@@ -12,7 +13,7 @@ export const MODEL_DECISION_SCHEMA = Object.freeze({
   additionalProperties: false,
   required: ["intent", "user_need", "facts_to_use", "action", "clarification_needed", "next_step", "response_strategy"],
   properties: {
-    intent: { type: "string", enum: ["parking_availability", "parking_fee", "parking_location", "parking_process", "parking_reservation", "parking_problem"] },
+    intent: { type: "string", enum: ["parking_availability", "parking_fee", "parking_location", "parking_process", "parking_reservation", "parking_problem", "check_in", "late_checkout", "breakfast", "luggage", "room_type", "baby_equipment", "transportation", "cancellation", "payment", "complaint", "unknown"] },
     user_need: { type: "string", minLength: 1, maxLength: 240 },
     facts_to_use: { type: "array", maxItems: MAX_DECISION_FACTS, items: { type: "string", minLength: 1, maxLength: 120 } },
     action: { type: "string", enum: ["none", "contact_front_desk"] },
@@ -36,13 +37,14 @@ export function aiFirstEnabled(env = process.env) {
 }
 
 export function groundingFactEntries(grounding) {
-  if (grounding?.topic !== "parking" || !grounding.facts?.parking) return [];
-  return Object.entries(grounding.facts.parking).map(([key, value]) => ({
-    id: `parking.${key}`,
-    value,
-    certainty: value === null || value === undefined ? "unknown" : "confirmed",
-    source: `hotel_knowledge_v${KNOWLEDGE_VERSION}`
-  }));
+  const output = [];
+  const visit = (value, path) => {
+    if (Array.isArray(value)) value.forEach((item, index) => visit(item, `${path}[${index}]`));
+    else if (value && typeof value === "object") Object.entries(value).forEach(([key, item]) => visit(item, path ? `${path}.${key}` : key));
+    else output.push({ id: path, value: value ?? null, certainty: value == null ? "unknown" : "confirmed", source: `hotel_knowledge_v${KNOWLEDGE_VERSION}` });
+  };
+  visit(grounding?.facts || {}, "");
+  return output;
 }
 
 export function validateModelDecision(value, { allowedFactIds, allowedTools = ["none"] }) {
@@ -56,14 +58,15 @@ export function validateModelDecision(value, { allowedFactIds, allowedTools = ["
   if (typeof value.clarification_needed !== "boolean") return false;
   if (value.next_step !== null && (typeof value.next_step !== "string" || value.next_step.length > 240)) return false;
   if (!MODEL_DECISION_SCHEMA.properties.response_strategy.enum.includes(value.response_strategy)) return false;
-  if (value.response_strategy === "unknown" && !value.facts_to_use.some(id => id.endsWith("reservationRequired"))) return false;
+  if (value.response_strategy === "unknown" && value.facts_to_use.some(id => !allowedFactIds.has(id))) return false;
   return !(value.response_strategy === "tool_then_answer" && value.action === "none");
 }
 
 export function toolPermissions({ identity, authorization } = {}) {
+  const available = availableCapabilities({ identity, authorization });
   return Object.freeze({
     none: true,
-    contact_front_desk: Boolean(identity && authorization?.state === "confirmed")
+    contact_front_desk: available.includes("contact_front_desk")
   });
 }
 
@@ -101,7 +104,8 @@ export async function orchestrateHospitalityTurn({ message, history = [], ground
   const started = Date.now();
   safeLog(logger, "orchestration_started", { channel, topic: grounding?.topic });
   const facts = groundingFactEntries(grounding);
-  if (!facts.length) throw new Error("unsupported_orchestration_topic");
+  if (!grounding?.topic) grounding = { topic: "unknown", intent: "unknown", facts: { unknown: null }, contract: { historyPolicy: "references_only" } };
+  if (!facts.length) facts.push({ id: "unknown", value: null, certainty: "unknown", source: `hotel_knowledge_v${KNOWLEDGE_VERSION}` });
   safeLog(logger, "grounding_completed", { topic: grounding.topic, factCount: facts.length, knowledgeVersion: KNOWLEDGE_VERSION });
   const permissions = toolPermissions({ identity, authorization });
   const availableTools = Object.entries(permissions).filter(([, allowed]) => allowed).map(([name]) => name);
@@ -119,17 +123,24 @@ export async function orchestrateHospitalityTurn({ message, history = [], ground
   const selectedFacts = decision.facts_to_use.map(id => facts.find(fact => fact.id === id));
   const composed = await request({ payload: prosePayload({ message, history, decision, selectedFacts, toolResult, channel }) });
   if (!composed.answer?.trim()) throw new Error("empty_composed_response");
+  const verification = verifyFinalResponse({ answer: composed.answer, selectedFacts, toolResult });
+  if (!verification.valid) throw new Error(verification.reason);
+  const provenance = responseProvenance({ grounding, selectedFacts, capability: decision.action, toolResult });
   safeLog(logger, "response_composed", { channel, latencyMs: Date.now() - started, personalityVersion: CORE_PERSONALITY_CONTRACT_VERSION });
-  return { answer: composed.answer.trim(), decision, selectedFacts, toolResult };
+  return { answer: composed.answer.trim(), decision, selectedFacts, toolResult, provenance };
 }
 
-export async function tryAiFirstParking(options) {
+export async function tryAiFirstReasoning(options) {
   if (!aiFirstEnabled(options.env)) return null;
   try { return await (options.orchestrate || orchestrateHospitalityTurn)(options); }
   catch (error) {
     const code = safeErrorCode(error);
-    safeLog(options.logger || console, "orchestration_failed", { stage: "parking", code });
-    safeLog(options.logger || console, "ai_fallback_used", { topic: "parking", reason: code });
+    safeLog(options.logger || console, "orchestration_failed", { stage: options.grounding?.topic || "unknown", code });
+    safeLog(options.logger || console, "ai_fallback_used", { topic: options.grounding?.topic || "unknown", reason: code });
     return null;
   }
+}
+
+export async function tryAiFirstParking(options) {
+  return tryAiFirstReasoning(options);
 }

@@ -44,7 +44,7 @@ test("tool permissions require identity plus durable confirmation", () => {
   assert.equal(toolPermissions({ identity: { displayName: "guest" }, authorization: { state: "confirmed" } }).contact_front_desk, true);
 });
 
-test("final prose receives only model-selected verified facts, so unsupported facts cannot be injected", async () => {
+test("final prose receives only model-selected verified facts and unsupported claims are rejected", async () => {
   const calls = [];
   const request = async ({ payload }) => {
     calls.push(payload);
@@ -53,8 +53,7 @@ test("final prose receives only model-selected verified facts, so unsupported fa
       : { answer: "飯店有 2 個停車位。" };
   };
   const grounding = resolveKnowledgeGrounding("有停車位嗎？");
-  const result = await orchestrateHospitalityTurn({ message: "有停車位嗎？", grounding, request, logger: silentLogger });
-  assert.equal(result.answer, "飯店有 2 個停車位。");
+  await assert.rejects(orchestrateHospitalityTurn({ message: "有停車位嗎？", grounding, request, logger: silentLogger }), /unsupported_numeric_fact/);
   const composerInput = JSON.parse(calls[1].input);
   assert.deepEqual(composerInput.selected_grounded_facts.map(fact => fact.id), ["parking.hotelSpaces"]);
   assert.equal(calls[1].input.includes("additionalCarFee"), false);
@@ -103,7 +102,7 @@ test("phase-one audit coverage retains facts and deterministic handling for non-
   assert.match(sensitiveSituationReply("付款異常怎麼辦？"), /付款/, "payment");
   assert.match(sensitiveSituationReply("我要取消訂房"), /尚未完成|還沒有/, "cancellation");
   assert.match(sensitiveSituationReply("我要客訴，很不滿"), /抱歉/, "complaint");
-  assert.equal(resolveKnowledgeGrounding("有接駁車嗎？").facts, null, "unknown information is not fabricated by grounding");
+  assert.deepEqual(resolveKnowledgeGrounding("有接駁車嗎？").facts, { transportation: { shuttle: null } }, "unknown information is explicit and not fabricated by grounding");
 });
 
 test("orchestrator emits the required safe event lifecycle without guest content", async () => {
