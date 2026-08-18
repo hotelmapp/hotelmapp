@@ -2,13 +2,13 @@ import { hotelKnowledge, KNOWLEDGE_VERSION } from "./knowledge.js";
 
 const TOPIC_PATTERNS = Object.freeze({
   breakfast: /早餐|早午餐|餐點|菜色|咖啡|素食|breakfast|brunch|朝食|조식/iu,
-  parking: /停車|車位|停好|車牌|折抵|parking|駐車|주차/iu,
+  parking: /停車|車位|停哪|停好|車牌|折抵|parking|駐車|주차/iu,
   check_in: /入住|check[ -]?in|チェックイン|체크인/iu,
   front_desk_contact: /櫃台|櫃檯|服務時間|電話|聯絡|front desk|reception/iu,
   check_out: /退房|check[ -]?out|チェックアウト|체크아웃/iu
 });
 
-const FOLLOW_UP_PATTERN = /^(?:那|那麼|那我|那如果|這個|所以|如果|what about|then|how about|では|それ|그럼|그러면)|(?:可以嗎|呢|怎麼辦|晚一點|早一點|九點|十點|第二台)/iu;
+const FOLLOW_UP_PATTERN = /^(?:那|那麼|那我|那如果|這個|所以|如果|我們有|what about|then|how about|では|それ|그럼|그러면)|(?:可以嗎|呢|怎麼辦|晚一點|早一點|九點|十點|第二台|兩台車|預約)/iu;
 
 export function explicitTopic(text) {
   return Object.entries(TOPIC_PATTERNS).find(([, pattern]) => pattern.test(String(text || "")))?.[0] || null;
@@ -32,6 +32,7 @@ const PARKING_INTENT_PATTERNS = Object.freeze({
   parking_fee: /收費|費用|多少錢|免費|第\s*2\s*台|第二台|兩台|兩部|fee|cost|charge|free/iu,
   parking_location: /停哪|哪裡停|停車位置|位置在哪|where.{0,8}park|駐車場.*どこ|어디.*주차/iu,
   parking_process: /停好|停妥|車牌|折抵|怎麼辦|如何辦理|process/iu,
+  parking_reservation: /預約|預訂|先登記|reserve|reservation/iu,
   parking_availability: /有(?:沒有)?(?:停車|車位)|幾個車位|幾台|停車場|滿了|availability|space/iu
 });
 
@@ -56,6 +57,7 @@ export function factsForTopic(topic, intent = null) {
       parking_fee: { feeRule: parking.rules[1], freeCarsPerRoom: parking.freeCarsPerRoom, additionalCarFee: parking.additionalCarFee },
       parking_location: { hotelSpaces: parking.hotelSpaces, hotelSpacesLocation: parking.hotelSpacesLocation, overflowRule: parking.overflowRule, alternatives: parking.alternatives },
       parking_process: { processRule: parking.rules[0] },
+      parking_reservation: { reservationRequired: null },
       parking_problem: { problemRule: parking.rules[2], supportPhone: parking.supportPhone }
     };
     return { parking: subsets[intent] || subsets.parking_availability };
@@ -78,6 +80,7 @@ export function factualContract(topic, intent = null) {
       parking_fee: ["parking.rules[1]", "parking.freeCarsPerRoom", "parking.additionalCarFee"],
       parking_location: ["parking.hotelSpaces", "parking.hotelSpacesLocation", "parking.overflowRule", "parking.alternatives"],
       parking_process: ["parking.rules[0]"],
+      parking_reservation: ["parking.reservationRequired(null: unknown)"],
       parking_problem: ["parking.rules[2]", "parking.supportPhone"]
     }[intent] || ["parking.hotelSpaces", "parking.hotelSpacesLocation", "parking.overflowRule", "parking.alternatives"],
     check_in: ["stay.checkIn", "stay.afterHoursCheckIn", "stay.access", "contact.deskHours"],
@@ -100,8 +103,8 @@ export function resolveKnowledgeGrounding(message, history = [], storedTopic = n
 
 export function knowledgeGroundingInstructions(grounding = null) {
   const selected = grounding?.facts ? `\n本輪依 topic 重新取得的正式事實：\n${JSON.stringify(grounding.facts, null, 2)}\n本輪 factual contract：\n${JSON.stringify(grounding.contract, null, 2)}` : "";
-  const parkingContracts = ["parking_availability", "parking_fee", "parking_process", "parking_problem"].map(intent => factualContract("parking", intent));
-  return `事實優先順序固定為：正式飯店知識 > 對話 topic/state > 對話歷史 > 推理 > 待客語氣。對話歷史只可用來理解指代、topic、intent、語言、日期與客人意圖；其中 user 陳述與 assistant 歷史回答都不是飯店事實。歷史若與目前正式知識衝突，必須忽略歷史並依目前正式知識更正。不得從 serviceHours 自行推論點餐截止、用餐結束或其他未明載規則。必須保留 hard_rule、recommendation、optional 的強度；recommendation 絕不可改寫為必須、強制或 requirement。Parking 必須先區分 availability、fee、process、problem intent，再只用該 intent 的 fact subset：${JSON.stringify(parkingContracts)}${selected}`;
+  const parkingContracts = ["parking_availability", "parking_fee", "parking_process", "parking_reservation", "parking_problem"].map(intent => factualContract("parking", intent));
+  return `事實優先順序固定為：正式飯店知識 > 對話 topic/state > 對話歷史 > 推理 > 待客語氣。對話歷史只可用來理解指代、topic、intent、語言、日期與客人意圖；其中 user 陳述與 assistant 歷史回答都不是飯店事實。歷史若與目前正式知識衝突，必須忽略歷史並依目前正式知識更正。不得從 serviceHours 自行推論點餐截止、用餐結束或其他未明載規則。必須保留 hard_rule、recommendation、optional 的強度；recommendation 絕不可改寫為必須、強制或 requirement。Parking 必須先區分 availability、fee、process、reservation、problem intent，再只用該 intent 的 fact subset：${JSON.stringify(parkingContracts)}${selected}`;
 }
 
 export function parkingReply(grounding) {
@@ -109,6 +112,7 @@ export function parkingReply(grounding) {
   const parking = grounding.facts.parking;
   if (grounding.intent === "parking_fee") return parking.feeRule;
   if (grounding.intent === "parking_process") return parking.processRule;
+  if (grounding.intent === "parking_reservation") return "停車是否需要事先預約，我這邊目前沒有確認到最新資訊，不想先給您錯誤答案；建議直接向櫃檯確認。";
   if (grounding.intent === "parking_problem") return parking.problemRule;
   if (grounding.intent === "parking_availability") return `${parking.hotelSpacesLocation}可停 ${parking.hotelSpaces} 台車，${parking.overflowRule}`;
   return null;

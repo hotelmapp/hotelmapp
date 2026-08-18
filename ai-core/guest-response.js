@@ -2,7 +2,7 @@ import { hotelKnowledge, KNOWLEDGE_VERSION, groundedKnowledgePrompt } from "./kn
 import { bookingDates, datedBookingUrl, hasBookingIntent } from "./booking.js";
 import { detectGuestLanguage } from "../guest-language.js";
 import { requestGroundedResponse } from "./response-service.js";
-import { renderHospitalityFact, styledInstructions } from "./hospitality-personality.js";
+import { applyCorePersonalityContract, renderHospitalityFact, styledInstructions } from "./hospitality-personality.js";
 import { performHandoff } from "./handoff-service.js";
 import { temporalContextPrompt, temporalContextProvider } from "./temporal-context.js";
 import { breakfastArrivalReply, knowledgeGroundingInstructions, parkingReply, resolveKnowledgeGrounding, validateGroundedResponse } from "./knowledge-grounding.js";
@@ -253,6 +253,11 @@ export function responseText(response) {
     .join("\n");
 }
 
+export function finalizeGuestAnswer(draft, { message, history = [], channel = "web" } = {}) {
+  const language = detectGuestLanguage(message, normalizedHistory(history));
+  return applyCorePersonalityContract({ draft, message, language, channel }).text;
+}
+
 export async function answerGuestMessage(message, { history = [], channel = "web", identity, handoffService = performHandoff, temporalContext = temporalContextProvider.getContext(), grounding = resolveKnowledgeGrounding(message, history) } = {}) {
   const trimmed = typeof message === "string" ? message.trim().slice(0, MAX_MESSAGE_LENGTH) : "";
   if (!trimmed) throw new TypeError("A non-empty guest message is required");
@@ -260,9 +265,10 @@ export async function answerGuestMessage(message, { history = [], channel = "web
   const groundedHospitalityAnswer = renderHospitalityFact({ ...grounding, language, channel });
   const directAnswer = breakfastArrivalReply(trimmed, grounding) || groundedHospitalityAnswer || parkingReply(grounding) || frontDeskContactReply(trimmed) || sensitiveSituationReply(trimmed) || availabilityReply(trimmed) || specialRequestReply(trimmed) || informationalReply(trimmed);
   const handoff = await handoffService({ message: trimmed, history, channel, identity });
-  if (handoff.attempted) return [directAnswer, handoff.answer].filter(Boolean).join("\n\n");
-  if (directAnswer) return directAnswer;
+  if (handoff.attempted) return finalizeGuestAnswer([directAnswer, handoff.answer].filter(Boolean).join("\n\n"), { message: trimmed, history, channel });
+  if (directAnswer) return finalizeGuestAnswer(directAnswer, { message: trimmed, history, channel });
 
   const payload = responsesPayload(trimmed, history, channel, temporalContext, grounding);
-  return (await requestGroundedResponse({ payload, validate: answer => validateGroundedResponse(answer, grounding) })).answer;
+  const generated = (await requestGroundedResponse({ payload, validate: answer => validateGroundedResponse(answer, grounding) })).answer;
+  return finalizeGuestAnswer(generated, { message: trimmed, history, channel });
 }
