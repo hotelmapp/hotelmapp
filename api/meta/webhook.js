@@ -15,6 +15,7 @@ async function rawRequestBody(req) {
 }
 const json = (res, status, body) => res.status(status).json(body);
 const firstHeader = value => Array.isArray(value) ? value[0] : value;
+const log = (level, event, details = {}) => console[level]?.("[api/meta/webhook]", { event, ...details });
 
 export function metaConfiguration(env = process.env) {
   const values = {
@@ -32,32 +33,50 @@ export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
   const env = metaConfiguration();
   if (req.method === "GET") {
-    if (!env.verifyToken) return json(res, 500, { error: "Meta adapter is not configured", diagnostic: { source: "meta", code: "missing_configuration" } });
+    if (!env.verifyToken) {
+      log("error", "verification_failed", { code: "missing_configuration" });
+      return json(res, 500, { error: "Meta adapter is not configured", diagnostic: { source: "meta", code: "missing_configuration" } });
+    }
     const challenge = verifyMetaChallenge(req.query, env.verifyToken);
-    if (challenge === null) return json(res, 403, { error: "Verification rejected", diagnostic: { source: "meta", code: "invalid_verification" } });
+    if (challenge === null) {
+      log("warn", "verification_failed", { code: "invalid_verification" });
+      return json(res, 403, { error: "Verification rejected", diagnostic: { source: "meta", code: "invalid_verification" } });
+    }
+    log("info", "verification_succeeded");
     return res.status(200).send(challenge);
   }
   if (req.method !== "POST") { res.setHeader("Allow", "GET, POST"); return json(res, 405, { error: "Method not allowed" }); }
   if (env.missing.length) {
-    console.error("[api/meta/webhook] Meta configuration is incomplete", { code: "missing_configuration", missing: env.missing });
+    log("error", "request_rejected", { code: "missing_configuration", missing: env.missing });
     return json(res, 500, { error: "Meta adapter is not configured", diagnostic: { source: "meta", code: "missing_configuration", missing: env.missing } });
   }
   let rawBody;
-  try { rawBody = await rawRequestBody(req); } catch { return json(res, 413, { error: "Invalid request body", diagnostic: { source: "meta", code: "invalid_body" } }); }
+  try { rawBody = await rawRequestBody(req); } catch (error) {
+    log("warn", "request_rejected", { code: error?.message === "body_too_large" ? "body_too_large" : "invalid_body" });
+    return json(res, 413, { error: "Invalid request body", diagnostic: { source: "meta", code: "invalid_body" } });
+  }
   if (!validMetaSignature(rawBody, firstHeader(req.headers?.["x-hub-signature-256"]), env.appSecret)) {
+    log("warn", "request_rejected", { code: "invalid_signature", bodyBytes: rawBody.length });
     return json(res, 401, { error: "Invalid signature", diagnostic: { source: "meta", code: "invalid_signature" } });
   }
   let payload;
-  try { payload = JSON.parse(rawBody.toString("utf8")); } catch { return json(res, 400, { error: "Invalid JSON", diagnostic: { source: "meta", code: "invalid_json" } }); }
+  try { payload = JSON.parse(rawBody.toString("utf8")); } catch {
+    log("warn", "request_rejected", { code: "invalid_json", bodyBytes: rawBody.length });
+    return json(res, 400, { error: "Invalid JSON", diagnostic: { source: "meta", code: "invalid_json" } });
+  }
 
   const outcomes = [];
   try {
     const service = configuredConversationService();
-    for (const item of messengerEvents(payload)) outcomes.push(await processMetaEvent(item, { conversationService: service, hmacSecret: env.hmacSecret, accessToken: env.accessToken, graphVersion: env.graphVersion }));
+    const events = messengerEvents(payload);
+    log("info", "request_verified", { object: payload?.object || "unknown", entries: Array.isArray(payload?.entry) ? payload.entry.length : 0, events: events.length, bodyBytes: rawBody.length });
+    for (const item of events) outcomes.push(await processMetaEvent(item, { conversationService: service, hmacSecret: env.hmacSecret, accessToken: env.accessToken, graphVersion: env.graphVersion }));
   } catch (error) {
     const diagnostic = { source: "meta", code: error instanceof MetaSendError ? error.code : error?.message || "event_failed", ...(error?.status ? { status: error.status } : {}), ...(error?.requestId ? { requestId: error.requestId } : {}) };
-    console.error("[api/meta/webhook] Event processing failed", diagnostic);
+    log("error", "event_processing_failed", diagnostic);
     return json(res, 503, { error: "Unable to process webhook event", diagnostic });
   }
-  return json(res, 200, { ok: true, processed: outcomes.filter(x => x.outcome === "replied").length, ignored: outcomes.filter(x => x.outcome === "ignored").length, duplicates: outcomes.filter(x => x.outcome === "duplicate").length });
+  const summary = { processed: outcomes.filter(x => x.outcome === "replied").length, ignored: outcomes.filter(x => x.outcome === "ignored").length, duplicates: outcomes.filter(x => x.outcome === "duplicate").length };
+  log("info", "request_completed", summary);
+  return json(res, 200, { ok: true, ...summary });
 }
