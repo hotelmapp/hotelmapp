@@ -33,7 +33,7 @@ export function handoffEmail({ channel, message, history = [], category, identit
   const safeHistory = sensitive ? [] : history;
   const conversation = [...safeHistory, { role: "user", content: minimizedCurrent }];
   const details = contactDetails(conversation, now);
-  const safeChannel = ["line", "web", "voice"].includes(channel) ? channel.toUpperCase() : "UNKNOWN";
+  const safeChannel = ["line", "web", "voice", "messenger", "instagram"].includes(channel) ? channel.toUpperCase() : "UNKNOWN";
   const identityLines = safeIdentity(identity);
   return {
     from: SENDER,
@@ -73,4 +73,25 @@ export async function performHandoff({ message, history = [], channel = "web", i
     console.error("[handoff] Email delivery failed", { code: error?.code || "email_send_failed", channel, category: decision.category });
     return { attempted: true, delivered: false, decision, answer: handoffGuestReply({ delivered: false, category: decision.category, channel }) };
   }
+}
+
+export const HANDOFF_AUTHORIZATION_STATES = Object.freeze([
+  "needs_human", "handoff_offered", "consent_received", "collecting_required_fields",
+  "ready_for_confirmation", "confirmed", "sent", "failed"
+]);
+
+/**
+ * Channel webhooks may only create the external side effect from durable,
+ * server-side confirmation state. Transport history and guest prose never count.
+ */
+export async function performAuthorizedHandoff(request, { authorization } = {}, dependencies) {
+  const decision = decideHandoff(request?.message, request?.history);
+  if (!decision.required) return { attempted: false, delivered: false, decision };
+  if (authorization?.state !== "confirmed") {
+    return {
+      attempted: true, delivered: false, authorized: false, decision,
+      answer: "我可以先幫您整理這項需求；在送交飯店人員前，還需要由您確認要送出的內容與必要聯絡資料，目前尚未送出。"
+    };
+  }
+  return performHandoff(request, dependencies);
 }

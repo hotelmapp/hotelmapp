@@ -13,8 +13,9 @@ export function configuredConversationService(options = {}) {
   return new ConversationService({ store: conversationStoreFromEnv(process.env, options) });
 }
 
-export async function answerWithConversation({ id, channel, message, service, identity, answer = answerGuestMessage }) {
+export async function answerWithConversation({ id, channel, message, service, identity, answer = answerGuestMessage, handoffService }) {
   let history;
+  let durableHandoff = null;
   let storedTopic = null;
   let storedIntent = null;
   try {
@@ -22,6 +23,7 @@ export async function answerWithConversation({ id, channel, message, service, id
     history = context?.turns?.map(({ role, content }) => ({ role, content })) || await service.history(id);
     storedTopic = context?.topic || null;
     storedIntent = context?.intent || null;
+    durableHandoff = context?.handoff || null;
   } catch (error) {
     // FAQ remains available without Redis. Any action whose authorization or
     // idempotency depends on conversation state is explicitly denied.
@@ -30,7 +32,10 @@ export async function answerWithConversation({ id, channel, message, service, id
     return { answer: response, durable: false, memoryError: error };
   }
   const grounding = resolveKnowledgeGrounding(message, history, storedTopic, storedIntent);
-  const response = await answer(message, { history, channel, identity, grounding });
+  const response = await answer(message, {
+    history, channel, identity, grounding,
+    ...(handoffService ? { handoffService: request => handoffService(request, { authorization: durableHandoff }) } : {})
+  });
   try {
     await service.append(id, channel, [{ role: "user", content: message }, { role: "assistant", content: response }], { topic: grounding.topic, intent: grounding.intent });
     return { answer: response, durable: true };
