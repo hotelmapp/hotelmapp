@@ -9,15 +9,32 @@ import {
 import { answerGuestMessage, breakfastReply, frontDeskContactReply, informationalReply, responsesPayload, sensitiveSituationReply } from "../ai-core/guest-response.js";
 import { voiceInstructions } from "../api/realtime.js";
 
-test("Web and LINE compose the same shared hospitality personality with presentation-only differences", () => {
+test("all current and planned channels compose the same shared hospitality personality", () => {
   const personality = hospitalityPersonalityInstructions();
-  const web = responsesPayload("飯店地址在哪裡？", [], "web").instructions;
-  const line = responsesPayload("飯店地址在哪裡？", [], "line").instructions;
-  assert.ok(web.startsWith(personality));
-  assert.ok(line.startsWith(personality));
+  const instructions = ["web", "line", "messenger", "instagram"].map(channel => responsesPayload("飯店地址在哪裡？", [], channel).instructions);
+  for (const value of instructions) assert.ok(value.startsWith(personality));
+  const [web, line, messenger, instagram] = instructions;
   assert.match(web, /Web 呈現/);
   assert.match(line, /LINE 呈現/);
+  assert.match(messenger, /Messenger 呈現/);
+  assert.match(instagram, /Instagram DM 呈現/);
   assert.notEqual(channelPresentationInstructions("web"), channelPresentationInstructions("line"));
+});
+
+test("eight hospitality scenarios use one cross-platform strategy and grounding prompt", () => {
+  const scenarios = [
+    "有附停車位嗎？", "入住時間是幾點？", "早餐幾點？", "可以寄放行李嗎？",
+    "有哪些房型？", "從高鐵站怎麼去？", "房間很吵，我很不滿", "家庭房有浴缸嗎？"
+  ];
+  const personality = hospitalityPersonalityInstructions();
+  for (const message of scenarios) {
+    const prompts = ["line", "messenger", "web"].map(channel => responsesPayload(message, [], channel).instructions);
+    for (const prompt of prompts) {
+      assert.ok(prompt.startsWith(personality));
+      assert.match(prompt, /先自然回應旅客的需求，再提供必要資訊與下一步/);
+      assert.match(prompt, /資訊需要由櫃檯進一步確認/);
+    }
+  }
 });
 
 test("Voice retains the shared personality and adds speech-appropriate formatting", () => {
@@ -60,6 +77,14 @@ test("parking gives a useful next step without guaranteeing a space", () => {
   assert.doesNotMatch(answer, /保證|一定有/);
 });
 
+test("LINE, Messenger, and Web render the same grounded parking answer", async () => {
+  const options = { handoffService: async () => ({ attempted: false }) };
+  const answers = await Promise.all(["line", "messenger", "web"].map(channel => answerGuestMessage("有附停車位嗎？", { ...options, channel })));
+  assert.equal(new Set(answers).size, 1);
+  assert.match(answers[0], /^有的，.*3 台車/);
+  assert.match(answers[0], /配合停車場.*當天現場車位情形/);
+});
+
 test("equipment trouble and complaints use restrained handoff language", () => {
   for (const message of ["房間冷氣壞掉了", "我要客訴，真的很不滿"]) {
     const answer = sensitiveSituationReply(message);
@@ -85,16 +110,18 @@ test("handoff honesty and booking, payment, and refund guardrails remain in shar
 });
 
 test("channel adapters contain presentation wiring, not duplicated personality rules", async () => {
-  const [chat, line, realtime] = await Promise.all([
+  const [chat, line, messenger, realtime] = await Promise.all([
     readFile(new URL("../api/chat.js", import.meta.url), "utf8"),
     readFile(new URL("../api/line/webhook.js", import.meta.url), "utf8"),
+    readFile(new URL("../api/meta/adapter.js", import.meta.url), "utf8"),
     readFile(new URL("../api/realtime.js", import.meta.url), "utf8")
   ]);
-  for (const source of [chat, line]) {
+  for (const source of [chat, line, messenger]) {
     assert.doesNotMatch(source, /台灣待客|真人櫃檯夥伴|親切絕不能凌駕真實性/);
   }
   assert.doesNotMatch(realtime, /台灣待客|親切絕不能凌駕真實性/);
   assert.match(line, /answerGuestMessage/);
+  assert.match(messenger, /answerWithConversation/);
   assert.match(realtime, /styledInstructions\("voice"\)/);
 });
 
