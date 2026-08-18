@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import handler, { metaConfiguration } from "../api/meta/webhook.js";
+import legacyHandler, { config as legacyConfig } from "../api/meta-webhook.js";
+import { config as canonicalConfig } from "../api/meta/webhook.js";
 import { processMetaEvent } from "../api/meta/adapter.js";
 import { validMetaSignature } from "../api/meta/security.js";
 import { metaConversationId } from "../ai-core/conversation/record.js";
@@ -40,6 +42,19 @@ test("Meta GET verification accepts the configured token and rejects a wrong tok
   assert.equal(good.statusCode, 200); assert.equal(good.body, "challenge-42");
   const bad = recorder(); await handler({ method: "GET", query: { "hub.mode": "subscribe", "hub.verify_token": "wrong", "hub.challenge": "challenge-42" } }, bad);
   assert.equal(bad.statusCode, 403); assert.equal(bad.body.diagnostic.code, "invalid_verification");
+});
+
+test("legacy Meta callback delegates to the production handler with raw body parsing", async t => {
+  await environment(t);
+  assert.equal(legacyHandler, handler);
+  assert.deepEqual(legacyConfig, canonicalConfig);
+  assert.equal(legacyConfig.api.bodyParser, false);
+
+  const payload = { object: "page", entry: [] };
+  const response = recorder();
+  await legacyHandler(signedRequest(payload), response);
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.body, { ok: true, processed: 0, ignored: 0, duplicates: 0 });
 });
 
 test("Meta POST signature uses x-hub-signature-256 and rejects tampering", () => {

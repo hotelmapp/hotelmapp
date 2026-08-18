@@ -8,6 +8,10 @@ used by the other channels. Meta code contains no hotel facts, personality, topi
 rules, service decisions, or handoff authorization. The common Meta security,
 opaque identity, event normalization, dedupe and diagnostics are intentionally
 usable by a future Instagram transport; Instagram delivery is not enabled yet.
+The legacy `/api/meta-webhook` callback is an exact compatibility route to the
+same handler (including raw-body parsing), so an already-verified Meta callback
+does not silently bypass signature checking, dedupe, conversation memory, or the
+Send API. New dashboard configurations should use the canonical nested route.
 
 The endpoint processes synchronously before acknowledging. This repository is a
 plain Vercel serverless project and does not have a durable queue or a configured
