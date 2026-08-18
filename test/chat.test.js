@@ -287,7 +287,8 @@ test("makes an outgoing Responses API request before returning its answer", asyn
   await handler({ method: "POST", body: { message: "飯店地址在哪裡？" } }, res);
   assert.equal(requested, true);
   assert.equal(res.statusCode, 200);
-  assert.equal(res.body.answer, "飯店地址是台中市上石路158號。");
+  assert.match(res.body.answer, /飯店地址是台中市上石路158號。/u);
+  assert.match(res.body.answer, /^(?:好的|了解|可以的)，/u);
   assert.equal(res.body.diagnostic.knowledgeVersion, "2.0");
   assert.equal(res.headers["X-Chat-Knowledge-Version"], "2.0");
 });
@@ -322,7 +323,8 @@ test("sends the V2.0 checkout fact to the Responses API", async t => {
   const res = recorder();
   await handler({ method: "POST", body: { message: "飯店幾點退房？" } }, res);
   assert.equal(res.statusCode, 200);
-  assert.equal(res.body.answer, "退房時間為上午 11:00 前。");
+  assert.match(res.body.answer, /退房時間為上午 11:00 前。/u);
+  assert.match(res.body.answer, /^(?:好的|了解|可以的)，/u);
 });
 
 test("contains confirmed V2.0 answers for the required guest scenarios", () => {

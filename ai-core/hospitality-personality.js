@@ -27,6 +27,51 @@ export function styledInstructions(channel = "web") {
   return `${hospitalityPersonalityInstructions()}\n${channelPresentationInstructions(channel)}`;
 }
 
+export const CORE_PERSONALITY_CONTRACT_VERSION = "hotelmapp-core-personality/1";
+export const CUSTOMER_CHANNELS = Object.freeze(["web", "line", "messenger", "instagram", "voice"]);
+
+const WARM_OPENING = Object.freeze({
+  "zh-TW": ["好的，", "了解，", "可以的，"],
+  en: ["Certainly—", "Of course—", "Got it—"],
+  ja: ["承知しました。", "はい、", "かしこまりました。"],
+  ko: ["네, ", "알겠습니다. ", "물론입니다. "]
+});
+
+function stableChoice(message, choices) {
+  const score = [...String(message)].reduce((sum, character) => sum + character.codePointAt(0), 0);
+  return choices[score % choices.length];
+}
+
+function alreadyHuman(text, language) {
+  const patterns = {
+    "zh-TW": /^(?:有的|有喔|可以|好的|了解|當然|沒問題|很抱歉|房內|早餐|主餐|是中西式|兒童早餐)/u,
+    en: /^(?:yes|certainly|of course|got it|breakfast|we can|there (?:are|is)|I’m sorry)/iu,
+    ja: /^(?:はい|承知|かしこまり|朝食|ご希望)/u,
+    ko: /^(?:네|알겠습니다|물론|조식|호텔)/u
+  };
+  return patterns[language]?.test(text) || false;
+}
+
+function seriousSituation(message) {
+  return /(客訴|投訴|抱怨|不滿|生氣|故障|壞掉|無法使用|退款|退費|扣款|付款異常|緊急|受傷|危險|遺失)/u.test(message);
+}
+
+// This is the sole finalization boundary for ordinary guest-facing answers.
+// It may change presentation, never the selected fact set. Callers pass the
+// already-grounded draft; adapters only transport the returned text.
+export function applyCorePersonalityContract({ draft, message, language = "zh-TW", channel = "web" }) {
+  if (!CUSTOMER_CHANNELS.includes(channel)) throw new TypeError(`Unsupported customer channel: ${channel}`);
+  const source = typeof draft === "string" ? draft.trim() : "";
+  if (!source) throw new TypeError("Core Personality Contract requires a non-empty grounded draft");
+
+  let text = source;
+  if (!seriousSituation(message) && !alreadyHuman(text, language)) {
+    text = `${stableChoice(message, WARM_OPENING[language] || WARM_OPENING["zh-TW"])}${text}`;
+  }
+  if (channel === "voice") text = text.replace(/[😊😀🙂✨❤️～]/gu, "").replace(/\n+/g, " ");
+  return Object.freeze({ text, contractVersion: CORE_PERSONALITY_CONTRACT_VERSION, channel });
+}
+
 // Renderers receive an already-selected authoritative fact subset. They must
 // never look up hotel data themselves: personality is presentation, not truth.
 export function renderHospitalityFact({ topic, intent, facts, language = "zh-TW", channel = "web" }) {
@@ -40,7 +85,7 @@ export function renderHospitalityFact({ topic, intent, facts, language = "zh-TW"
       if (language === "en") return `Yes—${freeCars} car per room is complimentary. A second car is ${additionalFee}.`;
       if (language === "ja") return `はい、1室につき${freeCars}台は無料です。2台目は${additionalFee}となります。`;
       if (language === "ko") return `네, 객실당 차량 ${freeCars}대는 무료이고 두 번째 차량은 ${additionalFee}입니다.`;
-      return `有的${voice ? "，" : " 😊 "}${String(rule).replace("每間客房提供", "每間客房都有").replace("；", "喔！")}`;
+      return `可以的${voice ? "，" : "～如果您是兩台車過來，"}${String(rule).replace("每間客房提供", "每間客房都有").replace("；", "，")}`;
     }
     if (intent === "parking_location") {
       if (language === "en") return `There are ${parking.hotelSpaces} spaces ${parking.hotelSpacesLocation}. If they’re full, we’ll direct you to a partner parking lot.`;
@@ -56,6 +101,9 @@ export function renderHospitalityFact({ topic, intent, facts, language = "zh-TW"
     }
     if (intent === "parking_process") {
       if (language === "zh-TW") return `可以的，${parking.processRule}如果您已經停好車，照這個方式辦理就可以了。`;
+    }
+    if (intent === "parking_reservation") {
+      if (language === "zh-TW") return "停車是否需要事先預約，我這邊目前沒有確認到最新資訊，不想先給您錯誤答案；建議直接向櫃檯確認，這樣會比較準確。";
     }
     if (intent === "parking_problem") {
       if (language === "zh-TW") return `了解，進出停車場遇到問題確實不方便。${parking.problemRule}`;
