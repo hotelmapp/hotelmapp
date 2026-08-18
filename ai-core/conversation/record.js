@@ -1,7 +1,7 @@
 import { randomBytes, createHmac } from "node:crypto";
 
 export const CONVERSATION_LIMITS = Object.freeze({ slidingTtlMs: 24 * 60 * 60_000, absoluteTtlMs: 48 * 60 * 60_000, maxTurns: 20, maxRecordBytes: 48_000, maxTurnChars: 2_000 });
-export const CHANNELS = Object.freeze(["web", "line", "voice"]);
+export const CHANNELS = Object.freeze(["web", "line", "voice", "messenger", "instagram"]);
 
 export function opaqueConversationId(channel) {
   if (!CHANNELS.includes(channel)) throw new TypeError("invalid_channel");
@@ -13,6 +13,17 @@ export function lineConversationId(source, secret) {
   const raw = type === "user" ? source?.userId : type === "group" ? source?.groupId : type === "room" ? source?.roomId : "";
   if (!raw || !secret) throw new TypeError("missing_line_conversation_identity");
   return `line_${createHmac("sha256", secret).update(`${type}:${raw}`).digest("base64url")}`;
+}
+
+/** Stable, non-reversible identity shared by Meta transports (Messenger/IG). */
+export function metaConversationId({ platform, pageId, senderId } = {}, secret) {
+  if (!["messenger", "instagram"].includes(platform) || !pageId || !senderId || !secret) {
+    throw new TypeError("missing_meta_conversation_identity");
+  }
+  const digest = createHmac("sha256", secret)
+    .update(`${platform}:${pageId}:${senderId}`)
+    .digest("base64url");
+  return `${platform}_${digest}`;
 }
 
 export function createConversationRecord({ id, channel, now = new Date(), limits = CONVERSATION_LIMITS }) {
