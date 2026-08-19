@@ -1,6 +1,6 @@
 import { configuredConversationService } from "../../ai-core/conversation/runtime.js";
 import { MetaSendError } from "./client.js";
-import { messengerEvents, processMetaEvent } from "./adapter.js";
+import { metaMessagingEvents, processMetaEvent } from "./adapter.js";
 import { validMetaSignature, verifyMetaChallenge } from "./security.js";
 
 const MAX_BODY_BYTES = 1_000_000;
@@ -20,12 +20,12 @@ const log = (level, event, details = {}) => console[level]?.("[api/meta/webhook]
 export function metaConfiguration(env = process.env) {
   const values = {
     verifyToken: env.META_WEBHOOK_VERIFY_TOKEN?.trim(), appSecret: env.META_APP_SECRET?.trim(),
-    accessToken: env.META_PAGE_ACCESS_TOKEN?.trim(), hmacSecret: env.CONVERSATION_HMAC_SECRET?.trim(),
+    accessToken: env.META_PAGE_ACCESS_TOKEN?.trim(), instagramAccessToken: env.META_INSTAGRAM_ACCESS_TOKEN?.trim(), hmacSecret: env.CONVERSATION_HMAC_SECRET?.trim(),
     redisUrl: (env.KV_REST_API_URL || env.UPSTASH_REDIS_REST_URL)?.trim(),
     redisToken: (env.KV_REST_API_TOKEN || env.UPSTASH_REDIS_REST_TOKEN)?.trim(),
     graphVersion: env.META_GRAPH_API_VERSION?.trim() || "v26.0"
   };
-  values.missing = Object.entries(values).filter(([key, value]) => key !== "graphVersion" && !value).map(([key]) => key);
+  values.missing = Object.entries(values).filter(([key, value]) => !["graphVersion", "instagramAccessToken"].includes(key) && !value).map(([key]) => key);
   return values;
 }
 
@@ -68,9 +68,9 @@ export default async function handler(req, res) {
   const outcomes = [];
   try {
     const service = configuredConversationService();
-    const events = messengerEvents(payload);
+    const events = metaMessagingEvents(payload);
     log("info", "request_verified", { object: payload?.object || "unknown", entries: Array.isArray(payload?.entry) ? payload.entry.length : 0, events: events.length, bodyBytes: rawBody.length });
-    for (const item of events) outcomes.push(await processMetaEvent(item, { conversationService: service, hmacSecret: env.hmacSecret, accessToken: env.accessToken, graphVersion: env.graphVersion }));
+    for (const item of events) outcomes.push(await processMetaEvent(item, { conversationService: service, hmacSecret: env.hmacSecret, accessToken: item.channel === "instagram" ? env.instagramAccessToken : env.accessToken, graphVersion: env.graphVersion }));
   } catch (error) {
     const diagnostic = { source: "meta", code: error instanceof MetaSendError ? error.code : error?.message || "event_failed", ...(error?.status ? { status: error.status } : {}), ...(error?.requestId ? { requestId: error.requestId } : {}) };
     log("error", "event_processing_failed", diagnostic);
