@@ -7,7 +7,10 @@ const SENDER = "希堤微旅 AI 智慧櫃台 <onboarding@resend.dev>";
 const SAFE_IDENTIFIER_KEYS = new Set(["displayName", "email", "phone"]);
 const PHONE_PATTERN = /(?<!\d)(?:\+?886[- ]?)?0?9\d{2}[- ]?\d{3}[- ]?\d{3}(?!\d)/u;
 const EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/iu;
-const CONFIRM_PATTERN = /^(?:好|好的|可以|確認|確認送出|同意|送出|麻煩送出|ok|okay|yes|可以送出)[！!。,.\s]*$/iu;
+// Final authorization is intentionally narrower than ordinary consent. Guests
+// must repeat the exact phrase shown in the summary; "OK", "好的" and similar
+// conversational acknowledgements can never trigger an external side effect.
+const CONFIRM_PATTERN = /^確認送出[！!。,\.\s]*$/u;
 const CANCEL_PATTERN = /^(?:不要|不用|取消|先不用|不用了|no|cancel)[！!。,.\s]*$/iu;
 
 function clean(value, limit = 2_000) {
