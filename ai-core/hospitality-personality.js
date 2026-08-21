@@ -103,11 +103,22 @@ export function renderHospitalityFact({ topic, intent, facts, language = "zh-TW"
       if (language === "zh-TW") return `可以的，${parking.processRule}如果您已經停好車，照這個方式辦理就可以了。`;
     }
     if (intent === "parking_reservation") {
-      if (language === "zh-TW") return "停車是否需要事先預約，我這邊目前沒有確認到最新資訊，不想先給您錯誤答案；建議直接向櫃檯確認，這樣會比較準確。";
+      const policy = parking.reservationPolicy;
+      if (language === "en") return "Parking spaces cannot be reserved and are available on a first-come, first-served basis so every guest has a fair opportunity to use them. If the spaces at the hotel entrance are full when you arrive, we’ll help arrange a partner parking lot based on the situation at that time.";
+      if (language === "ja") return "駐車スペースの事前予約は承っておらず、すべてのお客様に公平にご利用いただけるよう先着順です。到着時にホテル入口の駐車スペースが満車の場合は、当日の状況に応じて提携駐車場をご案内します。";
+      if (language === "ko") return "주차 공간은 예약할 수 없으며 모든 투숙객이 공평하게 이용할 수 있도록 선착순으로 운영됩니다. 도착 시 호텔 입구 주차 공간이 만차이면 현장 상황에 따라 제휴 주차장을 안내해 드립니다.";
+      return `不好意思，停車位目前沒有提供預留喔，我們採${policy.allocation}的方式，主要是希望${policy.rationale}${policy.arrivalAssistance}`;
     }
     if (intent === "parking_problem") {
       if (language === "zh-TW") return `了解，進出停車場遇到問題確實不方便。${parking.problemRule}`;
     }
+  }
+  if (topic === "wifi") {
+    const wifi = facts?.amenities?.wifi || {};
+    if (language === "en") return `Please connect to the Wi-Fi network matching your room number. Password: ${wifi.password}`;
+    if (language === "ja") return `ご宿泊の客室番号と同じ名前のWi-Fiに接続してください。パスワードは${wifi.password}です。`;
+    if (language === "ko") return `투숙하시는 객실 번호와 같은 이름의 Wi-Fi에 연결해 주세요. 비밀번호는 ${wifi.password}입니다.`;
+    return `請連接名稱與您住宿房號相同的 Wi-Fi，密碼為 8 個 0：${wifi.password}。`;
   }
   return null;
 }

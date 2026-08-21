@@ -7,13 +7,15 @@ import {
 } from "../ai-core/index.js";
 
 test("shared core exposes the canonical hotel and breakfast knowledge", () => {
-  assert.equal(KNOWLEDGE_VERSION, "2.0");
+  assert.equal(KNOWLEDGE_VERSION, "2.1");
   assert.equal(hotelKnowledge.breakfast.serviceHours, "08:00–10:00");
   const prompt = groundedKnowledgePrompt();
   assert.match(prompt, /唯一正式資料/);
   assert.match(prompt, /childPrice 為 null.*不得估算/);
   assert.match(prompt, /"bookingUrl": "https:\/\/book-directonline\.com/);
   assert.match(prompt, /未記載、missing 或 null.*不得猜測/);
+  assert.match(prompt, /先回答已確認部分.*不想提供錯誤答案/u);
+  assert.match(prompt, /未實際成功送達櫃檯前.*不得聲稱已通知/u);
 });
 
 test("shared booking interface detects intent and preserves canonical URL dates", () => {

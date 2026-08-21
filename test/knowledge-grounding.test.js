@@ -87,6 +87,28 @@ test("parking intent selects fee, availability, process, and authoritative follo
   const process = await answerGuestMessage("停好之後要怎麼辦？", { handoffService: noHandoff });
   assert.match(process, /告知櫃檯車牌號碼/u);
   assert.match(process, /櫃檯輸入辦理折抵/u);
+
+  const reservation = await answerGuestMessage("可以幫我預留停車位嗎？", { handoffService: noHandoff });
+  assert.match(reservation, /沒有提供預留/u);
+  assert.match(reservation, /先到先停/u);
+  assert.match(reservation, /公平使用/u);
+  assert.match(reservation, /門口車位已滿.*現場狀況.*配合停車場/u);
+  assert.doesNotMatch(reservation, /目前沒有確認|建議.*櫃檯確認/u);
+});
+
+test("Wi-Fi is grounded by room number with the confirmed password", async () => {
+  const grounding = resolveKnowledgeGrounding("房間 WiFi 怎麼連？");
+  assert.equal(grounding.topic, "wifi");
+  assert.equal(grounding.facts.amenities.wifi.password, "00000000");
+  assert.deepEqual(grounding.contract.requiredFactIds, ["amenities.wifi.network", "amenities.wifi.password", "amenities.wifi.passwordDescription"]);
+
+  const chinese = await answerGuestMessage("房間 WiFi 怎麼連？", { handoffService: noHandoff });
+  assert.match(chinese, /住宿房號相同/u);
+  assert.match(chinese, /8 個 0：00000000/u);
+
+  const english = await answerGuestMessage("What is the room Wi-Fi password?", { handoffService: noHandoff });
+  assert.match(english, /matching your room number/i);
+  assert.match(english, /Password: 00000000/i);
 });
 
 test("Web, LINE, and Voice expose the same parking intent contracts", async () => {

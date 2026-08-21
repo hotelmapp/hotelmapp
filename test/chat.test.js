@@ -203,8 +203,9 @@ test("answers parking and breakfast together without mechanical section labels",
     new Date("2026-08-13T00:00:00Z")
   );
   assert.match(reply, /飯店有 3 個車位/);
+  assert.match(reply, /不提供預留.*先到先停/u);
   assert.match(reply, /早餐供應時間為 08:00–10:00/);
-  assert.match(reply, /留言給飯店人員/);
+  assert.doesNotMatch(reply, /留言給飯店人員/);
   assert.doesNotMatch(reply, /\d+\. (?:訂房|停車|早餐)/u);
 });
 
@@ -289,23 +290,23 @@ test("makes an outgoing Responses API request before returning its answer", asyn
   assert.equal(res.statusCode, 200);
   assert.match(res.body.answer, /飯店地址是台中市上石路158號。/u);
   assert.match(res.body.answer, /^(?:好的|了解|可以的)，/u);
-  assert.equal(res.body.diagnostic.knowledgeVersion, "2.0");
-  assert.equal(res.headers["X-Chat-Knowledge-Version"], "2.0");
+  assert.equal(res.body.diagnostic.knowledgeVersion, "2.1");
+  assert.equal(res.headers["X-Chat-Knowledge-Version"], "2.1");
 });
 
-test("prominently grounds the checkout question in the unchanged V2.0 fact", () => {
+test("prominently grounds the checkout question in the unchanged fact", () => {
   assert.deepEqual(relevantKnowledge("飯店幾點退房？"), {
     stay: { checkOut: hotelKnowledge.stay.checkOut }
   });
   const payload = responsesPayload("飯店幾點退房？");
   assert.deepEqual(payload.input, [{ role: "user", content: "飯店幾點退房？" }]);
-  assert.match(payload.instructions, /正式知識庫（V2\.0）/);
+  assert.match(payload.instructions, /正式知識庫（V2\.1）/);
   assert.match(payload.instructions, /本題相關欄位/);
   assert.match(payload.instructions, /"checkOut": "11:00 前"/);
   assert.doesNotMatch(payload.instructions, /中午12點/);
 });
 
-test("sends the V2.0 checkout fact to the Responses API", async t => {
+test("sends the confirmed checkout fact to the Responses API", async t => {
   const originalFetch = globalThis.fetch;
   const originalKey = process.env.OPENAI_API_KEY;
   process.env.OPENAI_API_KEY = "server-secret";
@@ -327,7 +328,7 @@ test("sends the V2.0 checkout fact to the Responses API", async t => {
   assert.match(res.body.answer, /^(?:好的|了解|可以的)，/u);
 });
 
-test("contains confirmed V2.0 answers for the required guest scenarios", () => {
+test("contains confirmed answers for the required guest scenarios", () => {
   assert.equal(hotelKnowledge.identity.address, "台中市上石路158號");
   assert.equal(hotelKnowledge.contact.frontDeskPhone, "04-2707-8378");
   assert.equal(hotelKnowledge.contact.email, "hotel.mapp158@gmail.com");
@@ -379,9 +380,14 @@ test("text chat and Realtime Voice embed the exact same factual knowledge source
   assert.ok(voiceInstructions().includes(sharedKnowledge));
 });
 
-test("keeps facts still missing from V2.0 explicitly unknown", () => {
-  assert.equal(hotelKnowledge.amenities.wifi, null);
+test("keeps remaining missing facts unknown while exposing confirmed Wi-Fi", () => {
+  assert.deepEqual(hotelKnowledge.amenities.wifi, {
+    network: "請連接名稱與住宿房號相同的 Wi-Fi。",
+    password: "00000000",
+    passwordDescription: "密碼為 8 個 0。"
+  });
   assert.equal(hotelKnowledge.rooms.find(room => room.name === "家庭房").bathtub, null);
+  assert.equal(hotelKnowledge.missing.includes("Wi-Fi／網路連線資訊"), false);
   assert.equal(hotelKnowledge.review.contradictions.length, 0);
 });
 
@@ -396,6 +402,8 @@ test("uses guest-facing escalation language without internal terminology", () =>
   assert.match(instructions, /逐項回答所有意圖/);
   assert.match(instructions, /沒有包月房價方案/);
   assert.match(instructions, /沒有提供休息/);
+  assert.match(instructions, /先回答已確認部分/u);
+  assert.match(instructions, /不想先提供錯誤答案/u);
 });
 
 test("sends recent multi-turn context in Responses API message format", () => {

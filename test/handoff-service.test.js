@@ -16,8 +16,8 @@ test("breakfast FAQ does not send email", async () => {
   assert.equal(sends, 0);
 });
 
-test("ordinary front desk and payment FAQs do not send email", async () => {
-  for (const message of ["櫃台電話幾號？", "櫃台幾點下班？", "可以刷卡嗎？", "嬰兒床有嗎？"]) {
+test("ordinary FAQs and non-reservable parking requests do not send email", async () => {
+  for (const message of ["櫃台電話幾號？", "櫃台幾點下班？", "可以刷卡嗎？", "嬰兒床有嗎？", "可以幫我留一個車位嗎"]) {
     let sends = 0;
     const result = await performHandoff({ message, channel: "web" }, { send: async () => sends++ });
     assert.equal(result.attempted, false, message);
@@ -26,7 +26,6 @@ test("ordinary front desk and payment FAQs do not send email", async () => {
 });
 
 for (const [message, category] of [
-  ["可以幫我留一個車位嗎", "停車需求"],
   ["我要修改訂房日期", "訂房修改／取消"],
   ["我要客訴，房間太糟了", "客訴"],
   ["重複扣款，我要退款", "付款／退款爭議"]
@@ -72,13 +71,6 @@ test("authorized handoff sends only from confirmed durable state with contact", 
 });
 
 test("success is confirmed only after delivery and never promises operations", async () => {
-  let delivered = false;
-  const parking = await performHandoff({ message: "幫我保留車位", channel: "web" }, { send: async () => { delivered = true; } });
-  assert.equal(delivered, true);
-  assert.match(parking.answer, /成功送交櫃檯信箱/);
-  assert.match(parking.answer, /不代表已保留車位/);
-  assert.doesNotMatch(parking.answer, /(?:^|[。！\n])已(?:經)?保留車位[。！]/);
-
   const booking = await performHandoff({ message: "幫我修改訂房", channel: "line" }, { send: async () => {} });
   assert.match(booking.answer, /尚未完成任何訂房變更/);
   const payment = await performHandoff({ message: "請幫我退款", channel: "line" }, { send: async () => {} });
@@ -86,7 +78,7 @@ test("success is confirmed only after delivery and never promises operations", a
 });
 
 test("delivery failure is honest and includes front desk contact", async () => {
-  const result = await performHandoff({ message: "可以幫我留車位嗎", channel: "web" }, { send: async () => { throw new Error("secret upstream body"); } });
+  const result = await performHandoff({ message: "我要修改訂房日期", channel: "web" }, { send: async () => { throw new Error("secret upstream body"); } });
   assert.equal(result.delivered, false);
   assert.match(result.answer, /沒辦法成功把留言送到櫃台/);
   assert.match(result.answer, /04-2707-8378/);
