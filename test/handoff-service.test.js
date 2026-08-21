@@ -52,6 +52,40 @@ test("durable handoff requires contact and a separate final confirmation", async
   assert.equal(state.authorized, true);
 });
 
+test("pending handoff can be cancelled while collecting contact details", () => {
+  const result = advanceHandoffAuthorization({
+    message: "不用了",
+    current: { state: "collecting_required_fields", category: "真人服務", contact: {} }
+  });
+  assert.deepEqual(result.handoff, { state: "none" });
+  assert.equal(result.authorized, false);
+  assert.match(result.reply, /取消.*不會送出/u);
+});
+
+test("a new FAQ or booking question exits a stale pending handoff", () => {
+  for (const state of ["collecting_required_fields", "ready_for_confirmation"]) {
+    for (const message of ["可以幫我保留停車位嗎？", "請問 Wi-Fi 密碼是多少？", "我要訂房"]) {
+      const result = advanceHandoffAuthorization({
+        message,
+        current: { state, category: "真人服務", contact: state === "ready_for_confirmation" ? { displayName: "陳先生", phone: "0927708908" } : {} }
+      });
+      assert.deepEqual(result.handoff, { state: "none" });
+      assert.equal(result.authorized, false);
+      assert.equal(result.reply, undefined);
+    }
+  }
+});
+
+test("a new action request does not bypass pending handoff authorization", () => {
+  const result = advanceHandoffAuthorization({
+    message: "房間 Wi-Fi 壞了",
+    current: { state: "collecting_required_fields", category: "設備故障", contact: {} }
+  });
+  assert.equal(result.handoff.state, "collecting_required_fields");
+  assert.equal(result.authorized, false);
+  assert.match(result.reply, /姓名/u);
+});
+
 test("authorized handoff sends only from confirmed durable state with contact", async () => {
   let sends = 0;
   const request = { message: "確認送出", history: [{ role: "user", content: "我想訂 9/15 的房間，請櫃檯聯絡" }], channel: "messenger" };

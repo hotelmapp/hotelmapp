@@ -58,3 +58,22 @@ test("memory outage permits FAQ but fails closed before handoff", async () => {
   const service = { history: async () => { throw new Error("redis down"); } }; const faq = await answerWithConversation({ id: "web_x", channel: "web", message: "早餐幾點？", service }); assert.equal(faq.durable, false); assert.match(faq.answer, /08:00–10:00/);
   const handoff = await answerWithConversation({ id: "web_x", channel: "web", message: "幫我取消訂房", service }); assert.equal(handoff.durable, false); assert.match(handoff.answer, /尚未.*執行/); assert.doesNotMatch(handoff.answer, /已經幫您.*留言/);
 });
+
+test("Web, LINE and Messenger answer a new FAQ instead of replaying stale handoff collection", async () => {
+  for (const channel of ["web", "line", "messenger"]) {
+    let savedHandoff;
+    const service = {
+      context: async () => ({
+        turns: [{ role: "assistant", content: "請提供姓名與電話或 Email" }],
+        handoff: { state: "collecting_required_fields", category: "真人服務", contact: {} }
+      }),
+      append: async (_id, _channel, _turns, metadata) => { savedHandoff = metadata.handoff; }
+    };
+    const result = await answerWithConversation({
+      id: `${channel}_stale_handoff`, channel, message: "請問 Wi-Fi 密碼是多少？", service
+    });
+    assert.match(result.answer, /00000000/u, channel);
+    assert.doesNotMatch(result.answer, /提供您的姓名/u, channel);
+    assert.deepEqual(savedHandoff, { state: "none" }, channel);
+  }
+});
