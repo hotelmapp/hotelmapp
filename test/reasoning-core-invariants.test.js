@@ -9,7 +9,7 @@ import {
 
 const domains = [
   ["parking", "有停車位嗎？"], ["check-in", "check-in 幾點？"], ["late checkout", "可以延後退房嗎？"],
-  ["breakfast", "早餐幾點？"], ["luggage", "可以寄放行李嗎？"], ["room type", "有哪些房型？"],
+  ["breakfast", "早餐幾點？"], ["wifi", "Wi-Fi 密碼是什麼？"], ["luggage", "可以寄放行李嗎？"], ["room type", "有哪些房型？"],
   ["baby equipment", "有嬰兒床嗎？"], ["transportation", "可以幫忙叫計程車嗎？"],
   ["cancellation", "取消規定是什麼？"], ["payment", "可以用信用卡付款嗎？"], ["complaint", "我要客訴"]
 ];
@@ -32,7 +32,7 @@ for (const [domain, message] of domains) {
 }
 
 test("unsupported facts and unverified completion claims fail final verification", () => {
-  const selectedFacts = [{ id: "parking.hotelSpaces", value: 3, certainty: "confirmed", source: "hotel_knowledge_v2.0" }];
+  const selectedFacts = [{ id: "parking.hotelSpaces", value: 3, certainty: "confirmed", source: "hotel_knowledge_v2.1" }];
   assert.equal(verifyFinalResponse({ answer: "飯店有 99 個車位", selectedFacts }).reason, "unsupported_numeric_fact");
   assert.equal(verifyFinalResponse({ answer: "已幫您預留", selectedFacts, toolResult: { status: "not_executed" } }).reason, "unverified_action_claim");
   assert.equal(verifyFinalResponse({ answer: "是否能預約目前尚未確認", selectedFacts: [{ id: "parking.reservation", value: null, certainty: "unknown" }] }).valid, true);

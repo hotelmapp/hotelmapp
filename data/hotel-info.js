@@ -1,7 +1,8 @@
-// 唯一內容來源：〈希堤微旅 AI 櫃檯知識庫 V2.0〉完整合併正式版（2026-08-13）。
-// 未出現在原始文件中的資訊必須維持 null，不得以 placeholder 或常識補值。
+// 唯一內容來源：〈希堤微旅 AI 櫃檯知識庫 V2.1〉正式版（2026-08-21）。
+// V2.1 以 V2.0 完整合併正式版為基礎，加入已確認的停車預留與客房 Wi-Fi 資訊。
+// 未出現在正式知識中的資訊必須維持 null，不得以 placeholder 或常識補值。
 export const hotelKnowledge = {
-  source: { title: "希堤微旅 AI 櫃檯知識庫 V2.0 完整合併正式版", date: "2026-08-13" },
+  source: { title: "希堤微旅 AI 櫃檯知識庫 V2.1 正式版", date: "2026-08-21", basedOn: "V2.0 完整合併正式版（2026-08-13）" },
   identity: { name: "希堤微旅", address: "台中市上石路158號", website: "https://www.hotelm.com.tw/", bookingUrl: "https://book-directonline.com/properties/HotelMappTaichungDIrect?locale=zh-TW" },
   contact: {
     frontDeskPhone: "04-2707-8378",
@@ -57,6 +58,12 @@ export const hotelKnowledge = {
     additionalCarFee: "NT$200",
     hotelSpacesLocation: "飯店門口",
     overflowRule: "飯店門口停滿時可使用配合停車場。",
+    reservationPolicy: {
+      reservable: false,
+      allocation: "先到先停",
+      rationale: "讓每位住客都能公平使用。",
+      arrivalAssistance: "抵達時如果飯店門口車位已滿，會依現場狀況協助安排配合停車場。"
+    },
     alternatives: ["配合的全國電子停車場", "智慧街家樂福後門之智慧街停車場"],
     rules: ["停妥後務必告知櫃檯車牌號碼，由櫃檯輸入辦理折抵。", "每間客房提供 1 台免費停車；第 2 台車加收 NT$200 停車費。", "無法進出時聯絡停車場客服，告知為希堤微旅住客。"],
     addresses: null, supportPhone: null
@@ -77,7 +84,12 @@ export const hotelKnowledge = {
     water: "不提供一次性寶特瓶礦泉水；各樓層電梯旁陽台設有 RO 消毒飲水機。",
     toiletries: "不提供牙刷等一次性拋棄式備品，可至一樓大廳小沙發旁自助小舖選購；房內提供拖鞋、浴巾、毛巾、洗髮精、沐浴乳。",
     laundry: "七樓洗衣間：洗衣機免費、烘衣機投幣 NT$50，另設微波爐。",
-    loans: "可向櫃檯借充電器、轉接頭；雨傘數量有限，借完為止。", wifi: null
+    loans: "可向櫃檯借充電器、轉接頭；雨傘數量有限，借完為止。",
+    wifi: {
+      network: "請連接名稱與住宿房號相同的 Wi-Fi。",
+      password: "00000000",
+      passwordDescription: "密碼為 8 個 0。"
+    }
   },
   houseRules: {
     smoking: "全館客房禁菸；如需吸菸，移至允許的陽台、一樓或各樓層飲水機旁戶外陽台區。房內吸菸觸發煙霧偵測並造成影響，收 NT$1,000 清潔費。",
@@ -120,8 +132,14 @@ export const hotelKnowledge = {
     equipmentDuringDeskHours: "07:00–22:00 遇到設備問題，先表示願意協助，不自行判斷故障原因，優先請旅客聯絡櫃檯。",
     equipmentAfterHours: "22:00–翌日 07:00 遇到冷氣、電視、熱水、門鎖、房內設備故障或其他設備問題，直接請旅客撥後勤客服 0927-708-908，洽陳先生。"
   },
-  missing: ["配合停車場完整地址", "停車場客服電話", "家庭房是否有浴缸", "Wi-Fi／網路連線資訊", "兒童早餐價格", "具體取消與退款條件", "床墊與寢具的品牌、型號、尺寸及售價"],
-  review: { contradictions: [], notes: ["家庭房浴缸欄原記載「依現場資料」，正式版列為尚未提供。", "餐廳、房價、房況、優惠及營業狀況是變動資料，不固化為事實。"] }
+  unknownInformationPolicy: {
+    truthRule: "未記載、missing 或 null 的資訊不得猜測，也不得用一般飯店經驗補充。",
+    guestReply: "這項資訊目前沒有確認到，不想先提供錯誤答案；需要由櫃檯進一步確認。",
+    nextStep: "於 07:00–22:00 建議旅客直接洽詢櫃檯；如旅客希望轉交，依現有留言或人工轉接流程處理。",
+    actionTruth: "未實際成功送達櫃檯前，不得聲稱已通知、已送出或已完成處理。"
+  },
+  missing: ["配合停車場完整地址", "停車場客服電話", "家庭房是否有浴缸", "兒童早餐價格", "具體取消與退款條件", "床墊與寢具的品牌、型號、尺寸及售價"],
+  review: { contradictions: [], notes: ["家庭房浴缸欄原記載「依現場資料」，正式版列為尚未提供。", "餐廳、房價、房況、優惠及營業狀況是變動資料，不固化為事實。", "2026-08-21 補充停車位不提供預留、採先到先停，以及客房 Wi-Fi 連線資訊。"] }
 };
 
 export function knowledgeForPrompt() {

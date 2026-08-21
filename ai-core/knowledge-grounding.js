@@ -3,6 +3,7 @@ import { hotelKnowledge, KNOWLEDGE_VERSION } from "./knowledge.js";
 const TOPIC_PATTERNS = Object.freeze({
   breakfast: /早餐|早午餐|餐點|菜色|咖啡|素食|breakfast|brunch|朝食|조식/iu,
   parking: /停車|車位|停哪|停好|車牌|折抵|parking|駐車|주차/iu,
+  wifi: /wi[ -]?fi|無線網路|網路密碼|網路連線|인터넷|와이파이|ワイファイ/iu,
   check_in: /入住|check[ -]?in|チェックイン|체크인/iu,
   front_desk_contact: /櫃台|櫃檯|服務時間|電話|聯絡|front desk|reception/iu,
   late_checkout: /延後退房|晚點退房|late[ -]?check[ -]?out/iu,
@@ -40,7 +41,7 @@ const PARKING_INTENT_PATTERNS = Object.freeze({
   parking_fee: /收費|費用|多少錢|免費|第\s*2\s*台|第二台|兩台|兩部|fee|cost|charge|free/iu,
   parking_location: /停哪|哪裡停|停車位置|位置在哪|where.{0,8}park|駐車場.*どこ|어디.*주차/iu,
   parking_process: /停好|停妥|車牌|折抵|怎麼辦|如何辦理|process/iu,
-  parking_reservation: /預約|預訂|先登記|reserve|reservation/iu,
+  parking_reservation: /預約|預訂|預留|保留|先登記|reserve|reservation/iu,
   parking_availability: /有(?:沒有)?(?:停車|車位)|幾個車位|幾台|停車場|滿了|availability|space/iu
 });
 
@@ -65,13 +66,14 @@ export function factsForTopic(topic, intent = null) {
       parking_fee: { feeRule: parking.rules[1], freeCarsPerRoom: parking.freeCarsPerRoom, additionalCarFee: parking.additionalCarFee },
       parking_location: { hotelSpaces: parking.hotelSpaces, hotelSpacesLocation: parking.hotelSpacesLocation, overflowRule: parking.overflowRule, alternatives: parking.alternatives },
       parking_process: { processRule: parking.rules[0] },
-      parking_reservation: { reservationRequired: null },
+      parking_reservation: { reservationPolicy: parking.reservationPolicy },
       parking_problem: { problemRule: parking.rules[2], supportPhone: parking.supportPhone }
     };
     return { parking: subsets[intent] || subsets.parking_availability };
   }
   const selectors = {
     breakfast: () => ({ breakfast: hotelKnowledge.breakfast }),
+    wifi: () => ({ amenities: { wifi: hotelKnowledge.amenities.wifi } }),
     check_in: () => ({ stay: { checkIn: hotelKnowledge.stay.checkIn, afterHoursCheckIn: hotelKnowledge.stay.afterHoursCheckIn, access: hotelKnowledge.stay.access }, contact: { deskHours: hotelKnowledge.contact.deskHours } }),
     front_desk_contact: () => ({ contact: hotelKnowledge.contact, escalation: hotelKnowledge.escalation }),
     check_out: () => ({ stay: { checkOut: hotelKnowledge.stay.checkOut, lateCheckOut: hotelKnowledge.stay.lateCheckOut } }),
@@ -91,12 +93,13 @@ export function factualContract(topic, intent = null) {
   if (!topic) return null;
   const requiredFactIds = {
     breakfast: ["breakfast.serviceStart", "breakfast.orderCheckInCutoff", "breakfast.diningAfterCutoff", "breakfast.preorderRecommendation"],
+    wifi: ["amenities.wifi.network", "amenities.wifi.password", "amenities.wifi.passwordDescription"],
     parking: {
       parking_availability: ["parking.hotelSpaces", "parking.hotelSpacesLocation", "parking.overflowRule", "parking.alternatives"],
       parking_fee: ["parking.rules[1]", "parking.freeCarsPerRoom", "parking.additionalCarFee"],
       parking_location: ["parking.hotelSpaces", "parking.hotelSpacesLocation", "parking.overflowRule", "parking.alternatives"],
       parking_process: ["parking.rules[0]"],
-      parking_reservation: ["parking.reservationRequired(null: unknown)"],
+      parking_reservation: ["parking.reservationPolicy.reservable", "parking.reservationPolicy.allocation", "parking.reservationPolicy.rationale", "parking.reservationPolicy.arrivalAssistance"],
       parking_problem: ["parking.rules[2]", "parking.supportPhone"]
     }[intent] || ["parking.hotelSpaces", "parking.hotelSpacesLocation", "parking.overflowRule", "parking.alternatives"],
     check_in: ["stay.checkIn", "stay.afterHoursCheckIn", "stay.access", "contact.deskHours"],
@@ -131,7 +134,7 @@ export function parkingReply(grounding) {
   const parking = grounding.facts.parking;
   if (grounding.intent === "parking_fee") return parking.feeRule;
   if (grounding.intent === "parking_process") return parking.processRule;
-  if (grounding.intent === "parking_reservation") return "停車是否需要事先預約，我這邊目前沒有確認到最新資訊，不想先給您錯誤答案；建議直接向櫃檯確認。";
+  if (grounding.intent === "parking_reservation") return `不好意思，停車位目前沒有提供預留喔，我們採${parking.reservationPolicy.allocation}的方式，主要是希望${parking.reservationPolicy.rationale}${parking.reservationPolicy.arrivalAssistance}`;
   if (grounding.intent === "parking_problem") return parking.problemRule;
   if (grounding.intent === "parking_availability") return `${parking.hotelSpacesLocation}可停 ${parking.hotelSpaces} 台車，${parking.overflowRule}`;
   return null;

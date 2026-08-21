@@ -148,7 +148,6 @@ export function handoffGuestReply({ delivered, category, channel = "web" }) {
   const contact = `櫃檯電話 ${hotelKnowledge.contact.frontDeskPhone}（07:00–22:00）`;
   if (!delivered) return `不好意思，我這邊目前沒辦法成功把留言送到櫃台。您可以直接聯絡櫃台，我把聯絡方式提供給您：${contact}。`;
   const responses = {
-    "停車需求": "好的～您的停車需求已成功送交櫃檯信箱，請等櫃檯確認；車位仍採現場安排，這不代表已保留車位。",
     "訂房修改／取消": "好的，您的修改需求已成功送交櫃檯信箱，請等櫃檯確認；目前尚未完成任何訂房變更。",
     "付款／退款爭議": "好的，您的付款或退款需求已成功送交櫃檯信箱，請等櫃檯確認；目前尚未完成任何款項處理。"
   };
