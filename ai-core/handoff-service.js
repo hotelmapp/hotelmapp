@@ -2,6 +2,8 @@ import { hotelKnowledge } from "./knowledge.js";
 import { contactDetails, decideHandoff } from "./handoff.js";
 import { sendEmail } from "./email-transport.js";
 import { frontDeskEmail } from "./operational-config.js";
+import { hasBookingIntent } from "./booking.js";
+import { explicitTopic } from "./knowledge-grounding.js";
 
 const SENDER = "希堤微旅 AI 智慧櫃台 <onboarding@resend.dev>";
 const SAFE_IDENTIFIER_KEYS = new Set(["displayName", "email", "phone"]);
@@ -62,6 +64,14 @@ function collectContactReply() {
   return "好的，我可以幫您整理給櫃檯。送出前需要先確認必要聯絡資料，請提供您的姓名，以及聯絡電話或 Email；收到後我會再整理內容請您做最後確認。";
 }
 
+function cancelHandoffReply() {
+  return "沒問題，我先取消這次轉接，不會送出資料。如果之後需要櫃檯協助，再告訴我就可以了。";
+}
+
+function startsIndependentServiceQuestion(message) {
+  return Boolean(explicitTopic(message) || hasBookingIntent(message));
+}
+
 /**
  * Durable handoff state machine. Guest prose is never authorization by itself:
  * contact collection and an explicit final confirmation are separate states.
@@ -72,14 +82,17 @@ export function advanceHandoffAuthorization({ message, history = [], identity, c
   const decision = decideHandoff(message, history);
 
   if (state === "ready_for_confirmation") {
-    if (CANCEL_PATTERN.test(clean(message, 80))) return { handoff: { state: "none" }, reply: "沒問題，我先不送出。如果之後需要櫃檯協助，再告訴我就可以了。", authorized: false };
+    if (CANCEL_PATTERN.test(clean(message, 80))) return { handoff: { state: "none" }, reply: cancelHandoffReply(), authorized: false };
     if (CONFIRM_PATTERN.test(clean(message, 80)) && hasRequiredHandoffContact(existing.contact)) {
       return { handoff: { ...existing, state: "confirmed" }, authorized: true };
     }
+    if (!decision.required && startsIndependentServiceQuestion(message)) return { handoff: { state: "none" }, authorized: false };
     return { handoff: existing, reply: confirmationReply(existing), authorized: false };
   }
 
   if (state === "collecting_required_fields") {
+    if (CANCEL_PATTERN.test(clean(message, 80))) return { handoff: { state: "none" }, reply: cancelHandoffReply(), authorized: false };
+    if (!decision.required && startsIndependentServiceQuestion(message)) return { handoff: { state: "none" }, authorized: false };
     const contact = { ...(existing.contact || {}), ...extractHandoffContact(message, identity) };
     if (!hasRequiredHandoffContact(contact)) return { handoff: { ...existing, contact, state: "collecting_required_fields" }, reply: collectContactReply(), authorized: false };
     const handoff = { ...existing, contact, state: "ready_for_confirmation" };
