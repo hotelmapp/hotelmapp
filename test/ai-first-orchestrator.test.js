@@ -36,10 +36,10 @@ test("structured decisions reject unknown fields, fact IDs, and tools", () => {
 test("grounding cannot be bypassed and parking reservation policy is authoritative", () => {
   const facts = groundingFactEntries(resolveKnowledgeGrounding("需要先預約嗎？", [], "parking"));
   assert.deepEqual(facts, [
-    { id: "parking.reservationPolicy.reservable", value: false, certainty: "confirmed", source: "hotel_knowledge_v2.1" },
-    { id: "parking.reservationPolicy.allocation", value: "先到先停", certainty: "confirmed", source: "hotel_knowledge_v2.1" },
-    { id: "parking.reservationPolicy.rationale", value: "讓每位住客都能公平使用。", certainty: "confirmed", source: "hotel_knowledge_v2.1" },
-    { id: "parking.reservationPolicy.arrivalAssistance", value: "抵達時如果飯店門口車位已滿，會依現場狀況協助安排配合停車場。", certainty: "confirmed", source: "hotel_knowledge_v2.1" }
+    { id: "parking.reservationPolicy.reservable", value: false, certainty: "confirmed", source: "hotel_knowledge_v2.2" },
+    { id: "parking.reservationPolicy.allocation", value: "先到先停", certainty: "confirmed", source: "hotel_knowledge_v2.2" },
+    { id: "parking.reservationPolicy.rationale", value: "讓每位住客都能公平使用。", certainty: "confirmed", source: "hotel_knowledge_v2.2" },
+    { id: "parking.reservationPolicy.arrivalAssistance", value: "抵達時如果飯店門口車位已滿，會依現場狀況協助安排配合停車場。", certainty: "confirmed", source: "hotel_knowledge_v2.2" }
   ]);
 });
 

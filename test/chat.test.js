@@ -290,8 +290,8 @@ test("makes an outgoing Responses API request before returning its answer", asyn
   assert.equal(res.statusCode, 200);
   assert.match(res.body.answer, /飯店地址是台中市上石路158號。/u);
   assert.match(res.body.answer, /^(?:好的|了解|可以的)，/u);
-  assert.equal(res.body.diagnostic.knowledgeVersion, "2.1");
-  assert.equal(res.headers["X-Chat-Knowledge-Version"], "2.1");
+  assert.equal(res.body.diagnostic.knowledgeVersion, "2.2");
+  assert.equal(res.headers["X-Chat-Knowledge-Version"], "2.2");
 });
 
 test("prominently grounds the checkout question in the unchanged fact", () => {
@@ -300,7 +300,7 @@ test("prominently grounds the checkout question in the unchanged fact", () => {
   });
   const payload = responsesPayload("飯店幾點退房？");
   assert.deepEqual(payload.input, [{ role: "user", content: "飯店幾點退房？" }]);
-  assert.match(payload.instructions, /正式知識庫（V2\.1）/);
+  assert.match(payload.instructions, /正式知識庫（V2\.2）/);
   assert.match(payload.instructions, /本題相關欄位/);
   assert.match(payload.instructions, /"checkOut": "11:00 前"/);
   assert.doesNotMatch(payload.instructions, /中午12點/);

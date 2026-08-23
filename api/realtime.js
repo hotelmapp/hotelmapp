@@ -5,6 +5,7 @@ import { decideHandoff } from "../ai-core/handoff.js";
 import { opaqueConversationId } from "../ai-core/conversation/record.js";
 import { configuredConversationService } from "../ai-core/conversation/runtime.js";
 import { knowledgeGroundingInstructions } from "../ai-core/knowledge-grounding.js";
+import { temporalContextPrompt, temporalContextProvider } from "../ai-core/temporal-context.js";
 
 export { decideHandoff };
 
@@ -24,8 +25,10 @@ export function ephemeralCredential(body) {
       : "";
 }
 
-export function voiceInstructions() {
+export function voiceInstructions(temporalContext = temporalContextProvider.getContext()) {
   return `${styledInstructions("voice")}
+
+${temporalContextPrompt(temporalContext)}
 
 ${knowledgeGroundingInstructions()}
 

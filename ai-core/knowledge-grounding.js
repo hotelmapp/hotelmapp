@@ -3,6 +3,7 @@ import { hotelKnowledge, KNOWLEDGE_VERSION } from "./knowledge.js";
 const TOPIC_PATTERNS = Object.freeze({
   breakfast: /早餐|早午餐|餐點|菜色|咖啡|素食|breakfast|brunch|朝食|조식/iu,
   parking: /停車|車位|停哪|停好|車牌|折抵|parking|駐車|주차/iu,
+  subsidy: /補助|住宿獎助|平日住宿活動|政府活動|生日券|壽星券|Taiwan\s*PASS|台灣\s*PASS|住宿券|subsidy|accommodation voucher/iu,
   wifi: /wi[ -]?fi|無線網路|網路密碼|網路連線|인터넷|와이파이|ワイファイ/iu,
   check_in: /入住|check[ -]?in|チェックイン|체크인/iu,
   front_desk_contact: /櫃台|櫃檯|服務時間|電話|聯絡|front desk|reception/iu,
@@ -45,7 +46,33 @@ const PARKING_INTENT_PATTERNS = Object.freeze({
   parking_availability: /有(?:沒有)?(?:停車|車位)|幾個車位|幾台|停車場|滿了|availability|space/iu
 });
 
+const SUBSIDY_INTENT_PATTERNS = Object.freeze({
+  subsidy_stacking: /疊加|併用|一起用|同時用|同時使用|合併使用|超過房價|退現|找現|保留/iu,
+  subsidy_birthday_voucher: /生日券|壽星券|壽星生日券|生日住宿金|生日.*補助/iu,
+  subsidy_taiwan_pass: /Taiwan\s*PASS|台灣\s*PASS/iu,
+  subsidy_booking_channel: /Agoda|Booking(?:\.com)?|OTA|訂房平台|第三方|官網|電話訂房|LINE\s*訂房|現場訂房/iu,
+  subsidy_registration: /QR\s*Code|QR碼|登錄|登記|申請|證件|身分證|健保卡|資料上傳/iu,
+  subsidy_participation_limit: /每人|一次|幾次|重複參加|參加次數/iu,
+  subsidy_third_night: /第三晚|第\s*3\s*晚|三晚|3\s*晚/iu,
+  subsidy_amount: /多少|金額|折抵|第一晚|第\s*1\s*晚|第二晚|第\s*2\s*晚|兩晚|2\s*晚/iu,
+  subsidy_period: /期間|日期|幾月|何時|什麼時候|開始|結束|到幾號|週五|週六|週日|平日|連續假日/iu,
+  subsidy_eligibility: /資格|符合|可以用|能用|還有名額|還有額度|經費|用完|額度|政府公告|解釋權/iu
+});
+
 export function resolveRequestedIntent(message, topic, history = [], storedIntent = null) {
+  if (topic === "subsidy") {
+    const current = Object.entries(SUBSIDY_INTENT_PATTERNS).find(([, pattern]) => pattern.test(String(message || "")))?.[0];
+    if (current) return current;
+    if (FOLLOW_UP_PATTERN.test(String(message || "").trim())) {
+      for (const turn of [...history].reverse()) {
+        if (turn?.role !== "user") continue;
+        const intent = Object.entries(SUBSIDY_INTENT_PATTERNS).find(([, pattern]) => pattern.test(String(turn.content || "")))?.[0];
+        if (intent) return intent;
+      }
+      if (Object.hasOwn(SUBSIDY_INTENT_PATTERNS, storedIntent)) return storedIntent;
+    }
+    return "subsidy_overview";
+  }
   if (topic !== "parking") return null;
   const current = Object.entries(PARKING_INTENT_PATTERNS).find(([, pattern]) => pattern.test(String(message || "")))?.[0];
   if (current) return current;
@@ -73,6 +100,7 @@ export function factsForTopic(topic, intent = null) {
   }
   const selectors = {
     breakfast: () => ({ breakfast: hotelKnowledge.breakfast }),
+    subsidy: () => ({ governmentSubsidy2026: hotelKnowledge.governmentSubsidy2026 }),
     wifi: () => ({ amenities: { wifi: hotelKnowledge.amenities.wifi } }),
     check_in: () => ({ stay: { checkIn: hotelKnowledge.stay.checkIn, afterHoursCheckIn: hotelKnowledge.stay.afterHoursCheckIn, access: hotelKnowledge.stay.access }, contact: { deskHours: hotelKnowledge.contact.deskHours } }),
     front_desk_contact: () => ({ contact: hotelKnowledge.contact, escalation: hotelKnowledge.escalation }),
@@ -102,6 +130,19 @@ export function factualContract(topic, intent = null) {
       parking_reservation: ["parking.reservationPolicy.reservable", "parking.reservationPolicy.allocation", "parking.reservationPolicy.rationale", "parking.reservationPolicy.arrivalAssistance"],
       parking_problem: ["parking.rules[2]", "parking.supportPhone"]
     }[intent] || ["parking.hotelSpaces", "parking.hotelSpacesLocation", "parking.overflowRule", "parking.alternatives"],
+    subsidy: {
+      subsidy_overview: ["governmentSubsidy2026.period", "governmentSubsidy2026.applicableStayDays", "governmentSubsidy2026.weekdayStayAward", "governmentSubsidy2026.participationLimit", "governmentSubsidy2026.qualificationRule", "governmentSubsidy2026.authorityRule"],
+      subsidy_period: ["governmentSubsidy2026.period", "governmentSubsidy2026.applicableStayDays", "governmentSubsidy2026.authorityRule"],
+      subsidy_amount: ["governmentSubsidy2026.weekdayStayAward", "governmentSubsidy2026.qualificationRule"],
+      subsidy_booking_channel: ["governmentSubsidy2026.bookingChannels"],
+      subsidy_participation_limit: ["governmentSubsidy2026.participationLimit"],
+      subsidy_birthday_voucher: ["governmentSubsidy2026.birthdayVoucher", "governmentSubsidy2026.qualificationRule"],
+      subsidy_taiwan_pass: ["governmentSubsidy2026.taiwanPass", "governmentSubsidy2026.qualificationRule"],
+      subsidy_stacking: ["governmentSubsidy2026.stacking", "governmentSubsidy2026.qualificationRule"],
+      subsidy_registration: ["governmentSubsidy2026.registration"],
+      subsidy_eligibility: ["governmentSubsidy2026.qualificationRule", "governmentSubsidy2026.authorityRule"],
+      subsidy_third_night: ["governmentSubsidy2026.weekdayStayAward.thirdNight", "governmentSubsidy2026.authorityRule"]
+    }[intent] || ["governmentSubsidy2026.period", "governmentSubsidy2026.weekdayStayAward", "governmentSubsidy2026.qualificationRule"],
     check_in: ["stay.checkIn", "stay.afterHoursCheckIn", "stay.access", "contact.deskHours"],
     front_desk_contact: ["contact.frontDeskPhone", "contact.deskHours", "contact.afterHoursEquipment", "contact.afterHoursSameDayBooking"],
     check_out: ["stay.checkOut", "stay.lateCheckOut"]
@@ -126,7 +167,8 @@ export function resolveKnowledgeGrounding(message, history = [], storedTopic = n
 export function knowledgeGroundingInstructions(grounding = null) {
   const selected = grounding?.facts ? `\n本輪依 topic 重新取得的正式事實：\n${JSON.stringify(grounding.facts, null, 2)}\n本輪 factual contract：\n${JSON.stringify(grounding.contract, null, 2)}` : "";
   const parkingContracts = ["parking_availability", "parking_fee", "parking_process", "parking_reservation", "parking_problem"].map(intent => factualContract("parking", intent));
-  return `事實優先順序固定為：正式飯店知識 > 對話 topic/state > 對話歷史 > 推理 > 待客語氣。對話歷史只可用來理解指代、topic、intent、語言、日期與客人意圖；其中 user 陳述與 assistant 歷史回答都不是飯店事實。歷史若與目前正式知識衝突，必須忽略歷史並依目前正式知識更正。不得從 serviceHours 自行推論點餐截止、用餐結束或其他未明載規則。必須保留 hard_rule、recommendation、optional 的強度；recommendation 絕不可改寫為必須、強制或 requirement。Parking 必須先區分 availability、fee、process、reservation、problem intent，再只用該 intent 的 fact subset：${JSON.stringify(parkingContracts)}${selected}`;
+  const subsidyContracts = ["subsidy_overview", ...Object.keys(SUBSIDY_INTENT_PATTERNS)].map(intent => factualContract("subsidy", intent));
+  return `事實優先順序固定為：正式飯店知識 > 對話 topic/state > 對話歷史 > 推理 > 待客語氣。對話歷史只可用來理解指代、topic、intent、語言、日期與客人意圖；其中 user 陳述與 assistant 歷史回答都不是飯店事實。歷史若與目前正式知識衝突，必須忽略歷史並依目前正式知識更正。不得從 serviceHours 自行推論點餐截止、用餐結束或其他未明載規則。必須保留 hard_rule、recommendation、optional 的強度；recommendation 絕不可改寫為必須、強制或 requirement。Parking 必須先區分 availability、fee、process、reservation、problem intent，再只用該 intent 的 fact subset：${JSON.stringify(parkingContracts)}。政府住宿補助必須依 Asia/Taipei 的伺服器日期區分尚未開始、活動期間與已結束，且只能回答旅客公開規則；不得保證資格、額度或經費，不得索取證件或個資，不得揭露內部核銷 SOP。補助 intents 與 contracts：${JSON.stringify(subsidyContracts)}${selected}`;
 }
 
 export function parkingReply(grounding) {

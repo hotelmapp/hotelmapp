@@ -32,7 +32,7 @@ for (const [domain, message] of domains) {
 }
 
 test("unsupported facts and unverified completion claims fail final verification", () => {
-  const selectedFacts = [{ id: "parking.hotelSpaces", value: 3, certainty: "confirmed", source: "hotel_knowledge_v2.1" }];
+  const selectedFacts = [{ id: "parking.hotelSpaces", value: 3, certainty: "confirmed", source: "hotel_knowledge_v2.2" }];
   assert.equal(verifyFinalResponse({ answer: "飯店有 99 個車位", selectedFacts }).reason, "unsupported_numeric_fact");
   assert.equal(verifyFinalResponse({ answer: "已幫您預留", selectedFacts, toolResult: { status: "not_executed" } }).reason, "unverified_action_claim");
   assert.equal(verifyFinalResponse({ answer: "是否能預約目前尚未確認", selectedFacts: [{ id: "parking.reservation", value: null, certainty: "unknown" }] }).valid, true);

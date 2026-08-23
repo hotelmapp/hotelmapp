@@ -268,7 +268,7 @@ export async function answerGuestMessage(message, { history = [], channel = "web
   const handoff = await handoffService({ message: trimmed, history, channel, identity });
   const aiFirst = await tryAiFirstReasoning({ message: trimmed, history: normalizedHistory(history), channel, identity, grounding, orchestrate, env, logger });
   if (aiFirst) return finalizeGuestAnswer([aiFirst.answer, handoff.attempted ? handoff.answer : null].filter(Boolean).join("\n\n"), { message: trimmed, history, channel });
-  const groundedHospitalityAnswer = renderHospitalityFact({ ...grounding, language, channel });
+  const groundedHospitalityAnswer = renderHospitalityFact({ ...grounding, language, channel, temporalContext });
   const directAnswer = breakfastArrivalReply(trimmed, grounding) || groundedHospitalityAnswer || parkingReply(grounding) || frontDeskContactReply(trimmed) || sensitiveSituationReply(trimmed) || availabilityReply(trimmed) || specialRequestReply(trimmed) || informationalReply(trimmed);
   if (handoff.attempted) return finalizeGuestAnswer([directAnswer, handoff.answer].filter(Boolean).join("\n\n"), { message: trimmed, history, channel });
   if (directAnswer) return finalizeGuestAnswer(directAnswer, { message: trimmed, history, channel });

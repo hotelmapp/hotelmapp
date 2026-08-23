@@ -1,8 +1,8 @@
-// 唯一內容來源：〈希堤微旅 AI 櫃檯知識庫 V2.1〉正式版（2026-08-21）。
-// V2.1 以 V2.0 完整合併正式版為基礎，加入已確認的停車預留與客房 Wi-Fi 資訊。
+// 唯一內容來源：〈希堤微旅 AI 櫃檯知識庫 V2.2〉正式版（2026-08-23）。
+// V2.2 以 V2.1 為基礎，加入 2026 政府平日住宿補助的旅客公開規則；櫃檯內部核銷 SOP 不屬於旅客知識。
 // 未出現在正式知識中的資訊必須維持 null，不得以 placeholder 或常識補值。
 export const hotelKnowledge = {
-  source: { title: "希堤微旅 AI 櫃檯知識庫 V2.1 正式版", date: "2026-08-21", basedOn: "V2.0 完整合併正式版（2026-08-13）" },
+  source: { title: "希堤微旅 AI 櫃檯知識庫 V2.2 正式版", date: "2026-08-23", basedOn: "V2.1 正式版（2026-08-21）" },
   identity: { name: "希堤微旅", address: "台中市上石路158號", website: "https://www.hotelm.com.tw/", bookingUrl: "https://book-directonline.com/properties/HotelMappTaichungDIrect?locale=zh-TW" },
   contact: {
     frontDeskPhone: "04-2707-8378",
@@ -106,6 +106,50 @@ export const hotelKnowledge = {
     cancellationPolicy: "除上述修改管道與三天規則外，未提供具體取消／退款條件，須由原訂房管道或真人櫃檯確認。",
     livePriceAndAvailability: "房價採機動價格；即時房價、空房與優惠須由當日官網、訂房系統或櫃檯確認。"
   },
+  governmentSubsidy2026: {
+    publicName: "2026 平日住宿加碼補助",
+    period: {
+      startsOn: "2026-09-01",
+      endsOn: "2026-11-30",
+      earlyEndRule: "政府活動經費用罄時可能提前結束。"
+    },
+    applicableStayDays: "限週日至週四入住；週五、週六及國定連續假日不適用。",
+    participationLimit: {
+      perPerson: 1,
+      scope: "每位旅客於本活動期間限參與一次。",
+      consecutiveStayClarification: "同一次連續住宿仍可依規定使用第一晚及連續第二晚補助。"
+    },
+    bookingChannels: {
+      eligible: ["飯店官網", "電話", "LINE", "現場訂房"],
+      ineligible: ["Agoda", "Booking.com", "其他 OTA／第三方訂房平台"],
+      rule: "限直接向飯店訂房；OTA／第三方訂房平台訂單不可使用。"
+    },
+    weekdayStayAward: {
+      firstNight: "NT$800",
+      consecutiveSecondNight: "NT$1,200",
+      maximumForTwoNightStay: "NT$2,000",
+      thirdNight: null
+    },
+    birthdayVoucher: {
+      amountPerRoom: "NT$1,200",
+      birthdayRelated: false,
+      acquisitionRule: "名稱雖為壽星生日券，但與旅客生日無關；必須參加活動抽獎並中獎後才能取得。"
+    },
+    taiwanPass: { amountPerRoomPerNight: "NT$1,500" },
+    stacking: {
+      allThreeTogetherAllowed: true,
+      combinations: ["平日住宿獎助", "壽星生日券", "Taiwan PASS 住宿券"],
+      maximumDiscountRule: "三項可同時疊加，但每房每晚的總折抵最高不得超過當天實際全額房價。",
+      excessValueRule: "超過房價的部分不能退現、找現或保留。"
+    },
+    registration: {
+      publicEntry: "尚未登錄的旅客可使用飯店提供的 QR Code 進入政府活動官方網站登錄。",
+      privacyRule: "不得要求旅客在 LINE、Messenger、網站聊天或語音對話中傳送證件照片、身分證字號或健保卡資料。"
+    },
+    qualificationRule: "補助資格、可用額度及活動是否仍有經費，必須以政府活動系統查詢結果為準；不得保證一定可使用。",
+    authorityRule: "活動辦法與解釋權以政府最新公告為準。",
+    guestKnowledgeBoundary: "只回答旅客公開規則；不得揭露或描述櫃檯發票、核銷、拍照、後台登錄、請款或交接流程。"
+  },
   extendedStay: {
     monthlyRate: "目前沒有提供包月房價方案，不可推算月租價格或承諾長住折扣。",
     corporateProgram: "有特約廠商優惠方案；特約資格、優惠內容、價格與適用方式請直接洽詢櫃檯確認。"
@@ -138,8 +182,8 @@ export const hotelKnowledge = {
     nextStep: "於 07:00–22:00 建議旅客直接洽詢櫃檯；如旅客希望轉交，依現有留言或人工轉接流程處理。",
     actionTruth: "未實際成功送達櫃檯前，不得聲稱已通知、已送出或已完成處理。"
   },
-  missing: ["配合停車場完整地址", "停車場客服電話", "家庭房是否有浴缸", "兒童早餐價格", "具體取消與退款條件", "床墊與寢具的品牌、型號、尺寸及售價"],
-  review: { contradictions: [], notes: ["家庭房浴缸欄原記載「依現場資料」，正式版列為尚未提供。", "餐廳、房價、房況、優惠及營業狀況是變動資料，不固化為事實。", "2026-08-21 補充停車位不提供預留、採先到先停，以及客房 Wi-Fi 連線資訊。"] }
+  missing: ["配合停車場完整地址", "停車場客服電話", "家庭房是否有浴缸", "兒童早餐價格", "具體取消與退款條件", "床墊與寢具的品牌、型號、尺寸及售價", "2026 平日住宿加碼補助第三晚是否另有補助"],
+  review: { contradictions: [], notes: ["家庭房浴缸欄原記載「依現場資料」，正式版列為尚未提供。", "餐廳、房價、房況、優惠及營業狀況是變動資料，不固化為事實。", "2026-08-21 補充停車位不提供預留、採先到先停，以及客房 Wi-Fi 連線資訊。", "2026-08-23 補充政府平日住宿補助旅客公開規則；櫃檯內部核銷 SOP 排除於旅客知識。"] }
 };
 
 export function knowledgeForPrompt() {
