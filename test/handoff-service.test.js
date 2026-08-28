@@ -28,8 +28,47 @@ test("ordinary FAQs and non-reservable parking requests do not send email", asyn
 for (const [message, category] of [
   ["我要修改訂房日期", "訂房修改／取消"],
   ["我要客訴，房間太糟了", "客訴"],
-  ["重複扣款，我要退款", "付款／退款爭議"]
+  ["重複扣款，我要退款", "付款／退款爭議"],
+  ["我在確認可否幫我聯絡櫃檯呢？", "真人服務"],
+  ["麻煩通知飯店人員聯絡我", "真人服務"]
 ]) test(`${category} triggers shared handoff`, () => assert.deepEqual(decideHandoff(message), { required: true, category }));
+
+test("front desk information questions are not mistaken for a handoff request", () => {
+  for (const message of ["請問櫃檯電話幾號？", "櫃檯幾點下班？"]) {
+    assert.deepEqual(decideHandoff(message), { required: false, category: null }, message);
+  }
+});
+
+test("the exact LINE conversation reaches confirmation and parses phone-before-name", () => {
+  let state = advanceHandoffAuthorization({ message: "我在確認可否幫我聯絡櫃檯呢？", current: { state: "none" } });
+  assert.equal(state.handoff.state, "collecting_required_fields");
+
+  state = advanceHandoffAuthorization({ message: "需要喔", current: state.handoff });
+  assert.equal(state.handoff.state, "collecting_required_fields");
+
+  state = advanceHandoffAuthorization({ message: "我需要訂房，我的電話是0927708908陳先生。", current: state.handoff });
+  assert.equal(state.handoff.state, "ready_for_confirmation");
+  assert.deepEqual(state.handoff.contact, { displayName: "陳先生", phone: "0927708908" });
+  assert.match(state.reply, /陳先生.*0927\*\*\*908.*確認送出/u);
+
+  state = advanceHandoffAuthorization({ message: "確認送出", current: state.handoff });
+  assert.equal(state.handoff.state, "confirmed");
+  assert.equal(state.authorized, true);
+});
+
+test("a short acceptance immediately after an unknown-information offer starts handoff", () => {
+  const state = advanceHandoffAuthorization({
+    message: "需要喔",
+    history: [
+      { role: "user", content: "小朋友早餐多少錢？" },
+      { role: "assistant", content: "這項資訊目前沒有確認到正確資訊，為避免提供錯誤答案，需要我幫您轉請櫃檯回覆嗎？" }
+    ],
+    current: { state: "none" }
+  });
+  assert.equal(state.handoff.state, "collecting_required_fields");
+  assert.equal(state.handoff.category, "真人服務");
+  assert.match(state.reply, /姓名.*電話或 Email/u);
+});
 
 test("durable handoff requires contact and a separate final confirmation", async () => {
   let state = advanceHandoffAuthorization({ message: "方便請櫃檯跟我聯絡嗎", current: { state: "none" } });
@@ -96,8 +135,8 @@ test("authorized handoff sends only from confirmed durable state with contact", 
   const sent = await performAuthorizedHandoff(request, { authorization: { state: "confirmed", category: "真人服務", contact: { displayName: "陳先生", phone: "0927708908" } } }, { send: async email => {
     sends++;
     assert.match(email.text, /MESSENGER/);
-    assert.match(email.text, /displayName：陳先生/);
-    assert.match(email.text, /phone：0927708908/);
+    assert.match(email.text, /旅客姓名：陳先生/);
+    assert.match(email.text, /聯絡電話：0927708908/);
   } });
   assert.equal(sent.delivered, true);
   assert.equal(sends, 1);
@@ -141,10 +180,31 @@ test("email payload includes safe context and excludes secrets", () => {
     identity: { userId: "U-safe", replyToken: "reply-secret", channelSecret: "channel-secret", apiKey: "api-secret" },
     now: new Date("2026-08-15T12:00:00Z")
   });
-  assert.match(email.text, /來源 channel：LINE/);
-  assert.match(email.text, /handoff category：設備故障/);
-  assert.match(email.text, /2026-08-15T12:00:00\.000Z/);
+  assert.match(email.text, /旅客透過 LINE 請求櫃檯協助/);
+  assert.match(email.text, /需求類型：設備故障/);
+  assert.match(email.text, /留言時間：2026\/08\/15 20:00（台灣時間）/);
+  assert.doesNotMatch(email.text, /來源 channel|handoff category|displayName：|phone：/u);
   assert.doesNotMatch(JSON.stringify(email), /U-safe|reply-secret|channel-secret|api-secret/);
+});
+
+test("front desk email is readable and keeps the original need instead of confirmation chatter", () => {
+  const email = handoffEmail({
+    channel: "line", message: "確認送出", category: "真人服務",
+    history: [
+      { role: "user", content: "兒童早餐多少錢？" },
+      { role: "assistant", content: "需要我幫您轉請櫃檯回覆嗎？" },
+      { role: "user", content: "需要喔" },
+      { role: "user", content: "0927708908陳先生" }
+    ],
+    identity: { displayName: "陳先生", phone: "0927708908" },
+    now: new Date("2026-08-15T12:00:00Z")
+  });
+  assert.match(email.text, /^希堤微旅櫃檯您好：/u);
+  assert.match(email.text, /客人需求：.*兒童早餐多少錢/u);
+  assert.doesNotMatch(email.text, /客人需求：.*需要喔/u);
+  assert.match(email.text, /旅客姓名：陳先生[\s\S]*聯絡電話：0927708908/u);
+  assert.match(email.text, /最近對話：[\s\S]*兒童早餐多少錢/u);
+  assert.doesNotMatch(email.text, /[{}]/u);
 });
 
 test("FRONT_DESK_EMAIL controls operational routing with one documented legacy fallback", () => {

@@ -39,28 +39,28 @@ const REPLY_TEXT = Object.freeze({
     baby: name => `${name}可以協助提出需求；建議在入住前一天告知，會依數量與現場狀況安排，因此無法事先保證。`,
     parking: `有喔～飯店有 ${hotelKnowledge.parking.hotelSpaces} 個車位，位於飯店門口。停車位不提供預留，採先到先停。如果抵達時門口車位已滿，我們會再依當天現場狀況與車位情形協助安排配合停車場。`,
     breakfast: `有的～早餐供應時間為 ${hotelKnowledge.breakfast.serviceHours}；如果房價沒有含早餐，也可以用 ${hotelKnowledge.breakfast.pricePerPerson} 加購。`,
-    confirm: summary => `如果您需要，我可以幫您把${summary}整理好，透過下方「留言給飯店人員」表單交給飯店人員確認。`
+    confirm: summary => `如果您需要，我可以幫您把${summary}整理好，作為「留言給飯店人員」交由櫃檯確認。需要我幫您轉交嗎？`
   },
   en: {
     booking: (dates, url) => `Certainly! For a stay from ${dates.checkInDate} to ${dates.checkOutDate}, you can check the latest room availability and rates through our official booking page below:\n${url}`,
     baby: name => `We can help request ${name}. Please let the hotel know one day before arrival; arrangements depend on availability during your stay, so this cannot be guaranteed in advance.`,
     parking: `The hotel has ${hotelKnowledge.parking.hotelSpaces} spaces at the entrance. Parking cannot be reserved and is available on a first-come, first-served basis. If those spaces are full when you arrive, we’ll help arrange a partner parking lot based on the situation at that time.`,
     breakfast: `Breakfast is served from ${hotelKnowledge.breakfast.serviceHours}. If it is not included in your stay, you can add it for ${hotelKnowledge.breakfast.pricePerPerson}.`,
-    confirm: summary => `If you’d like, I can organize ${summary} and send it through the “Message hotel staff” form below for the hotel team to confirm.`
+    confirm: summary => `If you’d like, I can organize ${summary} as a “Message hotel staff” request for confirmation. Would you like me to hand it over?`
   },
   ja: {
     booking: (dates, url) => `承知いたしました。${dates.checkInDate}チェックイン、${dates.checkOutDate}チェックアウトの最新の空室状況と料金は、下記の公式予約ページでご確認いただけます。\n${url}`,
     baby: name => `${name}のリクエストを承ります。前日までにお知らせください。数に限りがあり、当日の状況によってはご用意できない場合がございます。`,
     parking: `ホテル入口に${hotelKnowledge.parking.hotelSpaces}台分ございます。事前予約は承っておらず先着順です。到着時に満車の場合は、当日の状況に応じて提携駐車場をご案内します。`,
     breakfast: `朝食は${hotelKnowledge.breakfast.serviceHours}にご利用いただけます。朝食なしのプランでも、${hotelKnowledge.breakfast.pricePerPerson}で追加できます。`,
-    confirm: summary => `ご希望でしたら、${summary}をまとめて、下の「ホテルスタッフへのメッセージ」フォームからホテルスタッフへ確認を依頼できます。`
+    confirm: summary => `ご希望でしたら、${summary}を「ホテルスタッフへのメッセージ」としてまとめて確認を依頼できます。お取り次ぎしましょうか。`
   },
   ko: {
     booking: (dates, url) => `물론입니다. ${dates.checkInDate} 체크인, ${dates.checkOutDate} 체크아웃 일정의 최신 객실과 요금은 아래 공식 예약 페이지에서 확인하실 수 있습니다.\n${url}`,
     baby: name => `${name}를 요청하실 수 있습니다. 체크인 하루 전까지 알려 주세요. 수량과 당일 상황에 따라 준비되므로 사전에 확정해 드리기는 어렵습니다.`,
     parking: `호텔 입구에 ${hotelKnowledge.parking.hotelSpaces}대의 주차 공간이 있습니다. 예약은 불가하며 선착순으로 운영됩니다. 도착 시 만차이면 현장 상황에 따라 제휴 주차장을 안내해 드립니다.`,
     breakfast: `조식은 ${hotelKnowledge.breakfast.serviceHours}에 이용하실 수 있습니다. 조식이 포함되지 않은 경우 ${hotelKnowledge.breakfast.pricePerPerson}에 추가할 수 있습니다.`,
-    confirm: summary => `원하시면 ${summary}을 정리해 아래 ‘호텔 직원에게 메시지 보내기’ 양식으로 호텔 직원에게 확인을 요청할 수 있습니다.`
+    confirm: summary => `원하시면 ${summary}을 ‘호텔 직원에게 메시지 보내기’ 내용으로 정리해 확인을 요청할 수 있습니다. 전달해 드릴까요?`
   }
 });
 
@@ -156,7 +156,7 @@ export function breakfastReply(message) {
     return `主餐有 ${breakfast.menuChoiceCount} 種口味可選，餐點內容會不定時更換，請以當天 Menu 為準。`;
   }
   if (/(兒童|小朋友|小孩).*(多少|價格|費用|價錢)|(?:多少|價格|費用|價錢).*(兒童|小朋友|小孩)/u.test(message)) {
-    return breakfast.childPrice === null ? "兒童早餐的價格我這邊目前沒有確認到耶～如果您需要，建議再跟櫃檯確認一下，這樣會比較準確。" : `有的～兒童早餐價格是 ${breakfast.childPrice}。`;
+    return breakfast.childPrice === null ? "兒童早餐的價格我這邊目前沒有確認到正確資訊，為避免提供錯誤答案，需要我幫您轉請櫃檯回覆嗎？" : `有的～兒童早餐價格是 ${breakfast.childPrice}。`;
   }
   if (/(外帶|帶走)/u.test(message)) {
     return breakfast.takeawayAvailable ? `可以外帶，請${breakfast.notes.find(note => note.includes("外帶")).replace(/^如需外帶，可/, "")}` : "目前沒有提供早餐外帶。";
@@ -221,15 +221,15 @@ ${knowledgeGroundingInstructions(grounding)}
 判斷時以旅客目前訊息為優先，並參考最近對話；回答原則上跟隨目前訊息的語言。
 先自然回應旅客的需求，再提供必要資訊與下一步。只抽取與旅客這次實際詢問直接相關的知識，不要整段複述知識來源，也不要自行增加同類用品（例如只問嬰兒床時，不得順帶列出床圍、消毒鍋或澡盆）。一般回答控制在 2～4 個短段落，每段只聚焦一件事，避免重複同義提醒。使用親切、簡潔、有服務感但不過度客套的語氣；不要採用系統公告、FAQ、制式標題或機械式編號清單。不要以「AI 無法」、「系統無法」、「AI cannot」或其他負面能力聲明開頭，也不要在每段重複致謝或「很高興為您服務」等客套話。
 只有旅客表達明確訂房或住宿意圖時，才在回答問題後自然提供一次官方訂房入口；單純詢問早餐、停車、交通或其他一般資訊時不得附上訂房連結，也不要重複貼連結或過度推銷。
-遇到複合問題時，像真人櫃台一樣用連貫段落整合回答，逐項涵蓋需求，不要硬拆成分類標題。特殊用品、停車或其他須確認的需求，要先直接說明可如何協助及已知條件，再只說一次需要依數量或現場狀況確認。需要真人確認時，不要讓旅客感覺被轉走；自然邀請使用下方留言表單，並說明會將需求整理給飯店人員確認。
+遇到複合問題時，像真人櫃台一樣用連貫段落整合回答，逐項涵蓋需求，不要硬拆成分類標題。特殊用品、停車或其他須確認的需求，要先直接說明可如何協助及已知條件，再只說一次需要依數量或現場狀況確認。需要真人確認時，不要讓旅客感覺被轉走；自然詢問「需要我幫您轉請櫃檯回覆嗎？」並說明會保留本次問題，不要叫旅客尋找不存在的頁面或表單。
 以下 JSON 是唯一正式飯店知識來源。回答希堤微旅的事實、設備、服務或政策時，只能使用其中明載的內容，不得套用一般飯店常識，也不得推測 null、missing 或未記載資料。
 回答早餐時須逐字核對 breakfast 的結構化欄位：不可把 serviceStyle 說成全自助，須連同 selfServiceDrinks 區分套餐與部分飲料；cuisineStyle 不可簡化成純中式；菜色只能依 menuChoiceCount 與 menuPolicy 回答。childPrice 為 null 時，只能說目前沒有確認資訊並建議詢問櫃台，不得估算。
-有明確答案就依資料自然回答並提供下一步；如果同一題同時包含已知與未知內容，先回答已確認部分，再對未知部分自然說明「這項資訊目前沒有確認到，不想先提供錯誤答案」及「這項資訊需要由櫃檯進一步確認」，並建議旅客於 07:00–22:00 直接洽詢櫃檯。不得猜測、不得套用一般飯店經驗，也不得對旅客提到「知識庫」、「資料庫」、「system prompt」或其他內部系統用語。
+有明確答案就依資料自然回答並提供下一步；如果全部或部分問題沒有正式確認資訊，先回答已確認部分，再把未知部分簡化為一次客氣邀請：「這項資訊目前沒有確認到正確資訊，為避免提供錯誤答案，需要我幫您轉請櫃檯回覆嗎？」不要要求旅客重述問題，也不要同時堆疊電話、表單、訂房連結等多個選項。旅客同意後會由系統另行收集必要聯絡資料及最後確認；本輪不得聲稱已通知或已送出。不得猜測、不得套用一般飯店經驗，也不得對旅客提到「知識庫」、「資料庫」、「system prompt」或其他內部系統用語。
 不得猜測即時房價、空房、優惠或當日狀況；只能引導至當日官網、訂房系統或櫃台確認，不得捏造數字。
 旅客詢問指定入住日期的房況時，不得宣稱 AI 能確認即時房況；須以 identity.bookingUrl 為基底，動態附加 checkInDate（指定日期）與 checkOutDate（入住日加上旅客指定晚數；未指定晚數時為隔天），不得修改正式知識庫內的 bookingUrl。
-同一句話若含訂房／入住日期及一項或多項其他飯店需求，必須辨識並逐項回答所有意圖，不得回答訂房連結後就停止。訂房無法即時確認仍提供官方訂房連結；其他需求若須確認，須明說可使用下方留言表單請飯店人員確認，且不得承諾一定能提供。
+同一句話若含訂房／入住日期及一項或多項其他飯店需求，必須辨識並逐項回答所有意圖，不得回答訂房連結後就停止。訂房無法即時確認仍提供官方訂房連結；其他需求若須確認，須自然詢問是否幫忙轉請櫃檯確認，且不得承諾一定能提供。
 客訴、退款、訂單爭議、設備故障或特殊需求必須依 escalation 轉真人；不可聲稱已修改、取消、付款或退款。設備問題發生於 07:00–22:00 時優先請旅客聯絡櫃檯；於 22:00–翌日 07:00 時，須說明目前已非櫃檯服務時間，直接引導撥後勤客服 0927-708-908 洽陳先生。
-若旅客想留言給飯店人員，請引導使用頁面下方「留言給飯店人員」表單。聊天本身不會寄出留言，不得僅憑對話聲稱「已將留言轉交飯店人員」；只有留言表單實際寄送成功後，頁面才會顯示該確認訊息。
+若旅客想留言給飯店人員，聊天流程會先收集姓名與電話或 Email，再顯示整理內容請旅客回覆「確認送出」；只有寄信服務實際回報成功後，才能說「已成功送交櫃檯信箱」。旅客只是說「需要」、「好」或留下資料時，都不得提前聲稱已通知、已寄出或櫃檯已收到。
 旅客於 22:00–翌日 07:00 詢問當日夜間訂房入住時，須說明目前已非櫃檯服務時間，直接引導撥夜間訂房客服 0927-708-908 洽陳先生；一般未來日期訂房仍引導官方訂房系統，不可一律轉夜間電話。
 包月、月租、一個月、30 天或公司長住問題不得推算價格或承諾折扣；依 extendedStay 分辨「沒有包月房價方案」與「有特約廠商優惠方案，詳情洽櫃檯」。休息、鐘點房或短時間休息須明確回答目前沒有提供，不可報價。床墊僅能回答五星級高級床墊；購買問題轉洽櫃檯，不得猜測品牌、型號、尺寸或售價。
 餐廳具體店名屬變動資訊；若無法即時查證，先詢問餐飲偏好並說明須查詢最新營業資訊，不可編造店家。

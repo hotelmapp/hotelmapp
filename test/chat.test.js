@@ -148,6 +148,7 @@ test("answers both booking dates and a cot request in the same message", async t
   assert.match(res.body.answer, /嬰兒床/);
   assert.match(res.body.answer, /依數量與現場狀況安排/);
   assert.match(res.body.answer, /留言給飯店人員/);
+  assert.doesNotMatch(res.body.answer, /沒辦法成功把留言送到櫃台/u);
   assert.doesNotMatch(res.body.answer, /AI 無法|系統無法/);
 });
 
@@ -212,7 +213,7 @@ test("answers parking and breakfast together without mechanical section labels",
 test("instructs uncertain requests to be handed over warmly without unsafe promises", () => {
   const instructions = responsesPayload("可以幫我準備無障礙淋浴椅嗎？").instructions;
   assert.match(instructions, /先直接說明可如何協助/);
-  assert.match(instructions, /需求整理給飯店人員確認/);
+  assert.match(instructions, /需要我幫您轉請櫃檯回覆嗎/);
   assert.match(instructions, /不可聲稱已修改、取消、付款或退款/);
   assert.match(instructions, /不得承諾一定能提供/);
 });
@@ -358,7 +359,7 @@ test("answers breakfast regressions from structured facts without inventing menu
     ["早餐有什麼菜？", /4 種口味.*當天 Menu/u],
     ["早餐可以外帶嗎？", /可以外帶.*提前告知櫃台/u],
     ["早餐有素食嗎？", /提前告知櫃台.*蛋奶素/u],
-    ["小朋友早餐多少錢？", /兒童早餐的價格.*沒有確認到.*櫃檯確認/u]
+    ["小朋友早餐多少錢？", /兒童早餐的價格.*沒有確認到.*轉請櫃檯回覆/u]
   ];
   for (const [question, expected] of cases) assert.match(breakfastReply(question), expected);
   assert.doesNotMatch(breakfastReply("早餐有什麼菜？"), /吐司|沙拉|培根|稀飯|饅頭/u);
@@ -393,12 +394,12 @@ test("keeps remaining missing facts unknown while exposing confirmed Wi-Fi", () 
 
 test("uses guest-facing escalation language without internal terminology", () => {
   const instructions = responsesPayload("有接駁服務嗎？").instructions;
-  assert.match(instructions, /這項資訊需要由櫃檯進一步確認/);
+  assert.match(instructions, /需要我幫您轉請櫃檯回覆嗎/);
   assert.match(instructions, /不得對旅客提到「知識庫」、「資料庫」、「system prompt」/);
   assert.match(instructions, /後勤客服 0927-708-908 洽陳先生/);
   assert.match(instructions, /夜間訂房客服 0927-708-908 洽陳先生/);
-  assert.match(instructions, /聊天本身不會寄出留言/);
-  assert.match(instructions, /只有留言表單實際寄送成功後/);
+  assert.match(instructions, /先收集姓名與電話或 Email/);
+  assert.match(instructions, /只有寄信服務實際回報成功後/);
   assert.match(instructions, /逐項回答所有意圖/);
   assert.match(instructions, /沒有包月房價方案/);
   assert.match(instructions, /沒有提供休息/);

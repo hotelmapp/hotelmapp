@@ -55,9 +55,17 @@ test("personality changes presentation without changing canonical hotel facts", 
 
 test("unknown information stays warm and is never invented", () => {
   const answer = breakfastReply("小朋友早餐多少錢？");
-  assert.match(answer, /目前沒有確認到/);
-  assert.match(answer, /櫃檯確認/);
+  assert.match(answer, /目前沒有確認到正確資訊/);
+  assert.match(answer, /需要我幫您轉請櫃檯回覆嗎/);
   assert.doesNotMatch(answer, /(?:NT\$|元|價格是)\s*\d+/u);
+});
+
+test("unknown-answer guidance offers one simple, consent-based handoff", () => {
+  const instructions = responsesPayload("房內有熨斗嗎？", [], "line").instructions;
+  assert.match(instructions, /需要我幫您轉請櫃檯回覆嗎/);
+  assert.match(instructions, /不要要求旅客重述問題/);
+  assert.match(instructions, /不要同時堆疊電話、表單、訂房連結/u);
+  assert.match(instructions, /本輪不得聲稱已通知或已送出/u);
 });
 
 test("simple breakfast time stays concise and naturally friendly", () => {
@@ -104,7 +112,7 @@ test("payment, refund, and booking changes never claim an unperformed result", (
 test("handoff honesty and booking, payment, and refund guardrails remain in shared instructions", () => {
   const instructions = responsesPayload("請幫我退款並通知櫃檯", [], "web").instructions;
   assert.match(instructions, /不可聲稱已修改、取消、付款或退款/);
-  assert.match(instructions, /聊天本身不會寄出留言/);
+  assert.match(instructions, /只有寄信服務實際回報成功後/);
   assert.match(instructions, /不得猜測即時房價、空房/);
   assert.match(instructions, /系統沒有實際完成的員工動作，不得聲稱已完成/);
 });
