@@ -34,7 +34,16 @@ export default async function handler(req, res) {
     try { service = configuredConversationService(); } catch { service = null; }
     const result = service
       ? await answerWithConversation({ id: conversationId, channel: "web", message, service })
-      : { answer: await answerGuestMessage(message, { history: req.body?.history, channel: "web" }), durable: false };
+      : {
+          answer: await answerGuestMessage(message, {
+            history: req.body?.history,
+            channel: "web",
+            // Without durable server-side state there is no safe way to prove
+            // contact collection and final confirmation, so email fails closed.
+            handoffService: async () => ({ attempted: false, delivered: false, authorized: false })
+          }),
+          durable: false
+        };
     return res.status(200).json({
       answer: result.answer,
       conversationId,

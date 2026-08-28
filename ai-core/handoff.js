@@ -10,7 +10,7 @@ const HANDOFF_CATEGORIES = Object.freeze([
   ["遺失物", /遺失|忘了帶走|掉了|失物|lost\s*(?:item|property)/iu],
   ["客訴", /客訴|投訴|抱怨|很不滿|太糟|非常生氣/iu],
   ["私人訂房資料", /訂房編號|預訂編號|訂單資料|私人資料|個人資料/iu],
-  ["真人服務", /真人|人工客服|轉接.{0,8}(?:櫃台|櫃檯|飯店人員)|(?:找|請|要).{0,8}(?:櫃台|櫃檯|飯店人員)/iu],
+  ["真人服務", /真人|人工客服|轉接.{0,8}(?:櫃台|櫃檯|飯店人員)|(?:找|聯絡|通知).{0,8}(?:櫃台|櫃檯|飯店人員)|(?:幫我|麻煩|可以|可否|能否|是否).{0,12}(?:聯絡|通知|轉告).{0,8}(?:櫃台|櫃檯|飯店人員)|(?:請|希望|需要).{0,8}(?:櫃台|櫃檯|飯店人員).{0,12}(?:聯絡|回覆|回電)/iu],
   ["特殊需求", /(?:幫我|請|需要|想要|安排|準備|申請).{0,12}(?:特殊需求|無障礙|過敏|慶生|加床|嬰兒床|寵物)|(?:特殊需求|無障礙|過敏|慶生|加床|嬰兒床|寵物).{0,12}(?:安排|準備|申請)/iu]
 ]);
 
@@ -40,7 +40,7 @@ export function stayDateFromHistory(history, now = new Date()) {
 
 export function contactDetails(history, now = new Date()) {
   const messages = normalizedGuestMessages(history);
-  const originalMessage = messages.slice(-3).join("\n") || "（對話中無旅客留言）";
+  const originalMessage = messages.slice(-5).join("\n") || "（對話中無旅客留言）";
   const text = messages.join("\n");
   const categories = [
     ...HANDOFF_CATEGORIES,
@@ -51,7 +51,8 @@ export function contactDetails(history, now = new Date()) {
     ["訂房詢問", /(訂房|空房|房況|房價|住宿|booking|availability|room|予約|空室|宿泊|예약|객실|숙박)/iu]
   ];
   const reason = categories.find(([, pattern]) => pattern.test(text))?.[0] || "其他";
-  const summarySource = messages.slice(-2).join("；");
+  const administrativeReply = /^(?:需要|需要喔|要|好|好的|可以|沒問題|確認|確認送出|同意|送出|麻煩送出|ok|okay|yes)[！!。,．.～~\s]*$/iu;
+  const summarySource = messages.filter(message => !administrativeReply.test(message)).slice(-3).join("；");
   const summary = summarySource ? `旅客詢問／反映：${summarySource.slice(0, 900)}${summarySource.length > 900 ? "…" : ""}` : "旅客希望飯店人員主動聯絡，但尚未在對話中說明具體需求。";
   return { reason, summary, originalMessage, stayDate: stayDateFromHistory(history, now) };
 }

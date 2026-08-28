@@ -9,6 +9,8 @@ const SENDER = "希堤微旅 AI 智慧櫃台 <onboarding@resend.dev>";
 const SAFE_IDENTIFIER_KEYS = new Set(["displayName", "email", "phone"]);
 const PHONE_PATTERN = /(?<!\d)(?:\+?886[- ]?)?0?9\d{2}[- ]?\d{3}[- ]?\d{3}(?!\d)/u;
 const EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/iu;
+const OFFER_ACCEPT_PATTERN = /^(?:需要|需要喔|要|好|好的|可以|麻煩|麻煩你|請幫我|ok|okay|yes)[！!。,．.～~\s]*$/iu;
+const HANDOFF_OFFER_PATTERN = /需要我幫您.{0,12}(?:(?:通知|聯絡|轉告).{0,8}(?:櫃台|櫃檯|飯店人員)|(?:轉請|請).{0,8}(?:櫃台|櫃檯|飯店人員).{0,8}(?:回覆|確認))嗎/iu;
 const CONFIRM_PATTERN = /^(?:好|好的|可以|確認|確認送出|同意|送出|麻煩送出|ok|okay|yes|可以送出)[！!。,.\s]*$/iu;
 const CANCEL_PATTERN = /^(?:不要|不用|取消|先不用|不用了|no|cancel)[！!。,.\s]*$/iu;
 
@@ -31,14 +33,29 @@ function normalizeDisplayName(value) {
   return clean(value, 80).replace(/[，,;；].*$/u, "");
 }
 
+function displayNameNearContact(value) {
+  const candidate = clean(value, 80).replace(/^[，,：:。.!！?？\s]+|[，,：:。.!！?？\s]+$/gu, "");
+  if (!candidate) return "";
+  const titled = candidate.match(/(?:我是|我叫|姓名(?:是|叫|為)?|聯絡人(?:是|叫|為)?)?([\p{Script=Han}A-Za-z·]{1,8}(?:先生|小姐|女士|太太))/u)?.[1];
+  if (titled) return normalizeDisplayName(titled);
+  const explicit = candidate.match(/^(?:我是|我叫|姓名(?:是|叫|為)?|聯絡人(?:是|叫|為)?)[：:\s]*([\p{L}·]{1,20})$/u)?.[1];
+  if (explicit) return normalizeDisplayName(explicit);
+  return /^[\p{L}·]{1,20}$/u.test(candidate) ? normalizeDisplayName(candidate) : "";
+}
+
 export function extractHandoffContact(message, identity = {}) {
   const text = clean(message, 1_000);
-  const phone = normalizePhone(identity?.phone) || normalizePhone(text);
-  const email = normalizeEmail(identity?.email) || normalizeEmail(text);
+  const phoneInMessage = text.match(PHONE_PATTERN)?.[0] || "";
+  const emailInMessage = text.match(EMAIL_PATTERN)?.[0] || "";
+  const phone = normalizePhone(identity?.phone) || normalizePhone(phoneInMessage);
+  const email = normalizeEmail(identity?.email) || normalizeEmail(emailInMessage);
   let displayName = normalizeDisplayName(identity?.displayName);
-  if (!displayName && (phone || email)) {
-    const beforeContact = text.split(phone || email)[0].replace(/[，,：:\s]+$/u, "").trim();
-    if (beforeContact && beforeContact.length <= 40 && !/^(?:電話|手機|email|e-mail)$/iu.test(beforeContact)) displayName = beforeContact;
+  const contactInMessage = phoneInMessage || emailInMessage;
+  if (!displayName && contactInMessage) {
+    const contactIndex = text.indexOf(contactInMessage);
+    const beforeContact = text.slice(0, contactIndex);
+    const afterContact = text.slice(contactIndex + contactInMessage.length);
+    displayName = displayNameNearContact(afterContact) || displayNameNearContact(beforeContact);
   }
   return { ...(displayName ? { displayName } : {}), ...(phone ? { phone } : {}), ...(email ? { email } : {}) };
 }
@@ -72,6 +89,12 @@ function startsIndependentServiceQuestion(message) {
   return Boolean(explicitTopic(message) || hasBookingIntent(message));
 }
 
+function acceptsRecentHandoffOffer(message, history) {
+  if (!OFFER_ACCEPT_PATTERN.test(clean(message, 80)) || !Array.isArray(history)) return false;
+  const latestTurn = [...history].reverse().find(item => item && typeof item.content === "string");
+  return latestTurn?.role === "assistant" && HANDOFF_OFFER_PATTERN.test(clean(latestTurn.content, 1_000));
+}
+
 /**
  * Durable handoff state machine. Guest prose is never authorization by itself:
  * contact collection and an explicit final confirmation are separate states.
@@ -79,7 +102,10 @@ function startsIndependentServiceQuestion(message) {
 export function advanceHandoffAuthorization({ message, history = [], identity, current } = {}) {
   const existing = current && typeof current === "object" ? current : { state: "none" };
   const state = existing.state || "none";
-  const decision = decideHandoff(message, history);
+  const detected = decideHandoff(message, history);
+  const decision = detected.required || !acceptsRecentHandoffOffer(message, history)
+    ? detected
+    : { required: true, category: "真人服務" };
 
   if (state === "ready_for_confirmation") {
     if (CANCEL_PATTERN.test(clean(message, 80))) return { handoff: { state: "none" }, reply: cancelHandoffReply(), authorized: false };
@@ -92,8 +118,8 @@ export function advanceHandoffAuthorization({ message, history = [], identity, c
 
   if (state === "collecting_required_fields") {
     if (CANCEL_PATTERN.test(clean(message, 80))) return { handoff: { state: "none" }, reply: cancelHandoffReply(), authorized: false };
-    if (!decision.required && startsIndependentServiceQuestion(message)) return { handoff: { state: "none" }, authorized: false };
     const contact = { ...(existing.contact || {}), ...extractHandoffContact(message, identity) };
+    if (!hasRequiredHandoffContact(contact) && !decision.required && startsIndependentServiceQuestion(message)) return { handoff: { state: "none" }, authorized: false };
     if (!hasRequiredHandoffContact(contact)) return { handoff: { ...existing, contact, state: "collecting_required_fields" }, reply: collectContactReply(), authorized: false };
     const handoff = { ...existing, contact, state: "ready_for_confirmation" };
     return { handoff, reply: confirmationReply(handoff), authorized: false };
@@ -118,10 +144,17 @@ export function advanceHandoffAuthorization({ message, history = [], identity, c
 }
 
 function safeIdentity(identity) {
-  if (!identity || typeof identity !== "object") return [];
-  return Object.entries(identity)
+  if (!identity || typeof identity !== "object") return {};
+  return Object.fromEntries(Object.entries(identity)
     .filter(([key, value]) => SAFE_IDENTIFIER_KEYS.has(key) && typeof value === "string" && value.trim())
-    .map(([key, value]) => `${key}：${clean(value, 254)}`);
+    .map(([key, value]) => [key, clean(value, 254)]));
+}
+
+function taipeiTime(now) {
+  return new Intl.DateTimeFormat("zh-TW", {
+    timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false
+  }).format(now).replace(/\s+/gu, " ");
 }
 
 function minimizedMessage(value, category) {
@@ -141,18 +174,28 @@ export function handoffEmail({ channel, message, history = [], category, identit
   const conversation = [...safeHistory, { role: "user", content: minimizedCurrent }];
   const details = contactDetails(conversation, now);
   const safeChannel = ["line", "web", "voice", "messenger", "instagram"].includes(channel) ? channel.toUpperCase() : "UNKNOWN";
-  const identityLines = safeIdentity(identity);
+  const safeContact = safeIdentity(identity);
   return {
     from: SENDER,
     to: [frontDeskEmail()],
     subject: `【AI 真人轉接】${clean(category, 80)}－${safeChannel}`,
     text: [
-      `來源 channel：${safeChannel}`,
-      `handoff category：${clean(category, 80)}`,
-      `時間：${now.toISOString()}`,
-      `客人需求摘要：${details.summary}`,
-      "最近對話摘要：", details.originalMessage,
-      "可用客人識別資訊：", ...(identityLines.length ? identityLines : ["未提供"])
+      "希堤微旅櫃檯您好：",
+      "",
+      `有一位旅客透過 ${safeChannel} 請求櫃檯協助，資料如下：`,
+      "",
+      `需求類型：${clean(category, 80)}`,
+      `客人需求：${details.summary}`,
+      `旅客姓名：${safeContact.displayName || "未提供"}`,
+      `聯絡電話：${safeContact.phone || "未提供"}`,
+      `聯絡 Email：${safeContact.email || "未提供"}`,
+      `入住日期：${details.stayDate || "未提供"}`,
+      `留言時間：${taipeiTime(now)}（台灣時間）`,
+      "",
+      "最近對話：",
+      details.originalMessage,
+      "",
+      "此信由希堤微旅 AI 智慧櫃台自動寄出，請依上述內容聯絡旅客。"
     ].join("\n")
   };
 }
