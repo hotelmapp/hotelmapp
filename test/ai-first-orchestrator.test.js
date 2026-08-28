@@ -23,6 +23,31 @@ test("architecture invariant: feature flag is explicit opt-in and schema is stri
   assert.equal(aiFirstEnabled({ AI_FIRST_ORCHESTRATOR_ENABLED: "true" }), true);
   assert.equal(aiFirstEnabled({ AI_FIRST_ORCHESTRATOR_ENABLED: "1" }), false);
   assert.equal(MODEL_DECISION_SCHEMA.additionalProperties, false);
+  assert.ok(MODEL_DECISION_SCHEMA.properties.intent.enum.includes("multiple"));
+  assert.ok(MODEL_DECISION_SCHEMA.properties.intent.enum.includes("subsidy_documentation"));
+});
+
+test("semantic decision prompt forbids a lone discount word from forcing parking", async () => {
+  const calls = [];
+  const grounding = resolveKnowledgeGrounding("國旅補助跟停車折抵是一樣的嗎？");
+  const request = async ({ payload }) => {
+    calls.push(payload);
+    return calls.length === 1
+      ? { answer: JSON.stringify(decision({
+          intent: "multiple",
+          user_need: "比較國旅補助與停車折抵",
+          facts_to_use: ["parking.processRule", "governmentSubsidy2026.weekdayStayAward.firstNight"],
+          clarification_needed: true,
+          response_strategy: "unknown"
+        })) }
+      : { answer: "兩者是不同項目；目前資料沒有說明兩者可互相替代。" };
+  };
+  await orchestrateHospitalityTurn({
+    message: "國旅補助跟停車折抵是一樣的嗎？", grounding, request, logger: silentLogger
+  });
+  assert.match(calls[0].instructions, /折抵 alone does not mean parking/u);
+  assert.match(calls[0].instructions, /complete current sentence/u);
+  assert.equal(JSON.parse(calls[1].input).verified_decision.intent, "multiple");
 });
 
 test("structured decisions reject unknown fields, fact IDs, and tools", () => {

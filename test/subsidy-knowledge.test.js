@@ -41,6 +41,51 @@ test("subsidy topic has an authoritative intent contract", () => {
   assert.match(grounding.contract.requiredFactIds.join(" "), /weekdayStayAward/u);
 });
 
+test("whole-sentence semantics prevent subsidy discounts from being routed to parking", async () => {
+  const message = "哈囉～9/14是我們連續住宿的第二天，我看國旅補助第二天是折抵1200$，這樣我需要提供你們前一天住宿的證明嗎～";
+  const grounding = resolveKnowledgeGrounding(message);
+  assert.equal(grounding.topic, "subsidy");
+  assert.equal(grounding.intent, "subsidy_documentation");
+  assert.equal(grounding.facts.governmentSubsidy2026.requiredPreviousNightProof, null);
+
+  for (const channel of ["web", "line", "messenger"]) {
+    const result = await answerGuestMessage(message, {
+      channel, temporalContext: temporal("2026-08-28"), handoffService: noHandoff
+    });
+    assert.match(result, /第二晚.*第一晚住宿證明.*目前.*沒有確認/u, channel);
+    assert.match(result, /櫃檯.*政府活動系統.*最新規定/u, channel);
+    assert.doesNotMatch(result, /車牌|停車場|停妥|停好車/u, channel);
+  }
+});
+
+test("ambiguous discount wording needs a real topic from the sentence or conversation", () => {
+  assert.equal(resolveKnowledgeGrounding("折抵要怎麼辦理？").topic, null);
+
+  const parking = resolveKnowledgeGrounding("那折抵要怎麼辦理？", [
+    { role: "user", content: "我的車已經停好了" }
+  ]);
+  assert.equal(parking.topic, "parking");
+  assert.equal(parking.intent, "parking_process");
+
+  const subsidy = resolveKnowledgeGrounding("那折抵要怎麼辦理？", [
+    { role: "user", content: "我想參加國旅補助" }
+  ]);
+  assert.equal(subsidy.topic, "subsidy");
+  assert.equal(subsidy.intent, "subsidy_registration");
+
+  assert.equal(resolveKnowledgeGrounding("信用卡折抵有嗎？").topic, "payment");
+});
+
+test("messages with two explicit topics preserve both for semantic reasoning", () => {
+  const grounding = resolveKnowledgeGrounding("國旅補助跟停車折抵是一樣的嗎？");
+  assert.equal(grounding.topic, "multi");
+  assert.equal(grounding.intent, "multiple");
+  assert.deepEqual(grounding.topics, ["parking", "subsidy"]);
+  assert.ok(grounding.facts.parking);
+  assert.ok(grounding.facts.governmentSubsidy2026);
+  assert.match(grounding.contract.coveragePolicy, /every explicit topic/u);
+});
+
 test("activity wording follows the authoritative Asia/Taipei date", async () => {
   const upcoming = await answer("飯店有政府住宿補助嗎？", "2026-08-23");
   assert.match(upcoming, /將於 2026 年 9 月 1 日起參加/u);
