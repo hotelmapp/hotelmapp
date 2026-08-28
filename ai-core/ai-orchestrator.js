@@ -13,7 +13,7 @@ export const MODEL_DECISION_SCHEMA = Object.freeze({
   additionalProperties: false,
   required: ["intent", "user_need", "facts_to_use", "action", "clarification_needed", "next_step", "response_strategy"],
   properties: {
-    intent: { type: "string", enum: ["multiple", "subsidy_overview", "subsidy_amount", "subsidy_period", "subsidy_booking_channel", "subsidy_participation_limit", "subsidy_birthday_voucher", "subsidy_taiwan_pass", "subsidy_stacking", "subsidy_registration", "subsidy_documentation", "subsidy_eligibility", "subsidy_third_night", "parking_availability", "parking_fee", "parking_location", "parking_process", "parking_reservation", "parking_problem", "wifi", "check_in", "late_checkout", "breakfast", "luggage", "room_type", "baby_equipment", "transportation", "cancellation", "payment", "complaint", "unknown"] },
+    intent: { type: "string", enum: ["multiple", "subsidy_overview", "subsidy_amount", "subsidy_period", "subsidy_booking_channel", "subsidy_participation_limit", "subsidy_birthday_voucher", "subsidy_taiwan_pass", "subsidy_stacking", "subsidy_registration", "subsidy_documentation", "subsidy_eligibility", "subsidy_third_night", "booking_direct", "booking_availability", "booking_modify_cancel", "parking_availability", "parking_fee", "parking_location", "parking_process", "parking_reservation", "parking_problem", "wifi", "check_in", "late_checkout", "breakfast", "luggage", "room_type", "baby_equipment", "transportation", "cancellation", "payment", "complaint", "unknown"] },
     user_need: { type: "string", minLength: 1, maxLength: 240 },
     facts_to_use: { type: "array", maxItems: MAX_DECISION_FACTS, items: { type: "string", minLength: 1, maxLength: 120 } },
     action: { type: "string", enum: ["none", "contact_front_desk"] },

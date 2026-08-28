@@ -156,6 +156,29 @@ export function renderHospitalityFact({ topic, intent, facts, language = "zh-TW"
     if (intent === "subsidy_eligibility") return `補助資格、可用額度及經費是否仍充足，都必須由政府活動系統確認，飯店無法先保證；活動解釋以政府最新公告為準。`;
     return `${status}；第一晚折抵 ${subsidy.weekdayStayAward.firstNight}，連續第二晚折抵 ${subsidy.weekdayStayAward.consecutiveSecondNight}。每位旅客活動期間限參與一次，實際資格、額度與經費仍以政府系統及最新公告為準。`;
   }
+  if (topic === "booking") {
+    const contact = facts?.contact || {};
+    const bookingUrl = facts?.identity?.bookingUrl || "";
+    if (intent === "booking_modify_cancel") {
+      if (language === "en") return `If you booked directly with the hotel or on the official website, please call the front desk at ${contact.frontDeskPhone} during ${contact.deskHours}. For Agoda, Booking.com, Trip.com, or another platform, please request the change or cancellation through that original platform.`;
+      if (language === "ja") return `ホテルまたは公式サイトからのご予約は、${contact.deskHours}にフロント（${contact.frontDeskPhone}）へご連絡ください。Agoda、Booking.com、Trip.comなどの予約サイト経由の場合は、原則としてご予約元のサイトで変更・キャンセルをお申し込みください。`;
+      if (language === "ko") return `호텔 또는 공식 웹사이트에서 예약하셨다면 ${contact.deskHours}에 프런트 데스크(${contact.frontDeskPhone})로 연락해 주세요. Agoda, Booking.com, Trip.com 등 예약 플랫폼을 이용하셨다면 해당 플랫폼에서 변경 또는 취소를 요청해 주세요.`;
+      return `如果是直接向飯店或官網訂房，可以在 ${contact.deskHours} 撥櫃檯電話 ${contact.frontDeskPhone} 協助確認；若是 Agoda、Booking.com、Trip.com 等平台訂房，原則上要向原平台申請修改或取消。`;
+    }
+    if (intent === "booking_availability") {
+      if (language === "en") return `For current room availability and rates, please check the official booking page: ${bookingUrl}`;
+      if (language === "ja") return `最新の空室状況と料金は、公式予約ページでご確認いただけます：${bookingUrl}`;
+      if (language === "ko") return `실시간 객실 상황과 요금은 공식 예약 페이지에서 확인해 주세요: ${bookingUrl}`;
+      return `即時房價與空房會依當日狀況變動，可以從官方訂房頁面直接查詢：${bookingUrl}`;
+    }
+    if (intent === "booking_direct") {
+      if (language === "en") return `Yes. You can book with the front desk by calling ${contact.frontDeskPhone} during ${contact.deskHours}. Current rates and availability still need to be confirmed through the front desk or the booking system. Official booking page: ${bookingUrl}`;
+      if (language === "ja") return `はい、${contact.deskHours}にフロント（${contact.frontDeskPhone}）へ直接お電話いただけます。最新料金と空室状況はフロントまたは予約システムでの確認となります。公式予約ページ：${bookingUrl}`;
+      if (language === "ko") return `네, ${contact.deskHours}에 프런트 데스크(${contact.frontDeskPhone})로 직접 예약 문의하실 수 있습니다. 실시간 요금과 객실 상황은 프런트 또는 예약 시스템에서 확인해 드립니다. 공식 예약 페이지: ${bookingUrl}`;
+      return `可以喔，您可以在 ${contact.deskHours} 直接撥櫃檯電話 ${contact.frontDeskPhone} 詢問訂房；即時房價與空房仍會由櫃檯或當日訂房系統確認。官方訂房頁面：${bookingUrl}`;
+    }
+    return null;
+  }
   if (topic === "parking") {
     const parking = facts?.parking || {};
     if (intent === "parking_fee") {

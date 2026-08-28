@@ -271,7 +271,7 @@ export async function answerGuestMessage(message, { history = [], channel = "web
   // Multiple explicit topics require the language model to preserve the
   // relationship between them. Concatenating canned answers can be accurate in
   // isolation while still missing what the guest actually asked.
-  if (grounding.topic === "multi") {
+  if (grounding.topic === "multi" || grounding.semanticRoute?.clarificationNeeded) {
     const payload = responsesPayload(trimmed, history, channel, temporalContext, grounding);
     const generated = (await requestGroundedResponse({ payload, validate: answer => validateGroundedResponse(answer, grounding) })).answer;
     return finalizeGuestAnswer([generated, handoff.attempted ? handoff.answer : null].filter(Boolean).join("\n\n"), { message: trimmed, history, channel });
