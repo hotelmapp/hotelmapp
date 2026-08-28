@@ -6,14 +6,14 @@ import { availableCapabilities, responseProvenance, verifyFinalResponse } from "
 
 export const AI_FIRST_FEATURE_FLAG = "AI_FIRST_ORCHESTRATOR_ENABLED";
 export const ORCHESTRATION_VERSION = "2.0";
-const MAX_DECISION_FACTS = 6;
+const MAX_DECISION_FACTS = 10;
 
 export const MODEL_DECISION_SCHEMA = Object.freeze({
   type: "object",
   additionalProperties: false,
   required: ["intent", "user_need", "facts_to_use", "action", "clarification_needed", "next_step", "response_strategy"],
   properties: {
-    intent: { type: "string", enum: ["parking_availability", "parking_fee", "parking_location", "parking_process", "parking_reservation", "parking_problem", "wifi", "check_in", "late_checkout", "breakfast", "luggage", "room_type", "baby_equipment", "transportation", "cancellation", "payment", "complaint", "unknown"] },
+    intent: { type: "string", enum: ["multiple", "subsidy_overview", "subsidy_amount", "subsidy_period", "subsidy_booking_channel", "subsidy_participation_limit", "subsidy_birthday_voucher", "subsidy_taiwan_pass", "subsidy_stacking", "subsidy_registration", "subsidy_documentation", "subsidy_eligibility", "subsidy_third_night", "parking_availability", "parking_fee", "parking_location", "parking_process", "parking_reservation", "parking_problem", "wifi", "check_in", "late_checkout", "breakfast", "luggage", "room_type", "baby_equipment", "transportation", "cancellation", "payment", "complaint", "unknown"] },
     user_need: { type: "string", minLength: 1, maxLength: 240 },
     facts_to_use: { type: "array", maxItems: MAX_DECISION_FACTS, items: { type: "string", minLength: 1, maxLength: 120 } },
     action: { type: "string", enum: ["none", "contact_front_desk"] },
@@ -81,7 +81,7 @@ function decisionPayload({ message, history, grounding, facts, channel, availabl
   const payload = {
     model: process.env.OPENAI_ORCHESTRATOR_MODEL?.trim() || process.env.OPENAI_MODEL?.trim() || "gpt-4.1-mini",
     max_output_tokens: 500,
-    instructions: `You are HotelMapp's service decision core. Return only the required JSON. Understand topic continuity and omitted subjects from history. Select only fact IDs supplied below. Unknown facts stay unknown. Never infer hotel facts. Tool availability is a hard permission boundary.`,
+    instructions: `You are HotelMapp's service decision core. Return only the required JSON. First understand the complete current sentence: subject, object, time, negation, conditions, and every explicit request. A single ambiguous word must never override stronger context; in particular, the word 折抵 alone does not mean parking. Use recent history only to resolve omitted subjects. If the current message contains multiple independent or relational hotel topics, use intent=multiple and select facts for every relevant part. If the relationship asked about is absent from the supplied facts, mark clarification_needed=true or response_strategy=unknown rather than guessing. Select only fact IDs supplied below. Unknown facts stay unknown. Never infer hotel facts. Tool availability is a hard permission boundary.`,
     input: JSON.stringify({ current_user_message: message, recent_history: history, grounded_facts: facts, grounding_contract: grounding.contract, available_tools: availableTools, channel }),
     text: { format: { type: "json_schema", name: "hospitality_decision", strict: true, schema: MODEL_DECISION_SCHEMA } }
   };
@@ -95,7 +95,7 @@ function prosePayload({ message, history, decision, selectedFacts, toolResult, c
   return {
     model: process.env.OPENAI_ORCHESTRATOR_MODEL?.trim() || process.env.OPENAI_MODEL?.trim() || "gpt-4.1-mini",
     max_output_tokens: 350,
-    instructions: `${styledInstructions(channel)}\nUse only selected_grounded_facts and successful tool_result as hotel truth. A fact with certainty=unknown must be described as unconfirmed and must not be guessed. Do not claim an action happened unless tool_result.status is completed. Answer in ${language}. Address the current need first, avoid repeating prior detail, and do not force a follow-up question.`,
+    instructions: `${styledInstructions(channel)}\nUse only selected_grounded_facts and successful tool_result as hotel truth. A fact with certainty=unknown must be described as unconfirmed and must not be guessed. Do not claim an action happened unless tool_result.status is completed. Answer in ${language}. Address the current need first, cover every explicit part of the current message, preserve relationships and conditions between topics, avoid repeating prior detail, and do not force a follow-up question.`,
     input: JSON.stringify({ current_user_message: message, recent_history: history, verified_decision: decision, selected_grounded_facts: selectedFacts, tool_result: toolResult })
   };
 }

@@ -9,6 +9,6 @@ export { HOTEL_TIME_ZONE, FRONT_DESK_HOURS, TemporalContextProvider, temporalCon
 export { CONVERSATION_LIMITS, CHANNELS, opaqueConversationId, lineConversationId, createConversationRecord, appendTurn, minimizeConversationText } from "./conversation/record.js";
 export { ConversationStore, RedisConversationStore, ConversationStoreError, ConversationConflictError, conversationStoreFromEnv } from "./conversation/store.js";
 export { ConversationService } from "./conversation/service.js";
-export { explicitTopic, resolveConversationTopic, resolveRequestedIntent, factsForTopic, factualContract, resolveKnowledgeGrounding, knowledgeGroundingInstructions, parkingReply, validateGroundedResponse } from "./knowledge-grounding.js";
+export { explicitTopic, explicitTopics, resolveConversationTopic, resolveConversationTopics, resolveRequestedIntent, factsForTopic, factualContract, resolveKnowledgeGrounding, knowledgeGroundingInstructions, parkingReply, validateGroundedResponse } from "./knowledge-grounding.js";
 export { AI_FIRST_FEATURE_FLAG, ORCHESTRATION_VERSION, MODEL_DECISION_SCHEMA, aiFirstEnabled, groundingFactEntries, validateModelDecision, toolPermissions, orchestrateHospitalityTurn, tryAiFirstReasoning, tryAiFirstParking } from "./ai-orchestrator.js";
 export { REASONING_CORE_VERSION, CUSTOMER_CHANNELS as REASONING_CHANNELS, CAPABILITY_REGISTRY, groundedFactSet, availableCapabilities, executeCapability, verifyFinalResponse, responseProvenance, presentForChannel } from "./reasoning-core.js";

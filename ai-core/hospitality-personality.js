@@ -126,6 +126,7 @@ export function renderHospitalityFact({ topic, intent, facts, language = "zh-TW"
       if (intent === "subsidy_taiwan_pass") return `The Taiwan PASS accommodation voucher is ${subsidy.taiwanPass.amountPerRoomPerNight} per room per night. Final eligibility must be confirmed in the government system.`;
       if (intent === "subsidy_stacking") return `The weekday subsidy, Birthday Voucher, and Taiwan PASS may all be combined. The total discount cannot exceed that night’s full room rate, and any excess cannot be paid in cash, returned as change, or retained.`;
       if (intent === "subsidy_registration") return `Guests who have not registered may use the hotel-provided QR code to open the official government campaign website. Please do not send ID photos, ID numbers, or health-card information in chat.`;
+      if (intent === "subsidy_documentation") return `The published guest information does not confirm whether proof of the first night is required for the consecutive second-night subsidy. Please confirm this with the front desk based on the government system and latest rules.`;
       if (intent === "subsidy_third_night") return `The available information does not confirm a third-night subsidy, so I don’t want to give you an incorrect answer. Please refer to the latest government announcement or confirm with the front desk.`;
       if (intent === "subsidy_eligibility") return `Eligibility, available allowance, and remaining funding must be confirmed in the government system. The hotel cannot guarantee approval, and the latest government announcement prevails.`;
       return `${status}. The first night receives ${subsidy.weekdayStayAward.firstNight}, and a consecutive second night receives ${subsidy.weekdayStayAward.consecutiveSecondNight}. Each guest may participate once, subject to government-system confirmation and remaining funding.`;
@@ -133,11 +134,13 @@ export function renderHospitalityFact({ topic, intent, facts, language = "zh-TW"
     if (language === "ja") {
       if (intent === "subsidy_booking_channel") return `ホテル公式サイト、電話、LINE、現地での直接予約が対象です。Agoda、Booking.comなどのOTA・第三者サイト経由の予約は対象外です。`;
       if (intent === "subsidy_stacking") return `平日宿泊補助、壽星生日券、Taiwan PASSは3つ同時に併用できます。ただし、その日の正規宿泊料金を超える割引はできず、超過分の現金返金・釣銭・繰越はありません。`;
+      if (intent === "subsidy_documentation") return `連続2泊目の補助に1泊目の宿泊証明が必要かどうかは、公開されている案内では確認できません。政府システムと最新規定に基づき、フロントへご確認ください。`;
       return `${status}。1泊目はNT$800、連続する2泊目はNT$1,200で、1人につき期間中1回までです。最終的な資格と残額は政府システムおよび最新公告をご確認ください。`;
     }
     if (language === "ko") {
       if (intent === "subsidy_booking_channel") return `호텔 공식 웹사이트, 전화, LINE 또는 현장 직접 예약만 대상입니다. Agoda, Booking.com 등 OTA·제3자 예약은 사용할 수 없습니다.`;
       if (intent === "subsidy_stacking") return `평일 숙박 보조금, 생일권, Taiwan PASS 세 가지를 동시에 사용할 수 있습니다. 단, 총 할인액은 당일 정상 객실 요금을 초과할 수 없으며 초과분은 현금 환불, 거스름돈 또는 이월이 불가합니다.`;
+      if (intent === "subsidy_documentation") return `연속 두 번째 숙박 보조금에 첫날 숙박 증명이 필요한지는 공개 안내에서 확인되지 않습니다. 정부 시스템과 최신 규정에 따라 프런트에 확인해 주세요.`;
       return `${status}. 첫날은 NT$800, 연속 두 번째 날은 NT$1,200이며 1인당 행사 기간 중 1회만 참여할 수 있습니다. 최종 자격과 잔여 예산은 정부 시스템과 최신 공지를 확인해 주세요.`;
     }
     if (intent === "subsidy_period") return `${status}；限週日至週四入住，週五、週六及國定連續假日不適用。經費用罄可能提前結束，仍以政府最新公告為準。`;
@@ -148,6 +151,7 @@ export function renderHospitalityFact({ topic, intent, facts, language = "zh-TW"
     if (intent === "subsidy_taiwan_pass") return `Taiwan PASS 住宿券是每房每晚折抵 ${subsidy.taiwanPass.amountPerRoomPerNight}；實際使用資格仍須由政府系統確認。`;
     if (intent === "subsidy_stacking") return `平日住宿獎助、壽星生日券與 Taiwan PASS 三項可以同時疊加，但總折抵最高不得超過當天實際全額房價；超過部分不能退現、找現或保留。`;
     if (intent === "subsidy_registration") return `尚未登錄的旅客可以使用飯店提供的 QR Code 進入政府活動官方網站登錄。請不要在 LINE、Messenger 或網站聊天中傳送證件照片、身分證字號或健保卡資料。`;
+    if (intent === "subsidy_documentation") return `連續入住第二晚的補助是否需要提供第一晚住宿證明，目前公開規則沒有確認到，不想先提供錯誤答案；這項需要由櫃檯依政府活動系統及最新規定進一步確認。`;
     if (intent === "subsidy_third_night") return `第三晚是否另有補助目前沒有確認到，不想先提供錯誤答案；請以政府最新公告或櫃檯查詢結果為準。`;
     if (intent === "subsidy_eligibility") return `補助資格、可用額度及經費是否仍充足，都必須由政府活動系統確認，飯店無法先保證；活動解釋以政府最新公告為準。`;
     return `${status}；第一晚折抵 ${subsidy.weekdayStayAward.firstNight}，連續第二晚折抵 ${subsidy.weekdayStayAward.consecutiveSecondNight}。每位旅客活動期間限參與一次，實際資格、額度與經費仍以政府系統及最新公告為準。`;
