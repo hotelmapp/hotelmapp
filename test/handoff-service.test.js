@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { decideHandoff } from "../ai-core/handoff.js";
+import { decideHandoff, resolveHandoffDecision } from "../ai-core/handoff.js";
 import {
   advanceHandoffAuthorization, handoffEmail, hasRequiredHandoffContact,
   performAuthorizedHandoff, performHandoff
@@ -40,20 +40,36 @@ test("front desk information questions are not mistaken for a handoff request", 
   }
 });
 
+test("validated whole-sentence semantics outrank keyword fallback", () => {
+  assert.equal(decideHandoff("我只是想問退款規定，不需要聯絡櫃檯").required, true);
+  const infoOnly = resolveHandoffDecision("我只是想問退款規定，不需要聯絡櫃檯", [], {
+    handoff: { requested: false, category: null }
+  });
+  assert.deepEqual(infoOnly, { required: false, category: null, source: "semantic" });
+
+  const naturalRequest = resolveHandoffDecision("能請飯店的人處理後回我嗎？", [], {
+    handoff: { requested: true, category: "真人服務" }
+  });
+  assert.deepEqual(naturalRequest, { required: true, category: "真人服務", source: "semantic" });
+});
+
 test("the exact LINE conversation reaches confirmation and parses phone-before-name", () => {
   let state = advanceHandoffAuthorization({ message: "我在確認可否幫我聯絡櫃檯呢？", current: { state: "none" } });
   assert.equal(state.handoff.state, "collecting_required_fields");
 
   state = advanceHandoffAuthorization({ message: "需要喔", current: state.handoff });
   assert.equal(state.handoff.state, "collecting_required_fields");
+  const requestId = state.handoff.requestId;
 
   state = advanceHandoffAuthorization({ message: "我需要訂房，我的電話是0927708908陳先生。", current: state.handoff });
   assert.equal(state.handoff.state, "ready_for_confirmation");
   assert.deepEqual(state.handoff.contact, { displayName: "陳先生", phone: "0927708908" });
+  assert.equal(state.handoff.requestId, requestId);
   assert.match(state.reply, /陳先生.*0927\*\*\*908.*確認送出/u);
 
   state = advanceHandoffAuthorization({ message: "確認送出", current: state.handoff });
   assert.equal(state.handoff.state, "confirmed");
+  assert.equal(state.handoff.requestId, requestId);
   assert.equal(state.authorized, true);
 });
 
@@ -173,7 +189,7 @@ test("authorized handoff sends only from confirmed durable state with contact", 
   assert.equal(denied.delivered, false);
   assert.equal(sends, 0);
 
-  const sent = await performAuthorizedHandoff(request, { authorization: { state: "confirmed", category: "真人服務", contact: { displayName: "陳先生", phone: "0927708908" } } }, { send: async email => {
+  const sent = await performAuthorizedHandoff(request, { authorization: { state: "confirmed", requestId: "request-authorized", category: "真人服務", contact: { displayName: "陳先生", phone: "0927708908" } }, deliveryClaimed: true }, { send: async email => {
     sends++;
     assert.match(email.text, /MESSENGER/);
     assert.match(email.text, /旅客姓名：陳先生/);
@@ -182,6 +198,18 @@ test("authorized handoff sends only from confirmed durable state with contact", 
   assert.equal(sent.delivered, true);
   assert.equal(sends, 1);
   assert.match(sent.answer, /成功送交櫃檯信箱/);
+});
+
+test("confirmed prose still cannot send without the runtime idempotency claim", async () => {
+  let sends = 0;
+  const result = await performAuthorizedHandoff(
+    { message: "確認送出", channel: "line" },
+    { authorization: { state: "confirmed", requestId: "request-no-claim", category: "真人服務", contact: { displayName: "陳先生", phone: "0927708908" } } },
+    { send: async () => sends++ }
+  );
+  assert.equal(result.delivered, false);
+  assert.equal(sends, 0);
+  assert.match(result.answer, /一次性送出權/u);
 });
 
 test("success is confirmed only after delivery and never promises operations", async () => {

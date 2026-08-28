@@ -1,5 +1,5 @@
 import { answerGuestMessage } from "../guest-response.js";
-import { decideHandoff } from "../handoff.js";
+import { decideHandoff, resolveHandoffDecision } from "../handoff.js";
 import { advanceHandoffAuthorization, performAuthorizedHandoff } from "../handoff-service.js";
 import { ConversationService } from "./service.js";
 import { conversationStoreFromEnv } from "./store.js";
@@ -9,6 +9,12 @@ const memoryUnavailableHandoff = async () => ({
   attempted: true, delivered: false,
   answer: "目前無法安全確認這段對話的狀態，因此尚未替您送出或執行任何轉接需求。請直接聯絡櫃檯協助。"
 });
+const HANDOFF_DEDUPE_TTL_MS = 48 * 60 * 60_000;
+
+export async function claimHandoffDelivery(service, conversationId, handoff) {
+  if (!service?.store?.claimIdempotencyKey || !handoff?.requestId) throw new Error("handoff_idempotency_unavailable");
+  return service.store.claimIdempotencyKey("handoff", `${conversationId}:${handoff.requestId}`, HANDOFF_DEDUPE_TTL_MS);
+}
 
 export function configuredConversationService(options = {}) {
   return new ConversationService({ store: conversationStoreFromEnv(process.env, options) });
@@ -19,6 +25,7 @@ export async function answerWithConversation({
   answer = answerGuestMessage,
   handoffService = performAuthorizedHandoff,
   route = resolveSemanticKnowledgeGrounding,
+  claimDelivery = claimHandoffDelivery,
   env = process.env,
   logger = console
 }) {
@@ -35,28 +42,45 @@ export async function answerWithConversation({
   } catch (error) {
     // FAQ remains available without Redis. Any action whose authorization or
     // idempotency depends on conversation state is explicitly denied.
-    const safeHandoffService = decideHandoff(message).required ? memoryUnavailableHandoff : async () => ({ attempted: false });
-    const response = await answer(message, { history: [], channel, identity, handoffService: safeHandoffService });
+    if (decideHandoff(message).required) {
+      const response = (await memoryUnavailableHandoff()).answer;
+      return { answer: response, durable: false, memoryError: error };
+    }
+    const response = await answer(message, { history: [], channel, identity });
     return { answer: response, durable: false, memoryError: error };
   }
 
   const grounding = await route(message, history, storedTopic, storedIntent, { env, logger });
-  const authorization = advanceHandoffAuthorization({ message, history, identity, current: durableHandoff });
+  const decision = resolveHandoffDecision(message, history, grounding?.semanticRoute);
+  const authorization = advanceHandoffAuthorization({ message, history, identity, current: durableHandoff, decision });
   let nextHandoff = authorization.handoff || durableHandoff || { state: "none" };
   let response;
 
-  if (authorization.reply && !authorization.authorized) {
+  if (authorization.authorized) {
+    let claimed = false;
+    try { claimed = await claimDelivery(service, id, nextHandoff); }
+    catch {
+      nextHandoff = { ...nextHandoff, state: "failed" };
+      response = (await memoryUnavailableHandoff()).answer;
+    }
+    if (!response && !claimed) {
+      nextHandoff = { ...nextHandoff, state: "delivery_uncertain" };
+      response = "這筆送出請求已經處理過，為避免重複寄送，我不會再次送出。若要確認櫃檯是否收到，請直接聯絡櫃檯協助。";
+    }
+    if (!response && claimed) {
+      const result = await handoffService(
+        { message, history, channel, identity },
+        { authorization: nextHandoff, deliveryClaimed: true }
+      );
+      if (result?.attempted && result?.delivered) nextHandoff = { ...nextHandoff, state: "sent", sentAt: new Date().toISOString() };
+      else nextHandoff = { ...nextHandoff, state: "failed" };
+      response = result?.answer || "目前留言尚未成功送出，請直接聯絡櫃檯協助。";
+    }
+  } else if (authorization.reply) {
     response = authorization.reply;
   } else {
-    const controlledHandoffService = async request => {
-      const result = await handoffService(request, { authorization: nextHandoff });
-      if (result?.attempted && result?.delivered) nextHandoff = { ...nextHandoff, state: "sent", sentAt: new Date().toISOString() };
-      else if (result?.attempted && result?.authorized !== false && result?.delivered === false) nextHandoff = { ...nextHandoff, state: "failed" };
-      return result;
-    };
     response = await answer(message, {
-      history, channel, identity, grounding,
-      handoffService: controlledHandoffService
+      history, channel, identity, grounding
     });
   }
 

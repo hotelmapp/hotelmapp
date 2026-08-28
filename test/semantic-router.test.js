@@ -9,6 +9,7 @@ import {
   validateSemanticRoute
 } from "../ai-core/semantic-router.js";
 import { answerWithConversation } from "../ai-core/conversation/runtime.js";
+import { resolveHandoffDecision } from "../ai-core/handoff.js";
 
 const screenshotHistory = [
   { role: "user", content: "停車折抵要怎麼辦？" },
@@ -21,7 +22,8 @@ const bookingDecision = {
   routes: [{ topic: "booking", intent: "booking_direct" }],
   current_need: "詢問是否能直接向櫃檯訂房",
   uses_history: false,
-  clarification_needed: false
+  clarification_needed: false,
+  handoff: { requested: false, category: null }
 };
 
 test("current booking request cannot fall back to an older parking topic", async () => {
@@ -76,7 +78,8 @@ test("semantic router applies a strict current-turn-first model decision", async
     currentNeed: "詢問是否能直接向櫃檯訂房",
     usedHistory: false,
     clarificationNeeded: false,
-    routerVersion: "1.0"
+    handoff: { requested: false, category: null },
+    routerVersion: "2.0"
   });
   assert.equal(calls.length, 1);
   assert.match(calls[0].payload.instructions, /complete CURRENT message/u);
@@ -90,7 +93,8 @@ test("router validation rejects stale-topic replacement and fails safe", async (
     routes: [{ topic: "parking", intent: "parking_process" }],
     current_need: "停車折抵",
     uses_history: true,
-    clarification_needed: false
+    clarification_needed: false,
+    handoff: { requested: false, category: null }
   };
   assert.equal(validateSemanticRoute(staleParking, "可否直接跟櫃檯訂呢？"), false);
   assert.equal(validateSemanticRoute(bookingDecision, "可否直接跟櫃檯訂呢？"), true);
@@ -115,7 +119,8 @@ test("semantic routing can honor negation and conditions instead of counting key
     routes: [{ topic: "booking", intent: "booking_direct" }],
     current_need: "不是詢問停車，而是直接訂房",
     uses_history: false,
-    clarification_needed: false
+    clarification_needed: false,
+    handoff: { requested: false, category: null }
   };
   assert.equal(validateSemanticRoute(corrected, "不是要問停車，我是要直接跟櫃檯訂房"), true);
   const grounding = await resolveSemanticKnowledgeGrounding(
@@ -141,6 +146,32 @@ test("semantic payload sends recent conversation without hotel facts or actions"
   assert.equal(payload.input.includes("additionalCarFee"), false);
   assert.equal(payload.input.includes("frontDeskPhone"), false);
   assert.doesNotMatch(payload.instructions, /sendEmail|executeTool/u);
+});
+
+test("semantic handoff understands requested action without authorizing it", async () => {
+  const requested = {
+    routes: [{ topic: "front_desk_contact", intent: "front_desk_contact" }],
+    current_need: "請櫃檯主動聯絡旅客",
+    uses_history: false,
+    clarification_needed: false,
+    handoff: { requested: true, category: "真人服務" }
+  };
+  const grounding = await resolveSemanticKnowledgeGrounding("可否請飯店的人跟我回電？", [], null, null, {
+    env: {}, logger: { info() {} }, request: async () => ({ answer: JSON.stringify(requested) })
+  });
+  assert.deepEqual(resolveHandoffDecision("可否請飯店的人跟我回電？", [], grounding.semanticRoute), {
+    required: true, category: "真人服務", source: "semantic"
+  });
+
+  const infoOnly = { ...requested, current_need: "詢問櫃檯電話", handoff: { requested: false, category: null } };
+  assert.deepEqual(resolveHandoffDecision("櫃檯電話幾號？", [], {
+    handoff: infoOnly.handoff
+  }), { required: false, category: null, source: "semantic" });
+});
+
+test("invalid semantic handoff pairing is rejected instead of weakening the contract", () => {
+  assert.equal(validateSemanticRoute({ ...bookingDecision, handoff: { requested: true, category: null } }, "可否直接跟櫃檯訂呢？"), false);
+  assert.equal(validateSemanticRoute({ ...bookingDecision, handoff: { requested: false, category: "真人服務" } }, "可否直接跟櫃檯訂呢？"), false);
 });
 
 test("durable conversation routes before answering and stores the new topic", async () => {

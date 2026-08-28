@@ -1,5 +1,7 @@
 # HotelMapp AI Front Desk V4 — shared AI Core and LINE adapter
 
+> 歷史架構文件。現行完整契約請見 `docs/ai-front-desk-complete-logic.md`；兩者衝突時以完整契約與測試為準。
+
 ## Architecture inventory
 
 - `data/hotel-info.js` remains the single source of truth for hotel and breakfast facts. No channel owns a copy.
@@ -8,7 +10,7 @@
 - `ai-core/hospitality-personality.js` is the single shared Hospitality Personality / Response Style layer. It defines the channel-independent Taiwanese hospitality voice and the answer sequence (direct answer, useful detail, then an optional next step or relevant question), and composes it with presentation-only constraints for Web, LINE, Messenger, Instagram DM, and Voice. It does not decide what facts may be said; its deterministic renderers receive only the fact subset already selected by grounding.
 - Channel adapters remain transport-only and pass their channel name, message, and durable history through `answerWithConversation()`. They must not supply persona copy or send a grounding structure directly. A previous Messenger regression exposed that `messenger` had no explicit presentation entry and that the grounded parking-availability path fell through to the raw `parkingReply()` string. Messenger therefore appeared database-like even though its facts were correct. The shared renderer now covers that grounded intent, while all current and planned channels explicitly compose the same personality.
 - `ai-core/booking.js` owns booking-intent detection, date extraction, and safe construction of dated URLs from the canonical booking URL. `stay-dates.js` remains the low-level multilingual date parser.
-- `ai-core/handoff.js` owns the channel-neutral handoff decision, conversation normalization, stay-date extraction, category, and summary generation. `ai-core/handoff-service.js` builds the privacy-filtered payload, calls the single `ai-core/email-transport.js` Resend transport, and selects an honest channel presentation from the delivery result.
+- Semantic Router v2 owns whole-sentence handoff recommendation. `ai-core/handoff.js` provides validation and an outage fallback; `ai-core/handoff-service.js` owns the durable contact/confirmation state machine and privacy-filtered payload. Only the conversation runtime may execute confirmed delivery.
 - `ai-core/guest-response.js` owns deterministic grounded replies and builds the shared Responses API payload; `ai-core/response-service.js` owns the channel-independent OpenAI transport.
 - `ai-core/index.js` is the public interface used by channel adapters.
 
@@ -16,7 +18,7 @@
 
 - `api/chat.js` retains only web HTTP validation and diagnostics, then calls the shared guest-response service.
 - `api/realtime.js` retains ephemeral credential transport and the proven Realtime model, Marin fallback, WebRTC client contract, semantic VAD, and interruption behavior. It requests the shared personality with voice presentation constraints around the shared grounding and knowledge.
-- Realtime Voice exposes only a `handoff_to_front_desk` function. The browser forwards that function call to `api/handoff.js`, which re-runs the shared deterministic decision and service; the model receives the actual delivery result before speaking.
+- Realtime Voice exposes only a `handoff_to_front_desk` function. The browser forwards the guest's exact current utterance to `api/handoff.js`; the endpoint runs the same durable contact, confirmation, idempotency and delivery flow used by text channels. Model prose is never delivery authorization.
 - `api/contact.js` retains contact-form validation and reuses the same shared Resend email transport as automatic Web/LINE/Voice handoff; no adapter contains Resend logic.
 - Operational delivery uses `FRONT_DESK_EMAIL`. During rollout only, an unset or blank value falls back to the legacy `hotel.mapp158@gmail.com` address centralized in `ai-core/operational-config.js`; adapters and handoff code must not duplicate that address.
 - Handoff emails never include raw LINE user IDs. Only guest-provided display name, email, or phone may be included, and payment/private-booking messages redact long numbers and omit unrelated history.
@@ -26,7 +28,7 @@
 - `api/line/webhook.js` verifies the exact raw request body using HMAC-SHA256 and `LINE_CHANNEL_SECRET`, then handles every event in the webhook. Text messages call `answerGuestMessage`; other event/message types are acknowledged and ignored without calling AI.
 - Replies use LINE's reply endpoint and `LINE_CHANNEL_ACCESS_TOKEN`. Neither credential is returned or logged, and diagnostics contain only allow-listed source, code, HTTP status, and request ID fields.
 - Empty verification webhooks are acknowledged without an AI call. Failed AI or LINE delivery is returned as a retryable webhook failure with safe diagnostics.
-- Duplicate suppression uses `webhookEventId` (or a SHA-256 event digest fallback), an in-flight set, and a bounded ten-minute in-memory cache. This prevents obvious duplicates within a warm serverless instance only. It is **not persistent across instances, deployments, or cold starts**; durable cross-instance idempotency requires a shared datastore in a later phase.
+- Duplicate suppression uses `webhookEventId` (or a SHA-256 event digest fallback) with Redis `SET NX PX`, so it is shared across instances. Confirmed handoff delivery has a separate 48-hour Redis idempotency key based on opaque conversation ID and per-request ID.
 
 ## Response examples
 

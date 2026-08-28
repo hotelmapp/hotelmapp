@@ -56,3 +56,24 @@ export function appendTurn(record, turn, { now = new Date(), limits = CONVERSATI
   if (Buffer.byteLength(JSON.stringify(next)) > limits.maxRecordBytes) throw new RangeError("conversation_record_too_large");
   return next;
 }
+
+const HANDOFF_STATE_RANK = Object.freeze({
+  none: 0,
+  collecting_required_fields: 1,
+  ready_for_confirmation: 2,
+  confirmed: 3,
+  failed: 4,
+  delivery_uncertain: 5,
+  sent: 6
+});
+
+/** Keep one handoff request monotonic under concurrent CAS retries. */
+export function mergeHandoffState(current, incoming) {
+  if (!incoming || typeof incoming !== "object") return current || { state: "none" };
+  if (!current || typeof current !== "object") return structuredClone(incoming);
+  const sameRequest = current.requestId && incoming.requestId && current.requestId === incoming.requestId;
+  if (!sameRequest) return structuredClone(incoming);
+  const currentRank = HANDOFF_STATE_RANK[current.state] ?? -1;
+  const incomingRank = HANDOFF_STATE_RANK[incoming.state] ?? -1;
+  return structuredClone(currentRank > incomingRank ? current : incoming);
+}

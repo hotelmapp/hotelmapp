@@ -1,7 +1,8 @@
 import { explicitTopics, groundingForTopics, resolveKnowledgeGrounding } from "./knowledge-grounding.js";
 import { requestGroundedResponse } from "./response-service.js";
+import { HANDOFF_CATEGORY_NAMES } from "./handoff.js";
 
-export const SEMANTIC_ROUTER_VERSION = "1.0";
+export const SEMANTIC_ROUTER_VERSION = "2.0";
 export const SEMANTIC_ROUTER_FEATURE_FLAG = "SEMANTIC_ROUTER_ENABLED";
 
 const MAX_HISTORY_MESSAGES = 12;
@@ -34,7 +35,7 @@ const INTENTS = Object.freeze([...new Set(Object.values(INTENTS_BY_TOPIC).flat()
 export const SEMANTIC_ROUTE_SCHEMA = Object.freeze({
   type: "object",
   additionalProperties: false,
-  required: ["routes", "current_need", "uses_history", "clarification_needed"],
+  required: ["routes", "current_need", "uses_history", "clarification_needed", "handoff"],
   properties: {
     routes: {
       type: "array", minItems: 1, maxItems: 5,
@@ -48,7 +49,14 @@ export const SEMANTIC_ROUTE_SCHEMA = Object.freeze({
     },
     current_need: { type: "string", minLength: 1, maxLength: 240 },
     uses_history: { type: "boolean" },
-    clarification_needed: { type: "boolean" }
+    clarification_needed: { type: "boolean" },
+    handoff: {
+      type: "object", additionalProperties: false, required: ["requested", "category"],
+      properties: {
+        requested: { type: "boolean" },
+        category: { type: ["string", "null"], enum: [null, ...HANDOFF_CATEGORY_NAMES] }
+      }
+    }
   }
 });
 
@@ -72,6 +80,9 @@ export function validateSemanticRoute(value, message = "") {
   if (!Array.isArray(value.routes) || value.routes.length < 1 || value.routes.length > 5) return false;
   if (typeof value.current_need !== "string" || !value.current_need.trim() || value.current_need.length > 240) return false;
   if (typeof value.uses_history !== "boolean" || typeof value.clarification_needed !== "boolean") return false;
+  if (!value.handoff || typeof value.handoff !== "object" || Array.isArray(value.handoff)) return false;
+  if (Object.keys(value.handoff).length !== 2 || typeof value.handoff.requested !== "boolean") return false;
+  if (value.handoff.requested ? !HANDOFF_CATEGORY_NAMES.includes(value.handoff.category) : value.handoff.category !== null) return false;
 
   const seen = new Set();
   for (const route of value.routes) {
@@ -112,7 +123,14 @@ Critical continuity rules:
 - Example: after an earlier parking question and then a booking question, “可否直接跟櫃檯訂呢？” is booking_direct, never parking.
 - “那第二台呢？” immediately after parking may use history and is parking_fee.
 - The word 折抵 alone is ambiguous. Route it to parking only when the current sentence or the uninterrupted recent topic is actually about parking.
-- Use unknown only when no supported topic can be determined. Use multiple routes only when the current request truly contains multiple needs.`,
+- Use unknown only when no supported topic can be determined. Use multiple routes only when the current request truly contains multiple needs.
+
+Handoff classification is semantic and separate from answering:
+- requested=true only when the guest asks hotel staff to act, contact them, handle a complaint/problem, change/cancel a reservation, address a payment dispute, find lost property, or arrange a request that requires staff confirmation.
+- Questions asking only for front-desk information, such as phone number, location, or opening hours, have requested=false.
+- A normal new booking or a question about how to book has requested=false unless the guest explicitly asks staff to contact or handle it.
+- A short acceptance such as 好的 or 需要喔 has requested=true only when the latest assistant turn clearly offered to send the preserved request to hotel staff; use category 真人服務.
+- This classification is only a recommendation to the server. It never authorizes or performs an external action.`,
     input: JSON.stringify({ current_user_message: String(message || "").slice(0, MAX_MESSAGE_LENGTH), recent_history: normalizedHistory(history) }),
     text: { format: { type: "json_schema", name: "semantic_conversation_route", strict: true, schema: SEMANTIC_ROUTE_SCHEMA } }
   };
@@ -160,6 +178,7 @@ export async function resolveSemanticKnowledgeGrounding(message, history = [], s
         currentNeed: decision.current_need,
         usedHistory: decision.uses_history,
         clarificationNeeded: decision.clarification_needed,
+        handoff: Object.freeze({ requested: decision.handoff.requested, category: decision.handoff.category }),
         routerVersion: SEMANTIC_ROUTER_VERSION
       })
     };

@@ -14,11 +14,35 @@ const HANDOFF_CATEGORIES = Object.freeze([
   ["特殊需求", /(?:幫我|請|需要|想要|安排|準備|申請).{0,12}(?:特殊需求|無障礙|過敏|慶生|加床|嬰兒床|寵物)|(?:特殊需求|無障礙|過敏|慶生|加床|嬰兒床|寵物).{0,12}(?:安排|準備|申請)/iu]
 ]);
 
+export const HANDOFF_CATEGORY_NAMES = Object.freeze(HANDOFF_CATEGORIES.map(([category]) => category));
+
+export function validHandoffDecision(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  if (typeof value.required !== "boolean") return false;
+  if (!value.required) return value.category === null;
+  return HANDOFF_CATEGORY_NAMES.includes(value.category);
+}
+
 export function decideHandoff(message, history = []) {
   const current = typeof message === "string" ? message.trim().slice(0, MAX_MESSAGE_LENGTH) : "";
   if (!current) return { required: false, category: null };
   const category = HANDOFF_CATEGORIES.find(([, pattern]) => pattern.test(current))?.[0];
   return category ? { required: true, category } : { required: false, category: null };
+}
+
+/**
+ * One turn-level decision boundary. A validated semantic decision understands
+ * the complete sentence and therefore outranks the regex fallback. Regex is
+ * retained only for upstream/model outages and deterministic local operation.
+ * Neither path authorizes an external action.
+ */
+export function resolveHandoffDecision(message, history = [], semanticRoute) {
+  const semantic = semanticRoute?.handoff;
+  const candidate = semantic && typeof semantic.requested === "boolean"
+    ? { required: semantic.requested, category: semantic.category }
+    : null;
+  if (validHandoffDecision(candidate)) return { ...candidate, source: "semantic" };
+  return { ...decideHandoff(message, history), source: "fallback" };
 }
 
 export function normalizedGuestMessages(history) {

@@ -8,12 +8,14 @@ the guest's current need.
 ## Turn flow
 
 1. Read the current message, recent durable turns, and the stored topic/intent.
-2. Ask the semantic router for strict JSON containing the current topics and
-   intents. The router cannot answer the guest, select tools, or execute actions.
+2. Ask Semantic Router v2 for strict JSON containing current topics/intents and
+   a non-authoritative handoff recommendation. The router cannot answer the
+   guest, authorize delivery, select execution tools, or execute actions.
 3. Validate the JSON, topic/intent pairing, current-turn consistency, and output
    size.
 4. Re-ground only the selected topics in authoritative hotel facts.
-5. Run deterministic authorization and side-effect controls.
+5. Validate the handoff recommendation, then run deterministic contact,
+   confirmation, idempotency and side-effect controls.
 6. Render or generate the guest answer, then store the new topic/intent.
 
 Recent history may resolve a genuinely omitted subject, such as 「那第二台呢？」
