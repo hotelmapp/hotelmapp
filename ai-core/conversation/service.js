@@ -1,4 +1,4 @@
-import { appendTurn, createConversationRecord } from "./record.js";
+import { appendTurn, createConversationRecord, mergeHandoffState } from "./record.js";
 import { ConversationConflictError } from "./store.js";
 
 export class ConversationService {
@@ -13,7 +13,7 @@ export class ConversationService {
       if (topic) next.topic = topic;
       if (intent) next.intent = intent;
       if (state) next.state = state;
-      if (handoff) next.handoff = structuredClone(handoff);
+      if (handoff) next.handoff = mergeHandoffState(next.handoff, handoff);
       try { await this.store.compareAndSet(id, current?.revision ?? -1, next); return { ...next, revision: (current?.revision ?? -1) + 1 }; }
       catch (error) { if (!(error instanceof ConversationConflictError) || attempt === 3) throw error; }
     }

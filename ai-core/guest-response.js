@@ -3,7 +3,6 @@ import { bookingDates, datedBookingUrl, hasBookingIntent } from "./booking.js";
 import { detectGuestLanguage } from "../guest-language.js";
 import { requestGroundedResponse } from "./response-service.js";
 import { applyCorePersonalityContract, renderHospitalityFact, styledInstructions } from "./hospitality-personality.js";
-import { performHandoff } from "./handoff-service.js";
 import { temporalContextPrompt, temporalContextProvider } from "./temporal-context.js";
 import { breakfastArrivalReply, knowledgeGroundingInstructions, parkingReply, resolveKnowledgeGrounding, validateGroundedResponse } from "./knowledge-grounding.js";
 import { tryAiFirstReasoning } from "./ai-orchestrator.js";
@@ -259,26 +258,24 @@ export function finalizeGuestAnswer(draft, { message, history = [], channel = "w
   return applyCorePersonalityContract({ draft, message, language, channel }).text;
 }
 
-export async function answerGuestMessage(message, { history = [], channel = "web", identity, handoffService = performHandoff, temporalContext = temporalContextProvider.getContext(), grounding = resolveKnowledgeGrounding(message, history), orchestrate, env = process.env, logger = console } = {}) {
+export async function answerGuestMessage(message, { history = [], channel = "web", identity, temporalContext = temporalContextProvider.getContext(), grounding = resolveKnowledgeGrounding(message, history), orchestrate, env = process.env, logger = console } = {}) {
   const trimmed = typeof message === "string" ? message.trim().slice(0, MAX_MESSAGE_LENGTH) : "";
   if (!trimmed) throw new TypeError("A non-empty guest message is required");
   const language = detectGuestLanguage(trimmed, normalizedHistory(history));
-  // Side effects and authorization remain deterministic and are evaluated
-  // outside model orchestration. The model never decides whether checks run.
-  const handoff = await handoffService({ message: trimmed, history, channel, identity });
+  // This module only composes presentation. Authorization and every external
+  // side effect are owned by conversation/runtime.js.
   const aiFirst = await tryAiFirstReasoning({ message: trimmed, history: normalizedHistory(history), channel, identity, grounding, orchestrate, env, logger });
-  if (aiFirst) return finalizeGuestAnswer([aiFirst.answer, handoff.attempted ? handoff.answer : null].filter(Boolean).join("\n\n"), { message: trimmed, history, channel });
+  if (aiFirst) return finalizeGuestAnswer(aiFirst.answer, { message: trimmed, history, channel });
   // Multiple explicit topics require the language model to preserve the
   // relationship between them. Concatenating canned answers can be accurate in
   // isolation while still missing what the guest actually asked.
   if (grounding.topic === "multi" || grounding.semanticRoute?.clarificationNeeded) {
     const payload = responsesPayload(trimmed, history, channel, temporalContext, grounding);
     const generated = (await requestGroundedResponse({ payload, validate: answer => validateGroundedResponse(answer, grounding) })).answer;
-    return finalizeGuestAnswer([generated, handoff.attempted ? handoff.answer : null].filter(Boolean).join("\n\n"), { message: trimmed, history, channel });
+    return finalizeGuestAnswer(generated, { message: trimmed, history, channel });
   }
   const groundedHospitalityAnswer = renderHospitalityFact({ ...grounding, language, channel, temporalContext });
   const directAnswer = breakfastArrivalReply(trimmed, grounding) || groundedHospitalityAnswer || parkingReply(grounding) || frontDeskContactReply(trimmed) || sensitiveSituationReply(trimmed) || availabilityReply(trimmed) || specialRequestReply(trimmed) || informationalReply(trimmed);
-  if (handoff.attempted) return finalizeGuestAnswer([directAnswer, handoff.answer].filter(Boolean).join("\n\n"), { message: trimmed, history, channel });
   if (directAnswer) return finalizeGuestAnswer(directAnswer, { message: trimmed, history, channel });
 
   const payload = responsesPayload(trimmed, history, channel, temporalContext, grounding);

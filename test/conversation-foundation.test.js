@@ -1,11 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { TemporalContextProvider } from "../ai-core/temporal-context.js";
-import { appendTurn, CONVERSATION_LIMITS, createConversationRecord, lineConversationId, minimizeConversationText, opaqueConversationId } from "../ai-core/conversation/record.js";
+import { appendTurn, CONVERSATION_LIMITS, createConversationRecord, lineConversationId, mergeHandoffState, minimizeConversationText, opaqueConversationId } from "../ai-core/conversation/record.js";
 import { ConversationConflictError, ConversationStore } from "../ai-core/conversation/store.js";
 import { ConversationService } from "../ai-core/conversation/service.js";
 import { answerWithConversation } from "../ai-core/conversation/runtime.js";
 import { processLineEvent } from "../api/line/webhook.js";
+import { processVoiceHandoff } from "../api/handoff.js";
 
 class DurableFakeStore extends ConversationStore {
   constructor(clock = { now: Date.parse("2026-08-16T00:00:00Z") }, limits = CONVERSATION_LIMITS) { super(); this.clock = clock; this.limits = limits; this.records = new Map(); this.dedupe = new Map(); }
@@ -46,6 +47,14 @@ test("CAS rejects stale writers", async () => {
   await assert.rejects(store.compareAndSet(initial.id, b.revision, appendTurn(b, { role: "user", content: "b" })), ConversationConflictError); await service.append(initial.id, "web", [{ role: "user", content: "c" }]); assert.equal((await store.get(initial.id)).turns.length, 2);
 });
 
+test("one handoff request cannot regress after a terminal concurrent result", () => {
+  const sent = { state: "sent", requestId: "request-1", category: "真人服務" };
+  assert.deepEqual(mergeHandoffState(sent, { ...sent, state: "delivery_uncertain" }), sent);
+  assert.deepEqual(mergeHandoffState(sent, { ...sent, state: "failed" }), sent);
+  const nextRequest = { state: "collecting_required_fields", requestId: "request-2", category: "真人服務", contact: {} };
+  assert.deepEqual(mergeHandoffState(sent, nextRequest), nextRequest);
+});
+
 test("separate LINE instances share durable history and event dedupe", async () => {
   const store = new DurableFakeStore(); const serviceA = new ConversationService({ store }); const serviceB = new ConversationService({ store }); const source = { type: "user", userId: "raw-line-id-must-not-leak" }; const hmacSecret = "hmac-secret";
   const replies = []; const fetchImpl = async (_url, options) => { replies.push(JSON.parse(options.body).messages[0].text); return { ok: true, headers: { get: () => null } }; }; const answer = async (message, { history }) => `${history.at(-1)?.content || "none"}|${message}`;
@@ -76,4 +85,42 @@ test("Web, LINE and Messenger answer a new FAQ instead of replaying stale handof
     assert.doesNotMatch(result.answer, /提供您的姓名/u, channel);
     assert.deepEqual(savedHandoff, { state: "none" }, channel);
   }
+});
+
+test("Voice uses the same durable contact, confirmation and at-most-once delivery flow", async () => {
+  const store = new DurableFakeStore();
+  const service = new ConversationService({ store });
+  const conversationId = "voice_12345678901234567890";
+  await service.append(conversationId, "voice", [{ role: "assistant", content: "語音服務已開始" }]);
+  const route = async message => ({
+    topic: null,
+    intent: null,
+    semanticRoute: {
+      handoff: message.includes("聯絡")
+        ? { requested: true, category: "真人服務" }
+        : { requested: false, category: null }
+    }
+  });
+  let sends = 0;
+  const handoffService = async (_request, { authorization }) => {
+    assert.equal(authorization.state, "confirmed");
+    sends++;
+    return { attempted: true, delivered: true, answer: "已成功送交櫃檯信箱。" };
+  };
+  const options = { service, route, answer: async () => "一般回答", handoffService };
+
+  let result = await processVoiceHandoff({ conversationId, message: "請幫我聯絡櫃檯" }, options);
+  assert.equal(result.handoff.state, "collecting_required_fields");
+  assert.equal(sends, 0);
+  result = await processVoiceHandoff({ conversationId, message: "陳先生 0927708908" }, options);
+  assert.equal(result.handoff.state, "ready_for_confirmation");
+  assert.equal(sends, 0);
+
+  const confirmations = await Promise.all([
+    processVoiceHandoff({ conversationId, message: "確認送出" }, options),
+    processVoiceHandoff({ conversationId, message: "確認送出" }, options)
+  ]);
+  assert.equal(sends, 1);
+  assert.equal((await store.get(conversationId)).handoff.state, "sent");
+  assert.ok(confirmations.some(item => item.handoff.state === "sent"));
 });

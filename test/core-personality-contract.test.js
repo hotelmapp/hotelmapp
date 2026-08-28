@@ -77,11 +77,10 @@ test("parking multi-turn stays hospitable while each turn uses only its selected
   assert.match(reservation, humanOpening);
 });
 
-test("all deterministic, fallback, handoff, and generated branches converge on the shared finalizer", async () => {
+test("all deterministic, fallback, and generated presentation branches converge on the shared finalizer", async () => {
   const source = await readFile(new URL("../ai-core/guest-response.js", import.meta.url), "utf8");
-  assert.match(source, /if \(handoff\.attempted\) return finalizeGuestAnswer/u);
+  assert.doesNotMatch(source, /performHandoff|sendEmail/u);
   assert.match(source, /if \(directAnswer\) return finalizeGuestAnswer/u);
   assert.match(source, /return finalizeGuestAnswer\(generated/u);
   assert.equal((source.match(/applyCorePersonalityContract\(/gu) || []).length, 1);
 });
-

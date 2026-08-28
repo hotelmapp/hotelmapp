@@ -10,15 +10,39 @@ const HANDOFF_CATEGORIES = Object.freeze([
   ["遺失物", /遺失|忘了帶走|掉了|失物|lost\s*(?:item|property)/iu],
   ["客訴", /客訴|投訴|抱怨|很不滿|太糟|非常生氣/iu],
   ["私人訂房資料", /訂房編號|預訂編號|訂單資料|私人資料|個人資料/iu],
-  ["真人服務", /真人|人工客服|轉接.{0,8}(?:櫃台|櫃檯|飯店人員)|(?:找|聯絡|通知).{0,8}(?:櫃台|櫃檯|飯店人員)|(?:幫我|麻煩|可以|可否|能否|是否).{0,12}(?:聯絡|通知|轉告).{0,8}(?:櫃台|櫃檯|飯店人員)|(?:請|希望|需要).{0,8}(?:櫃台|櫃檯|飯店人員).{0,12}(?:聯絡|回覆|回電)/iu],
+  ["真人服務", /真人|人工客服|轉接.{0,8}(?:櫃台|櫃檯|飯店人員)|(?:找|聯絡|通知|接洽|洽詢|轉達).{0,8}(?:櫃台|櫃檯|飯店人員)|(?:幫我|麻煩|可以|可否|能否|是否).{0,12}(?:聯絡|通知|轉告|接洽|轉達).{0,8}(?:櫃台|櫃檯|飯店人員)|(?:請|希望|需要).{0,8}(?:櫃台|櫃檯|飯店人員).{0,12}(?:聯絡|回覆|回電|接洽)/iu],
   ["特殊需求", /(?:幫我|請|需要|想要|安排|準備|申請).{0,12}(?:特殊需求|無障礙|過敏|慶生|加床|嬰兒床|寵物)|(?:特殊需求|無障礙|過敏|慶生|加床|嬰兒床|寵物).{0,12}(?:安排|準備|申請)/iu]
 ]);
+
+export const HANDOFF_CATEGORY_NAMES = Object.freeze(HANDOFF_CATEGORIES.map(([category]) => category));
+
+export function validHandoffDecision(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  if (typeof value.required !== "boolean") return false;
+  if (!value.required) return value.category === null;
+  return HANDOFF_CATEGORY_NAMES.includes(value.category);
+}
 
 export function decideHandoff(message, history = []) {
   const current = typeof message === "string" ? message.trim().slice(0, MAX_MESSAGE_LENGTH) : "";
   if (!current) return { required: false, category: null };
   const category = HANDOFF_CATEGORIES.find(([, pattern]) => pattern.test(current))?.[0];
   return category ? { required: true, category } : { required: false, category: null };
+}
+
+/**
+ * One turn-level decision boundary. A validated semantic decision understands
+ * the complete sentence and therefore outranks the regex fallback. Regex is
+ * retained only for upstream/model outages and deterministic local operation.
+ * Neither path authorizes an external action.
+ */
+export function resolveHandoffDecision(message, history = [], semanticRoute) {
+  const semantic = semanticRoute?.handoff;
+  const candidate = semantic && typeof semantic.requested === "boolean"
+    ? { required: semantic.requested, category: semantic.category }
+    : null;
+  if (validHandoffDecision(candidate)) return { ...candidate, source: "semantic" };
+  return { ...decideHandoff(message, history), source: "fallback" };
 }
 
 export function normalizedGuestMessages(history) {

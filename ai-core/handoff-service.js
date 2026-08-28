@@ -1,5 +1,6 @@
+import { randomBytes } from "node:crypto";
 import { hotelKnowledge } from "./knowledge.js";
-import { contactDetails, decideHandoff } from "./handoff.js";
+import { contactDetails, decideHandoff, validHandoffDecision } from "./handoff.js";
 import { sendEmail } from "./email-transport.js";
 import { frontDeskEmail } from "./operational-config.js";
 import { hasBookingIntent } from "./booking.js";
@@ -10,9 +11,9 @@ const SAFE_IDENTIFIER_KEYS = new Set(["displayName", "email", "phone"]);
 const PHONE_PATTERN = /(?<!\d)(?:\+?886[- ]?)?0?9\d{2}[- ]?\d{3}[- ]?\d{3}(?!\d)/u;
 const EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/iu;
 const OFFER_ACCEPT_PATTERN = /^(?:需要|需要喔|要|好|好的|可以|麻煩|麻煩你|請幫我|ok|okay|yes)[！!。,．.～~\s]*$/iu;
-const HANDOFF_OFFER_PATTERN = /需要我幫您.{0,12}(?:(?:通知|聯絡|轉告).{0,8}(?:櫃台|櫃檯|飯店人員)|(?:轉請|請).{0,8}(?:櫃台|櫃檯|飯店人員).{0,8}(?:回覆|確認))嗎/iu;
+const HANDOFF_OFFER_PATTERN = /需要我幫您.{0,12}(?:(?:通知|聯絡|轉告).{0,8}(?:櫃台|櫃檯|飯店人員)|(?:轉請|請).{0,8}(?:櫃台|櫃檯|飯店人員).{0,8}(?:回覆|確認))嗎|(?:留下|提供).{0,24}(?:聯絡方式|電話|email).{0,24}(?:整理|留言|轉交).{0,18}(?:櫃台|櫃檯|飯店人員).{0,24}(?:回覆|聯絡|確認)/iu;
 const CONFIRM_PATTERN = /^(?:好|好的|可以|確認|確認送出|同意|送出|麻煩送出|ok|okay|yes|可以送出)[！!。,.\s]*$/iu;
-const CANCEL_PATTERN = /^(?:不要|不用|取消|先不用|不用了|no|cancel)[！!。,.\s]*$/iu;
+const CANCEL_PATTERN = /^(?:不要|不用|取消|先不用|不用了|先不用了|no|cancel)[！!。,.\s]*$/iu;
 
 function clean(value, limit = 2_000) {
   return typeof value === "string" ? value.trim().slice(0, limit).replace(/[\r\n\u2028\u2029]+/g, " ") : "";
@@ -40,6 +41,10 @@ function displayNameNearContact(value) {
   if (titled) return normalizeDisplayName(titled);
   const explicit = candidate.match(/^(?:我是|我叫|姓名(?:是|叫|為)?|聯絡人(?:是|叫|為)?)[：:\s]*([\p{L}·]{1,20})$/u)?.[1];
   if (explicit) return normalizeDisplayName(explicit);
+  const datedName = candidate.match(/(?:\d{1,2}月\d{1,2}(?:日)?|\d{1,2}[/-]\d{1,2})[\s，,]*([\p{Script=Han}]{2,4})$/u)?.[1];
+  if (datedName) return normalizeDisplayName(datedName);
+  const trailingName = candidate.match(/[，,\s]([\p{Script=Han}]{2,4})$/u)?.[1];
+  if (trailingName && !/(?:電話|手機|訂房|入住|需要|聯絡)/u.test(trailingName)) return normalizeDisplayName(trailingName);
   return /^[\p{L}·]{1,20}$/u.test(candidate) ? normalizeDisplayName(candidate) : "";
 }
 
@@ -74,7 +79,7 @@ function maskedContact(contact = {}) {
 }
 
 function confirmationReply({ category, contact }) {
-  return `好的，我先幫您整理好了。這次要送交櫃檯的是「${clean(category, 80)}」，聯絡資料是 ${maskedContact(contact)}。為了避免誤送，請您最後確認一次：回覆「確認送出」後，我才會正式送交櫃檯。`;
+  return `好的，我先幫您整理好了。這次要送交櫃檯的是「${clean(category, 80)}」，聯絡資料是 ${maskedContact(contact)}。如果資料正確，回覆「確認送出」或「好的」即可；收到確認後我才會正式寄給櫃檯。`;
 }
 
 function collectContactReply() {
@@ -95,14 +100,23 @@ function acceptsRecentHandoffOffer(message, history) {
   return latestTurn?.role === "assistant" && HANDOFF_OFFER_PATTERN.test(clean(latestTurn.content, 1_000));
 }
 
+function requestId(existing) {
+  return clean(existing?.requestId, 80) || randomBytes(18).toString("base64url");
+}
+
+function detectedHandoffDecision(message, history, decision) {
+  const normalized = decision && { required: decision.required, category: decision.category };
+  return validHandoffDecision(normalized) ? normalized : decideHandoff(message, history);
+}
+
 /**
  * Durable handoff state machine. Guest prose is never authorization by itself:
  * contact collection and an explicit final confirmation are separate states.
  */
-export function advanceHandoffAuthorization({ message, history = [], identity, current } = {}) {
+export function advanceHandoffAuthorization({ message, history = [], identity, current, decision: semanticDecision } = {}) {
   const existing = current && typeof current === "object" ? current : { state: "none" };
   const state = existing.state || "none";
-  const detected = decideHandoff(message, history);
+  const detected = detectedHandoffDecision(message, history, semanticDecision);
   const decision = detected.required || !acceptsRecentHandoffOffer(message, history)
     ? detected
     : { required: true, category: "真人服務" };
@@ -110,7 +124,7 @@ export function advanceHandoffAuthorization({ message, history = [], identity, c
   if (state === "ready_for_confirmation") {
     if (CANCEL_PATTERN.test(clean(message, 80))) return { handoff: { state: "none" }, reply: cancelHandoffReply(), authorized: false };
     if (CONFIRM_PATTERN.test(clean(message, 80)) && hasRequiredHandoffContact(existing.contact)) {
-      return { handoff: { ...existing, state: "confirmed" }, authorized: true };
+      return { handoff: { ...existing, requestId: requestId(existing), state: "confirmed" }, authorized: true };
     }
     if (!decision.required && startsIndependentServiceQuestion(message)) return { handoff: { state: "none" }, authorized: false };
     return { handoff: existing, reply: confirmationReply(existing), authorized: false };
@@ -118,15 +132,17 @@ export function advanceHandoffAuthorization({ message, history = [], identity, c
 
   if (state === "collecting_required_fields") {
     if (CANCEL_PATTERN.test(clean(message, 80))) return { handoff: { state: "none" }, reply: cancelHandoffReply(), authorized: false };
-    const contact = { ...(existing.contact || {}), ...extractHandoffContact(message, identity) };
-    if (!hasRequiredHandoffContact(contact) && !decision.required && startsIndependentServiceQuestion(message)) return { handoff: { state: "none" }, authorized: false };
+    const extracted = extractHandoffContact(message, identity);
+    const contact = { ...(existing.contact || {}), ...extracted };
+    const hasAnyContact = Object.values(contact).some(value => clean(value, 254));
+    if (!hasRequiredHandoffContact(contact) && !hasAnyContact && !decision.required && startsIndependentServiceQuestion(message)) return { handoff: { state: "none" }, authorized: false };
     if (!hasRequiredHandoffContact(contact)) return { handoff: { ...existing, contact, state: "collecting_required_fields" }, reply: collectContactReply(), authorized: false };
-    const handoff = { ...existing, contact, state: "ready_for_confirmation" };
+    const handoff = { ...existing, requestId: requestId(existing), contact, state: "ready_for_confirmation" };
     return { handoff, reply: confirmationReply(handoff), authorized: false };
   }
 
   if (state === "confirmed") return { handoff: existing, authorized: true };
-  if (state === "sent" || state === "failed") {
+  if (state === "sent" || state === "failed" || state === "delivery_uncertain") {
     if (!decision.required) return { handoff: existing, authorized: false };
   }
   if (!decision.required) return { handoff: existing, authorized: false };
@@ -134,12 +150,12 @@ export function advanceHandoffAuthorization({ message, history = [], identity, c
   const contact = extractHandoffContact(message, identity);
   if (!hasRequiredHandoffContact(contact)) {
     return {
-      handoff: { state: "collecting_required_fields", category: decision.category, contact },
+      handoff: { state: "collecting_required_fields", requestId: requestId(), category: decision.category, contact },
       reply: collectContactReply(),
       authorized: false
     };
   }
-  const handoff = { state: "ready_for_confirmation", category: decision.category, contact };
+  const handoff = { state: "ready_for_confirmation", requestId: requestId(), category: decision.category, contact };
   return { handoff, reply: confirmationReply(handoff), authorized: false };
 }
 
@@ -225,15 +241,15 @@ export async function performHandoff({ message, history = [], channel = "web", i
 }
 
 export const HANDOFF_AUTHORIZATION_STATES = Object.freeze([
-  "needs_human", "handoff_offered", "consent_received", "collecting_required_fields",
-  "ready_for_confirmation", "confirmed", "sent", "failed"
+  "none", "collecting_required_fields", "ready_for_confirmation", "confirmed",
+  "sent", "failed", "delivery_uncertain"
 ]);
 
 /**
  * Channel webhooks may only create the external side effect from durable,
  * server-side confirmation state. Transport history and guest prose never count.
  */
-export async function performAuthorizedHandoff(request, { authorization } = {}, dependencies) {
+export async function performAuthorizedHandoff(request, { authorization, deliveryClaimed = false } = {}, dependencies) {
   const decision = authorization?.category
     ? { required: true, category: authorization.category }
     : decideHandoff(request?.message, request?.history);
@@ -242,6 +258,12 @@ export async function performAuthorizedHandoff(request, { authorization } = {}, 
     return {
       attempted: false, delivered: false, authorized: false, decision,
       answer: "目前尚未送出。需要先完成聯絡資料與最後確認，我才會正式送交櫃檯。"
+    };
+  }
+  if (!authorization.requestId || deliveryClaimed !== true) {
+    return {
+      attempted: false, delivered: false, authorized: false, decision,
+      answer: "目前尚未送出。系統需要先取得這筆需求的一次性送出權，才會正式送交櫃檯。"
     };
   }
   return performHandoff({ ...request, category: decision.category, identity: { ...(request?.identity || {}), ...authorization.contact } }, dependencies);

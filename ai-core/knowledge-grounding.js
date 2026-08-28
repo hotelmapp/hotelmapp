@@ -5,7 +5,7 @@ const TOPIC_PATTERNS = Object.freeze({
   parking: /停車|車位|停哪|停好|車牌|parking|駐車|주차/iu,
   subsidy: /國旅(?:補助|獎助)|旅遊補助|住宿補助|補助|住宿獎助|平日住宿活動|政府活動|生日券|壽星券|Taiwan\s*PASS|台灣\s*PASS|住宿券|subsidy|accommodation voucher/iu,
   booking: /訂房|預訂(?:房間|住宿)?|(?:直接|這邊|這裡|透過|跟|向).{0,12}(?:飯店|櫃台|櫃檯|LINE).{0,8}(?:訂|預訂)|(?:飯店|櫃台|櫃檯|LINE).{0,8}(?:訂|預訂)|book(?:ing)?|予約|예약/iu,
-  wifi: /wi[ -]?fi|無線網路|網路密碼|網路連線|인터넷|와이파이|ワイファイ/iu,
+  wifi: /wi[\s‐‑‒–—-]?fi|無線網路|網路密碼|網路連線|인터넷|와이파이|ワイファイ/iu,
   check_in: /入住(?:時間|手續|流程|密碼)|幾點.{0,6}入住|何時.{0,6}入住|怎麼.{0,6}入住|check[ -]?in|チェックイン|체크인/iu,
   front_desk_contact: /(?:櫃台|櫃檯).{0,10}(?:幾點|時間|電話|聯絡|在哪|怎麼找|有人)|(?:電話|聯絡).{0,10}(?:櫃台|櫃檯)|front desk|reception/iu,
   late_checkout: /延後退房|晚點退房|late[ -]?check[ -]?out/iu,
