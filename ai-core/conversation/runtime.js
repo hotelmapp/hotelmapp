@@ -3,7 +3,7 @@ import { decideHandoff } from "../handoff.js";
 import { advanceHandoffAuthorization, performAuthorizedHandoff } from "../handoff-service.js";
 import { ConversationService } from "./service.js";
 import { conversationStoreFromEnv } from "./store.js";
-import { resolveKnowledgeGrounding } from "../knowledge-grounding.js";
+import { resolveSemanticKnowledgeGrounding } from "../semantic-router.js";
 
 const memoryUnavailableHandoff = async () => ({
   attempted: true, delivered: false,
@@ -14,7 +14,14 @@ export function configuredConversationService(options = {}) {
   return new ConversationService({ store: conversationStoreFromEnv(process.env, options) });
 }
 
-export async function answerWithConversation({ id, channel, message, service, identity, answer = answerGuestMessage, handoffService = performAuthorizedHandoff }) {
+export async function answerWithConversation({
+  id, channel, message, service, identity,
+  answer = answerGuestMessage,
+  handoffService = performAuthorizedHandoff,
+  route = resolveSemanticKnowledgeGrounding,
+  env = process.env,
+  logger = console
+}) {
   let history;
   let durableHandoff = null;
   let storedTopic = null;
@@ -33,7 +40,7 @@ export async function answerWithConversation({ id, channel, message, service, id
     return { answer: response, durable: false, memoryError: error };
   }
 
-  const grounding = resolveKnowledgeGrounding(message, history, storedTopic, storedIntent);
+  const grounding = await route(message, history, storedTopic, storedIntent, { env, logger });
   const authorization = advanceHandoffAuthorization({ message, history, identity, current: durableHandoff });
   let nextHandoff = authorization.handoff || durableHandoff || { state: "none" };
   let response;

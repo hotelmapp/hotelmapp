@@ -4,6 +4,7 @@ const TOPIC_PATTERNS = Object.freeze({
   breakfast: /早餐|早午餐|餐點|菜色|咖啡|素食|breakfast|brunch|朝食|조식/iu,
   parking: /停車|車位|停哪|停好|車牌|parking|駐車|주차/iu,
   subsidy: /國旅(?:補助|獎助)|旅遊補助|住宿補助|補助|住宿獎助|平日住宿活動|政府活動|生日券|壽星券|Taiwan\s*PASS|台灣\s*PASS|住宿券|subsidy|accommodation voucher/iu,
+  booking: /訂房|預訂(?:房間|住宿)?|(?:直接|這邊|這裡|透過|跟|向).{0,12}(?:飯店|櫃台|櫃檯|LINE).{0,8}(?:訂|預訂)|(?:飯店|櫃台|櫃檯|LINE).{0,8}(?:訂|預訂)|book(?:ing)?|予約|예약/iu,
   wifi: /wi[ -]?fi|無線網路|網路密碼|網路連線|인터넷|와이파이|ワイファイ/iu,
   check_in: /入住(?:時間|手續|流程|密碼)|幾點.{0,6}入住|何時.{0,6}入住|怎麼.{0,6}入住|check[ -]?in|チェックイン|체크인/iu,
   front_desk_contact: /(?:櫃台|櫃檯).{0,10}(?:幾點|時間|電話|聯絡|在哪|怎麼找|有人)|(?:電話|聯絡).{0,10}(?:櫃台|櫃檯)|front desk|reception/iu,
@@ -18,7 +19,14 @@ const TOPIC_PATTERNS = Object.freeze({
   complaint: /客訴|投訴|抱怨|不滿|complaint/iu
 });
 
-const FOLLOW_UP_PATTERN = /^(?:那|那麼|那我|那如果|這個|所以|如果|我們有|what about|then|how about|では|それ|그럼|그러면)|(?:可以嗎|呢|怎麼辦|晚一點|早一點|九點|十點|第二台|兩台車|預約)/iu;
+// This is deliberately a whole-message shape, not a substring search. A final
+// particle such as 「呢」 does not by itself authorize an older topic to
+// override a complete current request.
+const FOLLOW_UP_PATTERN = /^(?:(?:那|那麼|那我|那如果|這個|所以|如果|我們有|what about|then|how about|では|それ|그럼|그러면).{0,80}|.{0,40}(?:可以嗎|呢|怎麼辦|晚一點|早一點|九點|十點|第二台|兩台車|(?:需要)?(?:先)?(?:預約|預留)(?:嗎)?)[？?!！。.\s]*)$/iu;
+
+export function isFollowUpMessage(message) {
+  return FOLLOW_UP_PATTERN.test(String(message || "").trim());
+}
 
 export function explicitTopic(text) {
   return explicitTopics(text)[0] || null;
@@ -31,18 +39,26 @@ export function explicitTopics(text) {
     .map(([topic]) => topic);
   // A specific intent owns its generic parent wording. "延後退房" is one
   // late-checkout topic, not two independent questions.
-  return topics.includes("late_checkout") ? topics.filter(topic => topic !== "check_out") : topics;
+  const withoutParent = topics.includes("late_checkout") ? topics.filter(topic => topic !== "check_out") : topics;
+  const withoutCancelledBooking = withoutParent.includes("cancellation") ? withoutParent.filter(topic => topic !== "booking") : withoutParent;
+  // Booking-channel language inside a subsidy question is an intent of the
+  // subsidy topic, not a second unrelated booking question.
+  return withoutCancelledBooking.includes("subsidy") ? withoutCancelledBooking.filter(topic => topic !== "booking") : withoutCancelledBooking;
 }
 
 export function resolveConversationTopics(message, history = [], storedTopic = null) {
   const current = explicitTopics(message);
   if (current.length) return current;
-  if (!FOLLOW_UP_PATTERN.test(String(message || "").trim())) return [];
-  // Assistant prose is intentionally excluded: generated text is context, not truth.
+  if (!isFollowUpMessage(message)) return [];
+  // Assistant prose is intentionally excluded: generated text is context, not
+  // truth. We may walk through a chain of genuinely elliptical user turns, but
+  // stop at the first self-contained turn with no recognized topic. This keeps
+  // a stale topic from jumping across an unrelated request.
   for (const turn of [...history].reverse()) {
     if (turn?.role !== "user") continue;
     const topics = explicitTopics(turn.content);
     if (topics.length) return topics;
+    if (!isFollowUpMessage(turn.content)) return [];
   }
   return storedTopic && Object.hasOwn(TOPIC_PATTERNS, storedTopic) ? [storedTopic] : [];
 }
@@ -74,30 +90,34 @@ const SUBSIDY_INTENT_PATTERNS = Object.freeze({
   subsidy_eligibility: /資格|符合|可以用|能用|還有名額|還有額度|經費|用完|額度|政府公告|解釋權/iu
 });
 
-export function resolveRequestedIntent(message, topic, history = [], storedIntent = null) {
-  if (topic === "subsidy") {
-    const current = Object.entries(SUBSIDY_INTENT_PATTERNS).find(([, pattern]) => pattern.test(String(message || "")))?.[0];
-    if (current) return current;
-    if (FOLLOW_UP_PATTERN.test(String(message || "").trim())) {
-      for (const turn of [...history].reverse()) {
-        if (turn?.role !== "user") continue;
-        const intent = Object.entries(SUBSIDY_INTENT_PATTERNS).find(([, pattern]) => pattern.test(String(turn.content || "")))?.[0];
-        if (intent) return intent;
-      }
-      if (Object.hasOwn(SUBSIDY_INTENT_PATTERNS, storedIntent)) return storedIntent;
-    }
-    return "subsidy_overview";
-  }
-  if (topic !== "parking") return null;
-  const current = Object.entries(PARKING_INTENT_PATTERNS).find(([, pattern]) => pattern.test(String(message || "")))?.[0];
+const BOOKING_INTENT_PATTERNS = Object.freeze({
+  booking_modify_cancel: /修改|更改|取消|改期|退款|modify|change|cancel/iu,
+  booking_availability: /有房|空房|房況|房價|優惠|即時|日期|入住|退房|幾晚|availab|rate|price|check[ -]?in|check[ -]?out|空室|요금|객실/iu,
+  booking_direct: /直接|這邊|這裡|透過|跟|向|櫃台|櫃檯|飯店|官網|電話|LINE|怎麼訂|如何訂|book|予約|예약/iu
+});
+
+function inheritedIntent(message, history, topic, patterns, storedIntent, fallback) {
+  const current = Object.entries(patterns).find(([, pattern]) => pattern.test(String(message || "")))?.[0];
   if (current) return current;
-  if (!FOLLOW_UP_PATTERN.test(String(message || "").trim())) return "parking_availability";
+  if (!isFollowUpMessage(message)) return fallback;
   for (const turn of [...history].reverse()) {
     if (turn?.role !== "user") continue;
-    const intent = Object.entries(PARKING_INTENT_PATTERNS).find(([, pattern]) => pattern.test(String(turn.content || "")))?.[0];
+    const turnTopics = explicitTopics(turn.content);
+    if (turnTopics.length && !turnTopics.includes(topic)) return fallback;
+    const intent = Object.entries(patterns).find(([, pattern]) => pattern.test(String(turn.content || "")))?.[0];
     if (intent) return intent;
+    if (!turnTopics.length && !isFollowUpMessage(turn.content)) return fallback;
   }
-  return Object.hasOwn(PARKING_INTENT_PATTERNS, storedIntent) ? storedIntent : "parking_availability";
+  return Object.hasOwn(patterns, storedIntent) ? storedIntent : fallback;
+}
+
+export function resolveRequestedIntent(message, topic, history = [], storedIntent = null) {
+  if (topic === "subsidy") {
+    return inheritedIntent(message, history, topic, SUBSIDY_INTENT_PATTERNS, storedIntent, "subsidy_overview");
+  }
+  if (topic === "booking") return inheritedIntent(message, history, topic, BOOKING_INTENT_PATTERNS, storedIntent, "booking_direct");
+  if (topic === "parking") return inheritedIntent(message, history, topic, PARKING_INTENT_PATTERNS, storedIntent, "parking_availability");
+  return null;
 }
 
 export function factsForTopic(topic, intent = null) {
@@ -126,6 +146,17 @@ export function factsForTopic(topic, intent = null) {
       };
     }
     return { governmentSubsidy2026: hotelKnowledge.governmentSubsidy2026 };
+  }
+  if (topic === "booking") {
+    return {
+      identity: { bookingUrl: hotelKnowledge.identity.bookingUrl },
+      contact: {
+        frontDeskPhone: hotelKnowledge.contact.frontDeskPhone,
+        deskHours: hotelKnowledge.contact.deskHours,
+        line: hotelKnowledge.contact.line
+      },
+      booking: hotelKnowledge.booking
+    };
   }
   const selectors = {
     breakfast: () => ({ breakfast: hotelKnowledge.breakfast }),
@@ -172,6 +203,11 @@ export function factualContract(topic, intent = null) {
       subsidy_eligibility: ["governmentSubsidy2026.qualificationRule", "governmentSubsidy2026.authorityRule"],
       subsidy_third_night: ["governmentSubsidy2026.weekdayStayAward.thirdNight", "governmentSubsidy2026.authorityRule"]
     }[intent] || ["governmentSubsidy2026.period", "governmentSubsidy2026.weekdayStayAward", "governmentSubsidy2026.qualificationRule"],
+    booking: {
+      booking_direct: ["contact.frontDeskPhone", "contact.deskHours", "contact.line", "identity.bookingUrl", "booking.livePriceAndAvailability"],
+      booking_availability: ["identity.bookingUrl", "booking.livePriceAndAvailability"],
+      booking_modify_cancel: ["booking.hotelOrWebsite", "booking.platforms", "booking.cancellationPolicy", "contact.frontDeskPhone", "contact.deskHours"]
+    }[intent] || ["identity.bookingUrl", "booking.livePriceAndAvailability"],
     check_in: ["stay.checkIn", "stay.afterHoursCheckIn", "stay.access", "contact.deskHours"],
     front_desk_contact: ["contact.frontDeskPhone", "contact.deskHours", "contact.afterHoursEquipment", "contact.afterHoursSameDayBooking"],
     check_out: ["stay.checkOut", "stay.lateCheckOut"]
@@ -184,11 +220,11 @@ export function factualContract(topic, intent = null) {
   });
 }
 
-export function resolveKnowledgeGrounding(message, history = [], storedTopic = null, storedIntent = null) {
-  const topics = resolveConversationTopics(message, history, storedTopic);
-  if (topics.length > 1) {
-    const groundings = topics.map(topic => {
-      const intent = resolveRequestedIntent(message, topic, history, storedIntent);
+export function groundingForTopics(message, topics, history = [], storedIntent = null, semanticIntents = {}) {
+  const selectedTopics = [...new Set((Array.isArray(topics) ? topics : []).filter(topic => Object.hasOwn(TOPIC_PATTERNS, topic)))];
+  if (selectedTopics.length > 1) {
+    const groundings = selectedTopics.map(topic => {
+      const intent = semanticIntents[topic] || resolveRequestedIntent(message, topic, history, storedIntent);
       return { topic, intent, facts: factsForTopic(topic, intent), contract: factualContract(topic, intent) };
     });
     const facts = Object.assign({}, ...groundings.map(item => item.facts || {}));
@@ -196,7 +232,7 @@ export function resolveKnowledgeGrounding(message, history = [], storedTopic = n
     return {
       topic: "multi",
       intent: "multiple",
-      topics,
+      topics: selectedTopics,
       groundings,
       facts,
       contract: Object.freeze({
@@ -208,16 +244,20 @@ export function resolveKnowledgeGrounding(message, history = [], storedTopic = n
       })
     };
   }
-  const topic = topics[0] || null;
-  const intent = resolveRequestedIntent(message, topic, history, storedIntent);
+  const topic = selectedTopics[0] || null;
+  const intent = semanticIntents[topic] || resolveRequestedIntent(message, topic, history, storedIntent);
   const facts = topic === "transportation" && /接駁|shuttle/iu.test(String(message || ""))
     ? { transportation: { shuttle: null } }
     : factsForTopic(topic, intent);
   return { topic, intent, facts, contract: factualContract(topic, intent) };
 }
 
+export function resolveKnowledgeGrounding(message, history = [], storedTopic = null, storedIntent = null) {
+  return groundingForTopics(message, resolveConversationTopics(message, history, storedTopic), history, storedIntent);
+}
+
 export function knowledgeGroundingInstructions(grounding = null) {
-  const selected = grounding?.facts ? `\n本輪依 topic 重新取得的正式事實：\n${JSON.stringify(grounding.facts, null, 2)}\n本輪 factual contract：\n${JSON.stringify(grounding.contract, null, 2)}` : "";
+  const selected = grounding?.facts ? `\n本輪依 topic 重新取得的正式事實：\n${JSON.stringify(grounding.facts, null, 2)}\n本輪 factual contract：\n${JSON.stringify(grounding.contract, null, 2)}${grounding.semanticRoute ? `\n本輪已驗證的語意路由（只描述客人需求，不是飯店事實）：\n${JSON.stringify(grounding.semanticRoute, null, 2)}` : ""}` : "";
   const parkingContracts = ["parking_availability", "parking_fee", "parking_process", "parking_reservation", "parking_problem"].map(intent => factualContract("parking", intent));
   const subsidyContracts = ["subsidy_overview", ...Object.keys(SUBSIDY_INTENT_PATTERNS)].map(intent => factualContract("subsidy", intent));
   return `事實優先順序固定為：正式飯店知識 > 對話 topic/state > 對話歷史 > 推理 > 待客語氣。判定 topic/state 前，必須先理解目前整句的主詞、受詞、時間、否定、條件與真正問題；目前整句永遠優先於舊的 topic/state，不得因單一模糊詞直接套用固定答案。「折抵」本身不代表停車，只有同句明確提到停車、車位、車牌，或最近對話已明確延續停車主題時，才能套用停車折抵流程。若同句有多個主題，必須逐一處理；若無法判斷「折抵」指停車或住宿補助，先用一個簡短問題釐清，不得猜測。對話歷史只可用來理解指代、topic、intent、語言、日期與客人意圖；其中 user 陳述與 assistant 歷史回答都不是飯店事實。歷史若與目前正式知識衝突，必須忽略歷史並依目前正式知識更正。不得從 serviceHours 自行推論點餐截止、用餐結束或其他未明載規則。必須保留 hard_rule、recommendation、optional 的強度；recommendation 絕不可改寫為必須、強制或 requirement。Parking 必須先區分 availability、fee、process、reservation、problem intent，再只用該 intent 的 fact subset：${JSON.stringify(parkingContracts)}。政府住宿補助必須依 Asia/Taipei 的伺服器日期區分尚未開始、活動期間與已結束，且只能回答旅客公開規則；不得保證資格、額度或經費，不得索取證件或個資，不得揭露內部核銷 SOP。旅客詢問連續住宿是否需要前一晚住宿證明時，若正式資料未明載，必須明說尚未確認並請櫃檯依政府系統或最新規定確認，不得改答停車，也不得自行推測。補助 intents 與 contracts：${JSON.stringify(subsidyContracts)}${selected}`;
