@@ -6,8 +6,10 @@ import { applyCorePersonalityContract, renderHospitalityFact, styledInstructions
 import { temporalContextPrompt, temporalContextProvider } from "./temporal-context.js";
 import { breakfastArrivalReply, knowledgeGroundingInstructions, parkingReply, resolveKnowledgeGrounding, validateGroundedResponse } from "./knowledge-grounding.js";
 import { tryAiFirstReasoning } from "./ai-orchestrator.js";
+import { resolveSemanticKnowledgeGrounding } from "./semantic-router.js";
 import { configuredReasoning, configuredTextModel, DEFAULT_TEXT_REASONING_EFFORT } from "./model-config.js";
-import { groundedFactSet, verifyFinalResponse } from "./reasoning-core.js";
+import { groundedFactSet } from "./reasoning-core.js";
+import { validateUnifiedReply } from "./reply-quality.js";
 
 const MAX_HISTORY_MESSAGES = 20;
 const MAX_MESSAGE_LENGTH = 2_000;
@@ -291,7 +293,7 @@ ${groundedKnowledgePrompt()}${relevant ? `\n\n從正式知識庫擷取的本題�
   };
 }
 
-export function groundedPresentationPayload({ message, history = [], channel = "web", grounding, draft, env = process.env }) {
+export function groundedPresentationPayload({ message, history = [], channel = "web", grounding, draft, correction = null, env = process.env }) {
   const conversation = normalizedHistory(history);
   const language = detectGuestLanguage(message, conversation);
   const model = configuredTextModel(env);
@@ -308,7 +310,7 @@ Rewrite the supplied grounded_draft as one natural hotel front-desk reply in ${l
 
 Match the guest's actual speech act before choosing the opening. A question about location must answer where; a cost question must state the fee first; a time question must state the time; a process question must state the next step; a statement of confusion should be acknowledged with useful direction. Never begin with 可以、可以的、可以喔、當然可以、沒問題, or an equivalent permission confirmation unless the guest actually asked whether something is allowed, available, or can be arranged. Use a small amount of context-specific warmth, such as a natural connective or one polite final particle, without adding a hotel fact. Do not add a greeting here because the shared finalizer adds it only on the first reply. Do not manufacture warmth with a generic acknowledgement, repeated ～, or a stock phrase. Keep LINE and messaging replies to one or two short paragraphs and do not repeat the previous answer.
 
-Return only the guest-facing reply.`,
+Return only the guest-facing reply.${correction ? `\n\nThe previous rewrite was rejected for: ${correction.reason}. Correct that problem without changing any fact. Previous rejected reply: ${JSON.stringify(correction.answer)}` : ""}`,
     input: JSON.stringify({
       current_user_message: message,
       recent_history: conversation,
@@ -326,40 +328,35 @@ function safePresentationError(error) {
   return typeof candidate === "string" && /^[a-z0-9_]{1,64}$/iu.test(candidate) ? candidate : "grounded_presentation_error";
 }
 
-const GENERIC_PERMISSION_OPENING = /^(?:(?:您好|哈囉|嗨)[～~，,。.!！\s]*)?(?:好的|了解|可以(?:的|喔)?|當然可以|沒問題)(?:[～~，,。.!！\s]|$)/u;
-const EXPLICIT_PERMISSION_REQUEST = /(?:可以|可不可以|可否|能不能|能否|請幫|幫我|協助我|\b(?:can|could|may|would)\b.{0,24}\b(?:you|i|we)\b|できますか|可能ですか|お願い|할 수 있|가능한가|도와)/iu;
-
-function openingMatchesSpeechAct(answer, message) {
-  return !GENERIC_PERMISSION_OPENING.test(String(answer || "").trim()) || EXPLICIT_PERMISSION_REQUEST.test(String(message || ""));
-}
-
-function presentationHasContextualWarmth(answer, message, history) {
-  const text = String(answer || "").trim();
-  const language = detectGuestLanguage(message, normalizedHistory(history));
-  if (language === "en") return /\b(?:please|you|your|we|our|glad|welcome|complimentary)\b/iu.test(text);
-  if (language === "ja") return /(?:です|ます|ください|いただ|いたします)/u.test(text);
-  if (language === "ko") return /(?:요|니다|세요|드립니다)/u.test(text);
-  return /(?:您|請|喔|呢|我們|～)/u.test(text);
-}
-
 export async function composeGroundedPresentation({ message, history = [], channel = "web", grounding, draft, env = process.env, request = requestGroundedResponse, logger = console }) {
   if (!env.OPENAI_API_KEY?.trim()) return draft;
   const selectedFacts = groundedFactSet(grounding?.facts);
-  try {
-    const result = await request({
-      payload: groundedPresentationPayload({ message, history, channel, grounding, draft, env }),
-      apiKey: env.OPENAI_API_KEY.trim(),
-      validate: answer => openingMatchesSpeechAct(answer, message) && presentationHasContextualWarmth(answer, message, history) && validateGroundedResponse(answer, grounding) && verifyFinalResponse({
-        answer,
-        selectedFacts,
-        toolResult: { status: "not_requested" }
-      }).valid
-    });
-    return result.answer.trim();
-  } catch (error) {
-    logger?.info?.("[grounded-presentation]", { event: "fallback_used", code: safePresentationError(error), topic: grounding?.topic || "unknown" });
-    return draft;
+  let correction = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let rejected = null;
+    try {
+      const result = await request({
+        payload: groundedPresentationPayload({ message, history, channel, grounding, draft, correction, env }),
+        apiKey: env.OPENAI_API_KEY.trim(),
+        validate: answer => {
+          const verification = validateUnifiedReply({ answer, message, history, grounding, selectedFacts });
+          if (!verification.valid) rejected = { reason: verification.reason, answer: String(answer || "").trim() };
+          return verification.valid;
+        }
+      });
+      return result.answer.trim();
+    } catch (error) {
+      const code = safePresentationError(error);
+      if (attempt === 0 && code === "grounding_violation") {
+        correction = rejected || { reason: code, answer: "provider response rejected by the unified reply contract" };
+        logger?.info?.("[grounded-presentation]", { event: "rewrite_retry", code: correction.reason, topic: grounding?.topic || "unknown" });
+        continue;
+      }
+      logger?.info?.("[grounded-presentation]", { event: "fallback_used", code, topic: grounding?.topic || "unknown" });
+      return draft;
+    }
   }
+  return draft;
 }
 
 export function responseText(response) {
@@ -382,27 +379,54 @@ export function finalizeGuestAnswer(draft, { message, history = [], channel = "w
   return applyCorePersonalityContract({ draft, message, language, channel, conversationStart: conversation.length === 0 }).text;
 }
 
-export async function answerGuestMessage(message, { history = [], channel = "web", identity, temporalContext = temporalContextProvider.getContext(), grounding = resolveKnowledgeGrounding(message, history), orchestrate, request = requestGroundedResponse, env = process.env, logger = console } = {}) {
+function deterministicMultiTopicFallback({ message, grounding, language, channel, temporalContext }) {
+  const replies = [];
+  let hasUnansweredTopic = false;
+  for (const item of Array.isArray(grounding?.groundings) ? grounding.groundings : []) {
+    const rendered = renderHospitalityFact({ ...item, bookingDates: grounding?.bookingDates, message, language, channel, temporalContext })
+      || (item.topic === "breakfast" ? breakfastArrivalReply(message, item) || breakfastReply(message) : null)
+      || (item.topic === "parking" ? parkingReply(item) : null)
+      || (item.topic === "booking" ? availabilityReply(message, referenceDate(temporalContext)) : null)
+      || (item.topic === "front_desk_contact" ? frontDeskContactReply(message) : null);
+    if (rendered) replies.push(rendered);
+    else hasUnansweredTopic = true;
+  }
+  const uniqueReplies = [...new Set(replies)];
+  if (hasUnansweredTopic || !uniqueReplies.length || grounding?.semanticRoute?.clarificationNeeded) {
+    uniqueReplies.push(unknownInformationReply(message));
+  }
+  return uniqueReplies.join("\n\n");
+}
+
+export async function answerGuestMessage(message, { history = [], channel = "web", identity, temporalContext = temporalContextProvider.getContext(), grounding, orchestrate, request = requestGroundedResponse, env = process.env, logger = console } = {}) {
   const trimmed = typeof message === "string" ? message.trim().slice(0, MAX_MESSAGE_LENGTH) : "";
   if (!trimmed) throw new TypeError("A non-empty guest message is required");
-  const language = detectGuestLanguage(trimmed, normalizedHistory(history));
+  const conversation = normalizedHistory(history);
+  if (grounding === undefined) grounding = await resolveSemanticKnowledgeGrounding(trimmed, conversation, null, null, { request, env, logger });
+  const language = detectGuestLanguage(trimmed, conversation);
   grounding = withDatedBookingContext(grounding, trimmed, temporalContext);
   if (requiresUnknownInformationReply(trimmed, grounding)) {
     return finalizeGuestAnswer(unknownInformationReply(trimmed), { message: trimmed, history, channel });
   }
   // This module only composes presentation. Authorization and every external
   // side effect are owned by conversation/runtime.js.
-  const aiFirst = await tryAiFirstReasoning({ message: trimmed, history: normalizedHistory(history), channel, identity, grounding, orchestrate, env, logger });
+  const aiFirst = await tryAiFirstReasoning({ message: trimmed, history: conversation, channel, identity, grounding, orchestrate, request, env, logger });
   if (aiFirst) return finalizeGuestAnswer(aiFirst.answer, { message: trimmed, history, channel });
   // Multiple explicit topics require the language model to preserve the
   // relationship between them. Concatenating canned answers can be accurate in
   // isolation while still missing what the guest actually asked.
   if (grounding.topic === "multi" || grounding.semanticRoute?.clarificationNeeded) {
-    const payload = responsesPayload(trimmed, history, channel, temporalContext, grounding, env);
-    const generated = (await request({ payload, apiKey: env.OPENAI_API_KEY?.trim(), validate: answer => validateGroundedResponse(answer, grounding) })).answer;
-    return finalizeGuestAnswer(generated, { message: trimmed, history, channel });
+    try {
+      const payload = responsesPayload(trimmed, history, channel, temporalContext, grounding, env);
+      const generated = (await request({ payload, apiKey: env.OPENAI_API_KEY?.trim(), validate: answer => validateGroundedResponse(answer, grounding) })).answer;
+      return finalizeGuestAnswer(generated, { message: trimmed, history, channel });
+    } catch (error) {
+      logger?.info?.("[unified-ai]", { event: "multi_topic_fallback", code: safePresentationError(error) });
+      const fallback = deterministicMultiTopicFallback({ message: trimmed, grounding, language, channel, temporalContext });
+      return finalizeGuestAnswer(fallback, { message: trimmed, history, channel });
+    }
   }
-  const groundedHospitalityAnswer = renderHospitalityFact({ ...grounding, language, channel, temporalContext });
+  const groundedHospitalityAnswer = renderHospitalityFact({ ...grounding, message: trimmed, language, channel, temporalContext });
   if (groundedHospitalityAnswer) {
     const presented = await composeGroundedPresentation({ message: trimmed, history, channel, grounding, draft: groundedHospitalityAnswer, env, request, logger });
     return finalizeGuestAnswer(presented, { message: trimmed, history, channel });

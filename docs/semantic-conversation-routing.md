@@ -23,6 +23,10 @@ after a parking question. It may not skip a newer self-contained booking turn to
 recover an older parking topic. Negation, conditions, comparisons, subject,
 object, time, and requested action are part of the routing instructions.
 
+Subsidy participation is its own `subsidy_participation` intent. Negative
+questions such as 「你們沒有參加國旅補助嗎？」 remain participation checks;
+they are not expanded into a full subsidy overview.
+
 ## Failure behavior
 
 `SEMANTIC_ROUTER_ENABLED` is enabled by default and may be set to `false` for an

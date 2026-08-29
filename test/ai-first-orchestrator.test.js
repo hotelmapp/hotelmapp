@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  AI_FIRST_FEATURE_FLAG, MODEL_DECISION_SCHEMA, aiFirstEnabled, groundingFactEntries,
+  AI_FIRST_FEATURE_FLAG, MODEL_DECISION_SCHEMA, aiFirstEnabled, decisionFromGrounding, groundingFactEntries,
   orchestrateHospitalityTurn, toolPermissions, tryAiFirstParking, validateModelDecision
 } from "../ai-core/ai-orchestrator.js";
 import { answerGuestMessage, breakfastReply, sensitiveSituationReply } from "../ai-core/guest-response.js";
@@ -18,9 +18,12 @@ function decision(overrides = {}) {
   };
 }
 
-test("architecture invariant: feature flag is explicit opt-in and schema is strict", () => {
+test("architecture invariant: the unified brain is default with an API key and has a safe override", () => {
   assert.equal(AI_FIRST_FEATURE_FLAG, "AI_FIRST_ORCHESTRATOR_ENABLED");
+  assert.equal(aiFirstEnabled({ OPENAI_API_KEY: "server-secret" }), true);
+  assert.equal(aiFirstEnabled({}), false);
   assert.equal(aiFirstEnabled({ AI_FIRST_ORCHESTRATOR_ENABLED: "true" }), true);
+  assert.equal(aiFirstEnabled({ OPENAI_API_KEY: "server-secret", AI_FIRST_ORCHESTRATOR_ENABLED: "false" }), false);
   assert.equal(aiFirstEnabled({ AI_FIRST_ORCHESTRATOR_ENABLED: "1" }), false);
   assert.equal(MODEL_DECISION_SCHEMA.additionalProperties, false);
   assert.ok(MODEL_DECISION_SCHEMA.properties.intent.enum.includes("multiple"));
@@ -40,7 +43,7 @@ test("semantic decision prompt forbids a lone discount word from forcing parking
           clarification_needed: true,
           response_strategy: "unknown"
         })) }
-      : { answer: "兩者是不同項目；目前資料沒有說明兩者可互相替代。" };
+      : { answer: "兩者不是同一項喔；目前資料沒有說明兩者可互相替代。" };
   };
   await orchestrateHospitalityTurn({
     message: "國旅補助跟停車折抵是一樣的嗎？", grounding, request, logger: silentLogger
@@ -58,13 +61,31 @@ test("structured decisions reject unknown fields, fact IDs, and tools", () => {
   assert.equal(validateModelDecision(decision({ facts_to_use: ["parking.hotelSpaces"], action: "contact_front_desk" }), context), false);
 });
 
+test("a verified semantic route becomes the single answer plan without another model decision", () => {
+  const grounding = {
+    ...resolveKnowledgeGrounding("你們沒有參加國旅補助嗎？"),
+    semanticRoute: {
+      currentNeed: "確認希堤微旅是否參加國旅補助",
+      clarificationNeeded: false,
+      usedHistory: false,
+      handoff: { requested: false, category: null }
+    }
+  };
+  const facts = groundingFactEntries(grounding);
+  const planned = decisionFromGrounding({ message: "你們沒有參加國旅補助嗎？", grounding, facts });
+  assert.equal(planned.intent, "subsidy_participation");
+  assert.equal(planned.user_need, "確認希堤微旅是否參加國旅補助");
+  assert.equal(planned.response_strategy, "answer");
+  assert.equal(planned.facts_to_use.length, facts.length);
+});
+
 test("grounding cannot be bypassed and parking reservation policy is authoritative", () => {
   const facts = groundingFactEntries(resolveKnowledgeGrounding("需要先預約嗎？", [], "parking"));
   assert.deepEqual(facts, [
-    { id: "parking.reservationPolicy.reservable", value: false, certainty: "confirmed", source: "hotel_knowledge_v2.3" },
-    { id: "parking.reservationPolicy.allocation", value: "先到先停", certainty: "confirmed", source: "hotel_knowledge_v2.3" },
-    { id: "parking.reservationPolicy.rationale", value: "讓每位住客都能公平使用。", certainty: "confirmed", source: "hotel_knowledge_v2.3" },
-    { id: "parking.reservationPolicy.arrivalAssistance", value: "抵達時如果飯店門口 3 個路邊停車格已滿，櫃檯會引導至步行約 3 分鐘的配合停車場。", certainty: "confirmed", source: "hotel_knowledge_v2.3" }
+    { id: "parking.reservationPolicy.reservable", value: false, certainty: "confirmed", source: "hotel_knowledge_v2.4" },
+    { id: "parking.reservationPolicy.allocation", value: "先到先停", certainty: "confirmed", source: "hotel_knowledge_v2.4" },
+    { id: "parking.reservationPolicy.rationale", value: "讓每位住客都能公平使用。", certainty: "confirmed", source: "hotel_knowledge_v2.4" },
+    { id: "parking.reservationPolicy.arrivalAssistance", value: "抵達時如果飯店門口 3 個路邊停車格已滿，櫃檯會引導至步行約 3 分鐘的配合停車場。", certainty: "confirmed", source: "hotel_knowledge_v2.4" }
   ]);
 });
 
@@ -141,7 +162,7 @@ test("orchestrator emits the required safe event lifecycle without guest content
   let count = 0;
   await orchestrateHospitalityTurn({
     message: "有停車位嗎？", grounding: resolveKnowledgeGrounding("有停車位嗎？"), logger,
-    request: async () => (++count === 1 ? { answer: JSON.stringify(decision()) } : { answer: "有停車位。" })
+    request: async () => (++count === 1 ? { answer: JSON.stringify(decision()) } : { answer: "飯店有停車位喔。" })
   });
   assert.deepEqual(events.map(item => item.event), ["orchestration_started", "grounding_completed", "model_decision_completed", "response_composed"]);
   assert.equal(JSON.stringify(events).includes("有停車位嗎"), false);

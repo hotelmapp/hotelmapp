@@ -36,7 +36,7 @@ HotelMapp owns truth, permissions, execution, security and persistence. The mode
 
 ## 3. Phase 1 migration scope
 
-* Add one channel-neutral orchestrator and an explicit `AI_FIRST_ORCHESTRATOR_ENABLED=true` opt-in.
+* Add one channel-neutral orchestrator. As of Orchestration V3, it is enabled by default whenever `OPENAI_API_KEY` is configured; `AI_FIRST_ORCHESTRATOR_ENABLED=false` is the emergency opt-out.
 * Migrate parking only. Recent history and durable topic/intent are still supplied through the shared conversation runtime, including the five-turn omitted-subject sequence.
 * Make two Responses API requests: strict structured decision, followed by grounded prose composition.
 * Keep every legacy path. A disabled flag or any decision/API/schema/composition error returns `null` to the existing parking producer.
@@ -158,7 +158,7 @@ Phase 1 adds two serial model calls for enabled parking turns. Expected model la
 
 ## 14. Environment variables
 
-* **New:** `AI_FIRST_ORCHESTRATOR_ENABLED` (default false; only literal case-insensitive `true` enables).
+* **Updated in Orchestration V3:** `AI_FIRST_ORCHESTRATOR_ENABLED` defaults to enabled when `OPENAI_API_KEY` exists. Literal `false` disables it; literal `true` can explicitly enable injected or test orchestration.
 * **Optional:** `OPENAI_ORCHESTRATOR_MODEL` to separate orchestration from the shared `OPENAI_MODEL`; both fall back to the central `gpt-5.6-terra` default.
 * **Optional:** `OPENAI_ORCHESTRATOR_REASONING_EFFORT` overrides both orchestration stages. The decision stage defaults to low reasoning and prose composition to medium reasoning. Stage-specific overrides are `OPENAI_ORCHESTRATOR_DECISION_REASONING_EFFORT` and `OPENAI_ORCHESTRATOR_PROSE_REASONING_EFFORT`.
 * **Optional:** `OPENAI_REASONING_EFFORT` sets a shared reasoning override; unsupported legacy models omit the reasoning field instead of receiving an incompatible parameter.

@@ -13,7 +13,7 @@ const DEFAULT_TIMEOUT_MS = 5_000;
 const INTENTS_BY_TOPIC = Object.freeze({
   breakfast: ["breakfast"],
   parking: ["parking_availability", "parking_fee", "parking_partner_location", "parking_location", "parking_process", "parking_reservation", "parking_problem"],
-  subsidy: ["subsidy_overview", "subsidy_amount", "subsidy_period", "subsidy_booking_channel", "subsidy_participation_limit", "subsidy_birthday_voucher", "subsidy_taiwan_pass", "subsidy_stacking", "subsidy_registration", "subsidy_documentation", "subsidy_eligibility", "subsidy_third_night"],
+  subsidy: ["subsidy_overview", "subsidy_participation", "subsidy_amount", "subsidy_period", "subsidy_booking_channel", "subsidy_participation_limit", "subsidy_birthday_voucher", "subsidy_taiwan_pass", "subsidy_stacking", "subsidy_registration", "subsidy_documentation", "subsidy_eligibility", "subsidy_third_night"],
   booking: ["booking_direct", "booking_availability", "booking_modify_cancel"],
   wifi: ["wifi"],
   check_in: ["check_in"],
@@ -129,6 +129,7 @@ Critical continuity rules:
 - Example: after an earlier parking question and then a booking question, “可否直接跟櫃檯訂呢？” is booking_direct, never parking.
 - “那第二台呢？” immediately after parking may use history and is parking_fee.
 - “配合的停車場在哪邊？” and “門口滿了，特約停車場在哪裡？” are parking_partner_location. They require the partner lot's actual landmark, walking time, and plate-registration flow; never answer only with the entrance-space count.
+- A question asking whether HotelMapp participates in the subsidy, including a negative form such as 「你們沒有參加國旅補助嗎？」, is subsidy_participation. It is not a request for every subsidy rule.
 - The word 折抵 alone is ambiguous. Route it to parking only when the current sentence or the uninterrupted recent topic is actually about parking.
 - Use unknown only when no supported topic can be determined. Use multiple routes only when the current request truly contains multiple needs.
 

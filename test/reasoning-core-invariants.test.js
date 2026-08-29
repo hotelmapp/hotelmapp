@@ -38,6 +38,16 @@ test("unsupported facts and unverified completion claims fail final verification
   assert.equal(verifyFinalResponse({ answer: "是否能預約目前尚未確認", selectedFacts: [{ id: "parking.reservation", value: null, certainty: "unknown" }] }).valid, true);
 });
 
+test("numeric verification accepts equivalent natural date and amount formatting", () => {
+  const selectedFacts = [
+    { id: "period.startsOn", value: "2026-09-01", certainty: "confirmed" },
+    { id: "award.secondNight", value: "NT$1,200", certainty: "confirmed" }
+  ];
+  assert.equal(verifyFinalResponse({ answer: "活動從 2026 年 9 月 1 日開始，第二晚折抵 NT$1,200。", selectedFacts }).valid, true);
+  assert.equal(verifyFinalResponse({ answer: "活動從 2026 年 9 月 2 日開始。", selectedFacts }).reason, "unsupported_numeric_fact");
+  assert.equal(verifyFinalResponse({ answer: "活動從 2026 年 11 月 1 日開始。", selectedFacts }).reason, "unsupported_numeric_fact");
+});
+
 test("capability availability and completion require authorization and a verified executor result", async () => {
   assert.equal(CAPABILITY_REGISTRY.contact_front_desk.authorization, "confirmed");
   const available = availableCapabilities({ identity: { displayName: "guest" }, authorization: { state: "confirmed" } });

@@ -1,7 +1,7 @@
 import { hotelKnowledge, knowledgeForPrompt } from "../data/hotel-info.js";
 
 // Channel-independent metadata and grounding shared by every guest-facing adapter.
-export const KNOWLEDGE_VERSION = "2.3";
+export const KNOWLEDGE_VERSION = "2.4";
 export { hotelKnowledge, knowledgeForPrompt };
 
 export function groundingInstructions() {
