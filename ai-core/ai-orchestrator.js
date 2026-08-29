@@ -5,9 +5,10 @@ import { requestGroundedResponse } from "./response-service.js";
 import { availableCapabilities, responseProvenance } from "./reasoning-core.js";
 import { configuredReasoning, configuredTextModel, DEFAULT_ROUTING_REASONING_EFFORT, DEFAULT_TEXT_REASONING_EFFORT } from "./model-config.js";
 import { validateUnifiedReply } from "./reply-quality.js";
+import { parseQualityReview, qualityReviewEnabled, qualityReviewPayload } from "./conversation-quality-review.js";
 
 export const AI_FIRST_FEATURE_FLAG = "AI_FIRST_ORCHESTRATOR_ENABLED";
-export const ORCHESTRATION_VERSION = "3.1";
+export const ORCHESTRATION_VERSION = "3.2";
 const MAX_DECISION_FACTS = 64;
 
 export const MODEL_DECISION_SCHEMA = Object.freeze({
@@ -139,7 +140,7 @@ Understand the guest's complete current wording before writing. Resolve a yes/no
 
 For subsidy_date_applicability, distinguish the published calendar rule from personal eligibility. If requestContext.requestedStayDate is unknown, acknowledge the exact concern, state the Sunday-through-Thursday rule and the Friday/Saturday/national-long-holiday exclusions, then ask only for the actual check-in date. If the date is known, answer its calendar applicability first from the campaign period, derived weekday, and published exclusion; only then note that personal qualification and allowance still require the government system. Never use a government-system disclaimer as the whole answer.
 
-Warmth must come from understanding the current need and natural service wording, not from adding a bare 「了解」、「好的」、「可以的」 or a lone polite word such as 「請」 before a database-like sentence. In a follow-up that expresses a concern or condition, naturally reflect that concern before giving the useful rule or next step. When a result cannot be guaranteed, acknowledge what the guest is trying to confirm, explain the uncertainty in plain language, and offer the part that can be checked; do not send a policy disclaimer by itself. Do not add the first-turn greeting here because the shared finalizer owns it. Do not force a follow-up question.${correction ? `\n\nYour previous answer was rejected for ${correction.reason}. Correct that exact issue while preserving all verified facts. Previous rejected answer: ${JSON.stringify(correction.answer)}` : ""}`,
+Warmth must come from understanding the current need and natural service wording, not from adding a bare 「了解」、「好的」、「可以的」 or a lone polite word such as 「請」 before a database-like sentence. In a follow-up that expresses a concern or condition, naturally reflect that concern before giving the useful rule or next step. When a result cannot be guaranteed, acknowledge what the guest is trying to confirm, explain the uncertainty in plain language, and offer the part that can be checked; do not send a policy disclaimer by itself. Do not add the first-turn greeting here because the shared finalizer owns it. Do not force a follow-up question.${correction ? `\n\nYour previous answer was rejected for ${correction.reason}. ${correction.guidance ? `Independent reviewer guidance: ${JSON.stringify(correction.guidance)}. ` : ""}Correct that exact issue while preserving all verified facts. Previous rejected answer: ${JSON.stringify(correction.answer)}` : ""}`,
     input: JSON.stringify({ current_user_message: message, recent_history: history, semantic_route: grounding?.semanticRoute || null, verified_decision: decision, selected_grounded_facts: selectedFacts, tool_result: toolResult })
   };
 }
@@ -172,18 +173,42 @@ export async function orchestrateHospitalityTurn({ message, history = [], ground
   const selectedFacts = decision.facts_to_use.map(id => facts.find(fact => fact.id === id));
   let composed;
   let correction = null;
+  let qualityReview = null;
   for (let attempt = 0; attempt < 2; attempt++) {
     composed = await request({ payload: prosePayload({ message, history, grounding, decision, selectedFacts, toolResult, channel, correction, env }) });
     if (!composed.answer?.trim()) throw new Error("empty_composed_response");
     const verification = validateUnifiedReply({ answer: composed.answer, message, history, grounding, selectedFacts, toolResult });
-    if (verification.valid) break;
-    if (attempt === 1) throw new Error(verification.reason);
-    correction = { reason: verification.reason, answer: composed.answer.trim() };
-    safeLog(logger, "response_retry", { reason: verification.reason });
+    if (!verification.valid) {
+      if (attempt === 1) throw new Error(verification.reason);
+      correction = { reason: verification.reason, answer: composed.answer.trim() };
+      safeLog(logger, "response_retry", { reason: verification.reason });
+      continue;
+    }
+    if (!qualityReviewEnabled(env)) break;
+    try {
+      const reviewed = await request({
+        payload: qualityReviewPayload({ message, history, grounding, decision, selectedFacts, toolResult, proposedAnswer: composed.answer, channel, env }),
+        apiKey: env.OPENAI_API_KEY?.trim()
+      });
+      qualityReview = parseQualityReview(reviewed.answer);
+      safeLog(logger, "quality_review_completed", { verdict: qualityReview.verdict, issueCount: qualityReview.issues.length });
+    } catch (error) {
+      safeLog(logger, "quality_review_unavailable", { code: safeErrorCode(error) });
+      qualityReview = null;
+      break;
+    }
+    if (qualityReview.verdict === "pass") break;
+    if (attempt === 1) throw new Error(`quality_review_${qualityReview.issues[0] || "rejected"}`);
+    correction = {
+      reason: `quality_review:${qualityReview.issues.join(",")}`,
+      guidance: qualityReview.rewrite_guidance,
+      answer: composed.answer.trim()
+    };
+    safeLog(logger, "response_retry", { reason: "quality_review", issues: qualityReview.issues });
   }
   const provenance = responseProvenance({ grounding, selectedFacts, capability: decision.action, toolResult });
   safeLog(logger, "response_composed", { channel, latencyMs: Date.now() - started, personalityVersion: CORE_PERSONALITY_CONTRACT_VERSION });
-  return { answer: composed.answer.trim(), decision, selectedFacts, toolResult, provenance };
+  return { answer: composed.answer.trim(), decision, selectedFacts, toolResult, qualityReview, provenance };
 }
 
 export async function tryAiFirstReasoning(options) {
