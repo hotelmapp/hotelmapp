@@ -45,7 +45,7 @@ test("all text paths share GPT-5.6 Terra defaults with role-appropriate reasonin
     logger: silentLogger,
     request: async ({ payload }) => {
       calls.push(payload);
-      return calls.length === 1 ? { answer: JSON.stringify(parkingDecision()) } : { answer: "飯店門口有 3 個停車格。" };
+      return calls.length === 1 ? { answer: JSON.stringify(parkingDecision()) } : { answer: "飯店門口有 3 個停車格喔。" };
     }
   });
   assert.deepEqual(calls.map(({ model, reasoning }) => ({ model, reasoning })), [

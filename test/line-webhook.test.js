@@ -107,7 +107,11 @@ test("reuses shared booking intent, date parsing, and dated official URL", async
 test("ignores unsupported messages and processes multiple events", async t => {
   await withConfig(t);
   let replies = 0;
-  globalThis.fetch = async () => { replies += 1; return new Response("{}", { status: 200 }); };
+  globalThis.fetch = async url => {
+    if (String(url).includes("openai.com")) return new Response("{}", { status: 200 });
+    replies += 1;
+    return new Response("{}", { status: 200 });
+  };
   const res = recorder();
   await handler(signedRequest({ events: [
     { webhookEventId: "sticker-1", type: "message", replyToken: "secret-sticker-token", message: { type: "sticker", id: "1" } },
@@ -122,7 +126,11 @@ test("ignores unsupported messages and processes multiple events", async t => {
 test("suppresses an obvious duplicate event in the current instance", async t => {
   await withConfig(t);
   let calls = 0;
-  globalThis.fetch = async () => { calls += 1; return new Response("{}", { status: 200 }); };
+  globalThis.fetch = async url => {
+    if (String(url).includes("openai.com")) return new Response("{}", { status: 200 });
+    calls += 1;
+    return new Response("{}", { status: 200 });
+  };
   const event = { webhookEventId: "duplicate-1", type: "message", replyToken: "r", message: { type: "text", text: "早餐在哪裡？" } };
   const claimed = new Set();
   const conversationService = { store: { claimIdempotencyKey: async (_scope, key) => claimed.has(key) ? false : (claimed.add(key), true) } };

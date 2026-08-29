@@ -7,7 +7,7 @@ import {
 } from "../ai-core/index.js";
 
 test("shared core exposes the canonical hotel and breakfast knowledge", () => {
-  assert.equal(KNOWLEDGE_VERSION, "2.3");
+  assert.equal(KNOWLEDGE_VERSION, "2.4");
   assert.equal(hotelKnowledge.breakfast.serviceHours, "08:00–10:00");
   const prompt = groundedKnowledgePrompt();
   assert.match(prompt, /唯一正式資料/);

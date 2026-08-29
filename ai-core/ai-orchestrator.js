@@ -2,19 +2,20 @@ import { detectGuestLanguage } from "../guest-language.js";
 import { KNOWLEDGE_VERSION } from "./knowledge.js";
 import { CORE_PERSONALITY_CONTRACT_VERSION, styledInstructions } from "./hospitality-personality.js";
 import { requestGroundedResponse } from "./response-service.js";
-import { availableCapabilities, responseProvenance, verifyFinalResponse } from "./reasoning-core.js";
+import { availableCapabilities, responseProvenance } from "./reasoning-core.js";
 import { configuredReasoning, configuredTextModel, DEFAULT_ROUTING_REASONING_EFFORT, DEFAULT_TEXT_REASONING_EFFORT } from "./model-config.js";
+import { validateUnifiedReply } from "./reply-quality.js";
 
 export const AI_FIRST_FEATURE_FLAG = "AI_FIRST_ORCHESTRATOR_ENABLED";
-export const ORCHESTRATION_VERSION = "2.1";
-const MAX_DECISION_FACTS = 10;
+export const ORCHESTRATION_VERSION = "3.0";
+const MAX_DECISION_FACTS = 64;
 
 export const MODEL_DECISION_SCHEMA = Object.freeze({
   type: "object",
   additionalProperties: false,
   required: ["intent", "user_need", "facts_to_use", "action", "clarification_needed", "next_step", "response_strategy"],
   properties: {
-    intent: { type: "string", enum: ["multiple", "subsidy_overview", "subsidy_amount", "subsidy_period", "subsidy_booking_channel", "subsidy_participation_limit", "subsidy_birthday_voucher", "subsidy_taiwan_pass", "subsidy_stacking", "subsidy_registration", "subsidy_documentation", "subsidy_eligibility", "subsidy_third_night", "booking_direct", "booking_availability", "booking_modify_cancel", "parking_availability", "parking_fee", "parking_partner_location", "parking_location", "parking_process", "parking_reservation", "parking_problem", "wifi", "check_in", "late_checkout", "breakfast", "luggage", "room_type", "baby_equipment", "transportation", "cancellation", "payment", "complaint", "unknown"] },
+    intent: { type: "string", enum: ["multiple", "subsidy_overview", "subsidy_participation", "subsidy_amount", "subsidy_period", "subsidy_booking_channel", "subsidy_participation_limit", "subsidy_birthday_voucher", "subsidy_taiwan_pass", "subsidy_stacking", "subsidy_registration", "subsidy_documentation", "subsidy_eligibility", "subsidy_third_night", "booking_direct", "booking_availability", "booking_modify_cancel", "parking_availability", "parking_fee", "parking_partner_location", "parking_location", "parking_process", "parking_reservation", "parking_problem", "wifi", "check_in", "front_desk_contact", "check_out", "late_checkout", "breakfast", "luggage", "room_type", "baby_equipment", "transportation", "cancellation", "payment", "complaint", "unknown"] },
     user_need: { type: "string", minLength: 1, maxLength: 240 },
     facts_to_use: { type: "array", maxItems: MAX_DECISION_FACTS, items: { type: "string", minLength: 1, maxLength: 120 } },
     action: { type: "string", enum: ["none", "contact_front_desk"] },
@@ -34,7 +35,10 @@ function safeErrorCode(error) {
 }
 
 export function aiFirstEnabled(env = process.env) {
-  return env?.[AI_FIRST_FEATURE_FLAG]?.trim().toLowerCase() === "true";
+  const configured = env?.[AI_FIRST_FEATURE_FLAG]?.trim().toLowerCase();
+  if (configured === "true") return true;
+  if (configured === "false" || configured) return false;
+  return Boolean(env?.OPENAI_API_KEY?.trim());
 }
 
 export function groundingFactEntries(grounding) {
@@ -94,33 +98,62 @@ function decisionPayload({ message, history, grounding, facts, channel, availabl
   return payload;
 }
 
-function prosePayload({ message, history, decision, selectedFacts, toolResult, channel, env }) {
+export function decisionFromGrounding({ message, grounding, facts }) {
+  if (!grounding?.semanticRoute) return null;
+  const required = Array.isArray(grounding.contract?.requiredFactIds) ? grounding.contract.requiredFactIds : [];
+  const scopedFacts = required.length
+    ? facts.filter(fact => required.some(id => fact.id === id || fact.id.startsWith(`${id}.`) || fact.id.startsWith(`${id}[`)))
+    : facts;
+  const factIds = (scopedFacts.length ? scopedFacts : facts).slice(0, MAX_DECISION_FACTS).map(fact => fact.id);
+  return Object.freeze({
+    intent: grounding.intent || (grounding.topic === "multi" ? "multiple" : grounding.topic || "unknown"),
+    user_need: grounding.semanticRoute.currentNeed || String(message || "").slice(0, 240),
+    facts_to_use: factIds,
+    action: "none",
+    clarification_needed: Boolean(grounding.semanticRoute.clarificationNeeded),
+    next_step: null,
+    response_strategy: grounding.topic === "unknown" ? "unknown" : grounding.semanticRoute.clarificationNeeded ? "clarify" : "answer"
+  });
+}
+
+function prosePayload({ message, history, grounding, decision, selectedFacts, toolResult, channel, correction = null, env }) {
   const language = detectGuestLanguage(message, history);
   const model = configuredTextModel(env, "OPENAI_ORCHESTRATOR_MODEL");
   return {
     model,
-    max_output_tokens: 1_200,
+    max_output_tokens: 900,
     ...configuredReasoning(model, env, {
       componentKeys: ["OPENAI_ORCHESTRATOR_PROSE_REASONING_EFFORT", "OPENAI_ORCHESTRATOR_REASONING_EFFORT"],
       fallback: DEFAULT_TEXT_REASONING_EFFORT
     }),
-    instructions: `${styledInstructions(channel)}\nUse only selected_grounded_facts and successful tool_result as hotel truth. A fact with certainty=unknown must be described as unconfirmed and must not be guessed. Do not claim an action happened unless tool_result.status is completed. Answer in ${language}. Address the current need first, cover every explicit part of the current message, preserve relationships and conditions between topics, and answer the new information requested instead of replaying the previous answer. Warmth must come from natural acknowledgement and useful wording, not from adding a bare “了解” or “好的” before a database-like sentence. Do not force a follow-up question.`,
-    input: JSON.stringify({ current_user_message: message, recent_history: history, verified_decision: decision, selected_grounded_facts: selectedFacts, tool_result: toolResult })
+    instructions: `${styledInstructions(channel)}
+
+You are the one unified answer composer for every ordinary HotelMapp guest question. Use only selected_grounded_facts and successful tool_result as hotel truth. A fact with certainty=unknown must be described as unconfirmed and must not be guessed. Do not claim an action happened unless tool_result.status is completed. Answer in ${language}.
+
+Understand the guest's complete current wording before writing. Resolve a yes/no or negative question directly in the first few words; for example, 「你們沒有參加補助嗎？」 must begin with a natural direct answer such as 「有參加喔，」 before dates or rules. A location, cost, time, or process question must lead with that requested information. Use only the details needed for the current need; do not dump every available fact, policy, or disclaimer. A simple question normally needs one or two short sentences. Cover all explicit needs in a multi-topic message, preserve conditions and relationships, and answer a follow-up with only the new information instead of replaying the previous answer.
+
+Warmth must come from understanding the current need and natural service wording, not from adding a bare 「了解」、「好的」 or 「可以的」 before a database-like sentence. Do not add the first-turn greeting here because the shared finalizer owns it. Do not force a follow-up question.${correction ? `\n\nYour previous answer was rejected for ${correction.reason}. Correct that exact issue while preserving all verified facts. Previous rejected answer: ${JSON.stringify(correction.answer)}` : ""}`,
+    input: JSON.stringify({ current_user_message: message, recent_history: history, semantic_route: grounding?.semanticRoute || null, verified_decision: decision, selected_grounded_facts: selectedFacts, tool_result: toolResult })
   };
 }
 
 export async function orchestrateHospitalityTurn({ message, history = [], grounding, channel = "web", identity, authorization, executeTool, request = requestGroundedResponse, logger = console, env = process.env }) {
   const started = Date.now();
   safeLog(logger, "orchestration_started", { channel, topic: grounding?.topic });
-  const facts = groundingFactEntries(grounding);
   if (!grounding?.topic) grounding = { topic: "unknown", intent: "unknown", facts: { unknown: null }, contract: { historyPolicy: "references_only" } };
+  const facts = groundingFactEntries(grounding);
   if (!facts.length) facts.push({ id: "unknown", value: null, certainty: "unknown", source: `hotel_knowledge_v${KNOWLEDGE_VERSION}` });
   safeLog(logger, "grounding_completed", { topic: grounding.topic, factCount: facts.length, knowledgeVersion: KNOWLEDGE_VERSION });
   const permissions = toolPermissions({ identity, authorization });
   const availableTools = Object.entries(permissions).filter(([, allowed]) => allowed).map(([name]) => name);
   const allowedFactIds = new Set(facts.map(fact => fact.id));
-  const decisionResponse = await request({ payload: decisionPayload({ message, history, grounding, facts, channel, availableTools, env }) });
-  const decision = parseDecision(decisionResponse.answer, { allowedFactIds, allowedTools: availableTools });
+  let decision = decisionFromGrounding({ message, grounding, facts });
+  if (decision) {
+    safeLog(logger, "semantic_plan_reused", { intent: decision.intent, selectedFactCount: decision.facts_to_use.length });
+  } else {
+    const decisionResponse = await request({ payload: decisionPayload({ message, history, grounding, facts, channel, availableTools, env }) });
+    decision = parseDecision(decisionResponse.answer, { allowedFactIds, allowedTools: availableTools });
+  }
   safeLog(logger, "model_decision_completed", { intent: decision.intent, strategy: decision.response_strategy, selectedFactCount: decision.facts_to_use.length });
   let toolResult = { name: "none", status: "not_requested" };
   if (decision.action !== "none") {
@@ -130,10 +163,17 @@ export async function orchestrateHospitalityTurn({ message, history = [], ground
     safeLog(logger, "tool_completed", { tool: decision.action, status: toolResult.status });
   }
   const selectedFacts = decision.facts_to_use.map(id => facts.find(fact => fact.id === id));
-  const composed = await request({ payload: prosePayload({ message, history, decision, selectedFacts, toolResult, channel, env }) });
-  if (!composed.answer?.trim()) throw new Error("empty_composed_response");
-  const verification = verifyFinalResponse({ answer: composed.answer, selectedFacts, toolResult });
-  if (!verification.valid) throw new Error(verification.reason);
+  let composed;
+  let correction = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    composed = await request({ payload: prosePayload({ message, history, grounding, decision, selectedFacts, toolResult, channel, correction, env }) });
+    if (!composed.answer?.trim()) throw new Error("empty_composed_response");
+    const verification = validateUnifiedReply({ answer: composed.answer, message, history, grounding, selectedFacts, toolResult });
+    if (verification.valid) break;
+    if (attempt === 1) throw new Error(verification.reason);
+    correction = { reason: verification.reason, answer: composed.answer.trim() };
+    safeLog(logger, "response_retry", { reason: verification.reason });
+  }
   const provenance = responseProvenance({ grounding, selectedFacts, capability: decision.action, toolResult });
   safeLog(logger, "response_composed", { channel, latencyMs: Date.now() - started, personalityVersion: CORE_PERSONALITY_CONTRACT_VERSION });
   return { answer: composed.answer.trim(), decision, selectedFacts, toolResult, provenance };

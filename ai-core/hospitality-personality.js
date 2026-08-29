@@ -69,6 +69,14 @@ function shortStayDate(iso, language) {
   return `${Number(month)} 月 ${Number(day)} 日`;
 }
 
+function asksSubsidyParticipation(message, language) {
+  const source = String(message || "");
+  if (language === "en") return /(?:do|are|will|won't|not).{0,24}(?:participat|join).{0,24}(?:subsidy|program)|(?:subsidy|program).{0,24}(?:participat|join)/iu.test(source);
+  if (language === "ja") return /(?:補助|助成|キャンペーン).{0,20}(?:参加|対象)|(?:参加|対象).{0,20}(?:補助|助成|キャンペーン)/u.test(source);
+  if (language === "ko") return /(?:보조금|지원|행사).{0,20}(?:참여|대상)|(?:참여|대상).{0,20}(?:보조금|지원|행사)/u.test(source);
+  return /(?:(?:有|沒有|沒|是否|會|將會|不會).{0,10}(?:參加|加入)|(?:參加|加入).{0,10}(?:嗎|呢|沒有|沒)).{0,16}(?:國旅|旅遊|住宿|平日)?(?:補助|獎助|活動)|(?:國旅|旅遊|住宿|平日)?(?:補助|獎助|活動).{0,16}(?:(?:有|沒有|沒|是否|會|將會|不會).{0,10}(?:參加|加入)|(?:參加|加入).{0,10}(?:嗎|呢|沒有|沒))/u.test(source);
+}
+
 // This is the sole finalization boundary for ordinary guest-facing answers.
 // It may change presentation, never the selected fact set. Callers pass the
 // already-grounded draft; adapters only transport the returned text.
@@ -95,18 +103,24 @@ export function applyCorePersonalityContract({ draft, message, language = "zh-TW
 
 // Renderers receive an already-selected authoritative fact subset. They must
 // never look up hotel data themselves: personality is presentation, not truth.
-export function renderHospitalityFact({ topic, intent, facts, language = "zh-TW", channel = "web", temporalContext, bookingDates }) {
+export function renderHospitalityFact({ topic, intent, facts, message = "", language = "zh-TW", channel = "web", temporalContext, bookingDates }) {
   if (topic === "subsidy") {
     const subsidy = facts?.governmentSubsidy2026 || {};
     const status = subsidyStatusText(subsidy, temporalContext, language);
     const phase = subsidyPhase(subsidy, temporalContext);
-    if (phase !== "active" && intent !== "subsidy_overview" && intent !== "subsidy_period") {
+    if (phase !== "active" && intent !== "subsidy_overview" && intent !== "subsidy_participation" && intent !== "subsidy_period") {
       const detail = renderHospitalityFact({
         topic, intent, facts, language, channel,
         temporalContext: { ...temporalContext, date: "2026-10-15" }
       });
       const separator = language === "zh-TW" ? "；" : language === "ja" || language === "ko" ? "。" : ". ";
       return `${status}${separator}${detail}`;
+    }
+    if (intent === "subsidy_participation" || (intent === "subsidy_overview" && asksSubsidyParticipation(message, language))) {
+      if (language === "en") return `${phase === "ended" ? "We did participate" : "Yes, we are participating"}. ${status}.`;
+      if (language === "ja") return `${phase === "ended" ? "参加していました" : "はい、参加します"}。${status}。`;
+      if (language === "ko") return `${phase === "ended" ? "참여했습니다" : "네, 참여합니다"}. ${status}.`;
+      return `${phase === "ended" ? "有參加過喔，" : "有參加喔，"}${status}。`;
     }
     if (language === "en") {
       if (intent === "subsidy_period") return `${status}. It applies to Sunday-through-Thursday stays, excluding Fridays, Saturdays, and national long weekends. Funding may run out early, and the latest government announcement prevails.`;

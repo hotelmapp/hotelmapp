@@ -43,12 +43,38 @@ export async function executeCapability(name, { available, execute } = {}) {
 
 const COMPLETION_CLAIM = /(?:已(?:經)?(?:幫您)?(?:完成|處理|預留|保留|通知|送出|取消|修改)|(?:completed|reserved|notified|cancelled) (?:it|this|your))/iu;
 
+function numericAtoms(value) {
+  return (String(value ?? "").match(/\d[\d,]*/gu) || []).map(token => {
+    const digits = token.replace(/,/g, "");
+    const normalized = digits.replace(/^0+(?=\d)/u, "");
+    return normalized || "0";
+  });
+}
+
+function compositeNumericClaims(value) {
+  const text = String(value ?? "");
+  const claims = [];
+  for (const match of text.matchAll(/(\d{4})\s*(?:-|\/|年)\s*(\d{1,2})\s*(?:-|\/|月)\s*(\d{1,2})(?:\s*日)?/gu)) {
+    claims.push(`date:${Number(match[1])}-${Number(match[2])}-${Number(match[3])}`);
+    claims.push(`month-day:${Number(match[2])}-${Number(match[3])}`);
+  }
+  for (const match of text.matchAll(/(\d{1,2})\s*月\s*(\d{1,2})\s*日/gu)) {
+    claims.push(`month-day:${Number(match[1])}-${Number(match[2])}`);
+  }
+  for (const match of text.matchAll(/NT\$\s*(\d[\d,]*)/giu)) claims.push(`money:${Number(match[1].replace(/,/g, ""))}`);
+  for (const match of text.matchAll(/(?<!\d)(\d{1,2})[:：](\d{2})(?!\d)/gu)) claims.push(`time:${Number(match[1])}:${Number(match[2])}`);
+  return claims;
+}
+
 export function verifyFinalResponse({ answer, selectedFacts = [], toolResult }) {
   if (typeof answer !== "string" || !answer.trim()) return { valid: false, reason: "empty_answer" };
   if (COMPLETION_CLAIM.test(answer) && toolResult?.status !== "completed") return { valid: false, reason: "unverified_action_claim" };
-  const allowedTokens = new Set(selectedFacts.filter(f => f.certainty === "confirmed").flatMap(f => String(f.value).match(/(?:NT\$\s*)?[\d][\d,:：.–—/-]*/gu) || []));
-  const assertedTokens = answer.match(/(?:NT\$\s*)?[\d][\d,:：.–—/-]*/gu) || [];
+  const allowedTokens = new Set(selectedFacts.filter(f => f.certainty === "confirmed").flatMap(f => numericAtoms(f.value)));
+  const assertedTokens = numericAtoms(answer);
   if (assertedTokens.some(token => !allowedTokens.has(token))) return { valid: false, reason: "unsupported_numeric_fact" };
+  const allowedClaims = new Set(selectedFacts.filter(f => f.certainty === "confirmed").flatMap(f => compositeNumericClaims(f.value)));
+  const assertedClaims = compositeNumericClaims(answer);
+  if (assertedClaims.some(claim => !allowedClaims.has(claim))) return { valid: false, reason: "unsupported_numeric_fact" };
   return { valid: true };
 }
 

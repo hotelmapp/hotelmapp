@@ -15,9 +15,10 @@ async function answer(message, date = "2026-08-23", channel = "web") {
   return answerGuestMessage(message, { channel, temporalContext: temporal(date), handoffService: noHandoff });
 }
 
-test("knowledge V2.3 contains only the confirmed public subsidy rules", () => {
-  assert.equal(KNOWLEDGE_VERSION, "2.3");
+test("knowledge V2.4 contains only the confirmed public subsidy rules", () => {
+  assert.equal(KNOWLEDGE_VERSION, "2.4");
   const subsidy = hotelKnowledge.governmentSubsidy2026;
+  assert.equal(subsidy.hotelParticipation, true);
   assert.deepEqual(subsidy.period, {
     startsOn: "2026-09-01", endsOn: "2026-11-30",
     earlyEndRule: "政府活動經費用罄時可能提前結束。"
