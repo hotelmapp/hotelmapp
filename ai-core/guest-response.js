@@ -6,8 +6,8 @@ import { applyCorePersonalityContract, renderHospitalityFact, styledInstructions
 import { temporalContextPrompt, temporalContextProvider } from "./temporal-context.js";
 import { breakfastArrivalReply, knowledgeGroundingInstructions, parkingReply, resolveKnowledgeGrounding, validateGroundedResponse } from "./knowledge-grounding.js";
 import { tryAiFirstReasoning } from "./ai-orchestrator.js";
+import { configuredReasoning, configuredTextModel, DEFAULT_TEXT_REASONING_EFFORT } from "./model-config.js";
 
-const OPENAI_MODEL = process.env.OPENAI_MODEL?.trim() || "gpt-4.1-mini";
 const MAX_HISTORY_MESSAGES = 20;
 const MAX_MESSAGE_LENGTH = 2_000;
 
@@ -225,14 +225,20 @@ export function frontDeskContactReply(message) {
   return `可以直接撥櫃檯電話 ${hotelKnowledge.contact.frontDeskPhone}，服務時間是 ${hotelKnowledge.contact.deskHours}。需要我幫您通知櫃檯嗎？`;
 }
 
-export function responsesPayload(message, history = [], channel = "web", temporalContext = temporalContextProvider.getContext(), grounding = resolveKnowledgeGrounding(message, history)) {
+export function responsesPayload(message, history = [], channel = "web", temporalContext = temporalContextProvider.getContext(), grounding = resolveKnowledgeGrounding(message, history), env = process.env) {
   grounding = withDatedBookingContext(grounding, message, temporalContext);
   const conversation = normalizedHistory(history);
   const responseLanguage = detectGuestLanguage(message, conversation);
   const contextText = [...conversation.map(item => item.content), message].join("\n");
   const relevant = relevantKnowledge(contextText);
+  const model = configuredTextModel(env);
   return {
-    model: OPENAI_MODEL,
+    model,
+    max_output_tokens: 1_200,
+    ...configuredReasoning(model, env, {
+      componentKeys: ["OPENAI_RESPONSE_REASONING_EFFORT"],
+      fallback: DEFAULT_TEXT_REASONING_EFFORT
+    }),
     instructions: `${styledInstructions(channel)}
 
 ${temporalContextPrompt(temporalContext)}
@@ -294,7 +300,7 @@ export async function answerGuestMessage(message, { history = [], channel = "web
   // relationship between them. Concatenating canned answers can be accurate in
   // isolation while still missing what the guest actually asked.
   if (grounding.topic === "multi" || grounding.semanticRoute?.clarificationNeeded) {
-    const payload = responsesPayload(trimmed, history, channel, temporalContext, grounding);
+    const payload = responsesPayload(trimmed, history, channel, temporalContext, grounding, env);
     const generated = (await requestGroundedResponse({ payload, validate: answer => validateGroundedResponse(answer, grounding) })).answer;
     return finalizeGuestAnswer(generated, { message: trimmed, history, channel });
   }
@@ -302,7 +308,7 @@ export async function answerGuestMessage(message, { history = [], channel = "web
   const directAnswer = breakfastArrivalReply(trimmed, grounding) || groundedHospitalityAnswer || parkingReply(grounding) || frontDeskContactReply(trimmed) || sensitiveSituationReply(trimmed) || availabilityReply(trimmed) || specialRequestReply(trimmed) || informationalReply(trimmed);
   if (directAnswer) return finalizeGuestAnswer(directAnswer, { message: trimmed, history, channel });
 
-  const payload = responsesPayload(trimmed, history, channel, temporalContext, grounding);
+  const payload = responsesPayload(trimmed, history, channel, temporalContext, grounding, env);
   const generated = (await requestGroundedResponse({ payload, validate: answer => validateGroundedResponse(answer, grounding) })).answer;
   return finalizeGuestAnswer(generated, { message: trimmed, history, channel });
 }

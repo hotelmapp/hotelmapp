@@ -1,6 +1,7 @@
 import { explicitTopics, groundingForTopics, resolveKnowledgeGrounding } from "./knowledge-grounding.js";
 import { requestGroundedResponse } from "./response-service.js";
 import { HANDOFF_CATEGORY_NAMES } from "./handoff.js";
+import { configuredReasoning, configuredTextModel, DEFAULT_ROUTING_REASONING_EFFORT } from "./model-config.js";
 
 export const SEMANTIC_ROUTER_VERSION = "2.1";
 export const SEMANTIC_ROUTER_FEATURE_FLAG = "SEMANTIC_ROUTER_ENABLED";
@@ -110,9 +111,14 @@ function parseSemanticRoute(answer, message) {
 }
 
 export function semanticRoutePayload(message, history = [], env = process.env) {
+  const model = configuredTextModel(env, "OPENAI_ROUTER_MODEL");
   return {
-    model: env.OPENAI_ROUTER_MODEL?.trim() || env.OPENAI_MODEL?.trim() || "gpt-4.1-mini",
-    max_output_tokens: 350,
+    model,
+    max_output_tokens: 800,
+    ...configuredReasoning(model, env, {
+      componentKeys: ["OPENAI_ROUTER_REASONING_EFFORT"],
+      fallback: DEFAULT_ROUTING_REASONING_EFFORT
+    }),
     instructions: `You are HotelMapp's semantic conversation router. Return only the required JSON; do not answer the guest and do not invent hotel facts. Understand the complete CURRENT message first: subject, object, requested action, time, negation, condition, and all distinct needs. The current message always outranks stored or older topics. Use recent history only to resolve a genuinely omitted referent.
 
 Critical continuity rules:

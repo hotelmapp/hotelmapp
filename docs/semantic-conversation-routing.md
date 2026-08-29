@@ -27,8 +27,10 @@ object, time, and requested action are part of the routing instructions.
 
 `SEMANTIC_ROUTER_ENABLED` is enabled by default and may be set to `false` for an
 immediate rollback. `OPENAI_ROUTER_MODEL` optionally selects a router model;
-otherwise the shared `OPENAI_MODEL` is used. `SEMANTIC_ROUTER_TIMEOUT_MS` defaults
-to 5000 ms and is capped at 10000 ms.
+otherwise the shared `OPENAI_MODEL` is used, then the central default
+`gpt-5.6-terra`. The router uses low reasoning by default for latency-sensitive
+classification; `OPENAI_ROUTER_REASONING_EFFORT` may override it.
+`SEMANTIC_ROUTER_TIMEOUT_MS` defaults to 5000 ms and is capped at 10000 ms.
 
 If the model is unavailable, times out, returns invalid JSON, or contradicts a
 clear current-message topic, routing falls back to deterministic grounding. The
