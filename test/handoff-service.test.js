@@ -115,15 +115,26 @@ test("partial contact details do not get discarded as a new booking question", (
 
 test("a short acceptance immediately after an unknown-information offer starts handoff", () => {
   const state = advanceHandoffAuthorization({
-    message: "需要喔",
+    message: "好的",
     history: [
       { role: "user", content: "小朋友早餐多少錢？" },
-      { role: "assistant", content: "這項資訊目前沒有確認到正確資訊，為避免提供錯誤答案，需要我幫您轉請櫃檯回覆嗎？" }
+      { role: "assistant", content: "不好意思，這個問題我目前沒有確認到正確資料。若您急著確認，可以撥打櫃檯電話 04-2707-8378；也可以回覆「幫我轉接櫃檯」，我會協助您留言給櫃檯。" }
     ],
     current: { state: "none" }
   });
   assert.equal(state.handoff.state, "collecting_required_fields");
   assert.equal(state.handoff.category, "真人服務");
+  assert.match(state.reply, /姓名.*電話或 Email/u);
+});
+
+test("the offered transfer phrase enters contact collection without sending", () => {
+  const state = advanceHandoffAuthorization({
+    message: "幫我轉接櫃檯",
+    current: { state: "none" }
+  });
+  assert.equal(state.handoff.state, "collecting_required_fields");
+  assert.equal(state.handoff.category, "真人服務");
+  assert.equal(state.authorized, false);
   assert.match(state.reply, /姓名.*電話或 Email/u);
 });
 

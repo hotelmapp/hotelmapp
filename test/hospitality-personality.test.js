@@ -56,16 +56,17 @@ test("personality changes presentation without changing canonical hotel facts", 
 
 test("unknown information stays warm and is never invented", () => {
   const answer = breakfastReply("小朋友早餐多少錢？");
-  assert.match(answer, /目前沒有確認到正確資訊/);
-  assert.match(answer, /需要我幫您轉請櫃檯回覆嗎/);
+  assert.match(answer, /目前沒有確認到正確資料/);
+  assert.match(answer, /櫃檯電話 04-2707-8378/u);
+  assert.match(answer, /回覆「幫我轉接櫃檯」/u);
   assert.doesNotMatch(answer, /(?:NT\$|元|價格是)\s*\d+/u);
 });
 
 test("unknown-answer guidance offers one simple, consent-based handoff", () => {
   const instructions = responsesPayload("房內有熨斗嗎？", [], "line").instructions;
-  assert.match(instructions, /需要我幫您轉請櫃檯回覆嗎/);
+  assert.match(instructions, /急件可撥櫃檯電話 04-2707-8378/u);
+  assert.match(instructions, /回覆「幫我轉接櫃檯」/u);
   assert.match(instructions, /不要要求旅客重述問題/);
-  assert.match(instructions, /不要同時堆疊電話、表單、訂房連結/u);
   assert.match(instructions, /本輪不得聲稱已通知或已送出/u);
 });
 
@@ -96,7 +97,7 @@ test("LINE, Messenger, and Web render the same grounded parking answer", async (
   const options = { handoffService: async () => ({ attempted: false }) };
   const answers = await Promise.all(["line", "messenger", "web"].map(channel => answerGuestMessage("有附停車位嗎？", { ...options, channel })));
   assert.equal(new Set(answers).size, 1);
-  assert.match(answers[0], /^有喔～.*3 個路邊停車格/u);
+  assert.match(answers[0], /^您好～飯店門口有 3 個路邊停車格/u);
   assert.match(answers[0], /停滿.*步行約 3 分鐘.*配合停車場/u);
 });
 
@@ -142,8 +143,9 @@ test("channel adapters contain presentation wiring, not duplicated personality r
 
 test("parking fee is complete and hospitable without disclosing location", async () => {
   const answer = await answerGuestMessage("停車要收費嗎？", { handoffService: async () => ({ attempted: false }) });
-  assert.match(answer, /每間客房都有 1 台免費停車/);
+  assert.match(answer, /^您好～每間客房可以免費停 1 台車/u);
   assert.match(answer, /第 2 台車.*NT\$200/);
+  assert.match(answer, /喔。$/u);
   assert.doesNotMatch(answer, /3 個車位|配合停車場/);
 });
 
