@@ -2,11 +2,11 @@ import { detectGuestLanguage } from "../guest-language.js";
 import { validateGroundedResponse } from "./knowledge-grounding.js";
 import { verifyFinalResponse } from "./reasoning-core.js";
 
-const GENERIC_PERMISSION_OPENING = /^(?:(?:您好|哈囉|嗨)[～~，,。.!！\s]*)?(?:好的|了解|可以(?:的|喔)?|當然可以|沒問題)(?:[～~，,。.!！\s]|$)/u;
+const GENERIC_PERMISSION_OPENING = /^(?:(?:您好|哈囉|嗨)[😊😀🙂✨❤️～~，,。.!！\s]*)?(?:好的|了解|可以(?:的|喔)?|當然可以|沒問題)(?:[😊😀🙂✨❤️～~，,。.!！\s]|$)/u;
 const EXPLICIT_PERMISSION_REQUEST = /(?:可以|可不可以|可否|能不能|能否|請幫|幫我|協助我|\b(?:can|could|may|would)\b.{0,24}\b(?:you|i|we)\b|できますか|可能ですか|お願い|할 수 있|가능한가|도와)/iu;
 const NEGATIVE_SUBSIDY_PARTICIPATION = /(?:(?:你們|飯店|希堤微旅).{0,10})?(?:沒有|沒|不)(?:參加|加入).{0,12}(?:國旅|旅遊|住宿|平日)?(?:補助|獎助|活動)|(?:國旅|旅遊|住宿|平日)?(?:補助|獎助|活動).{0,12}(?:沒有|沒|不)(?:參加|加入)/u;
 const GREETING_PREFIX = /^(?:(?:您好|哈囉|嗨)[～~，,。.!！\s]*)/u;
-const CONTEXTUAL_ACKNOWLEDGEMENT = /^(?:(?:您好|哈囉|嗨)[～~，,。.!！\s]*)?了解[～~，,。.!！\s]*您.{0,30}(?:想|詢問|確認|在意|擔心|提到)/u;
+const CONTEXTUAL_ACKNOWLEDGEMENT = /^(?:(?:您好|哈囉|嗨)[😊😀🙂✨❤️～~，,。.!！\s]*)?了解[😊😀🙂✨❤️～~，,。.!！\s]*您.{0,30}(?:想|詢問|確認|在意|擔心|提到)/u;
 
 function normalizedHistory(history) {
   return Array.isArray(history)

@@ -46,6 +46,10 @@ Formal wording alone is not warmth: a lone 「請」, 「了解」, or 「好的
 satisfy the validator. A follow-up must naturally reflect the guest's actual
 concern or provide a guest-facing service step, while still avoiding repeated
 greetings and irrelevant permission openings such as 「可以喔」。
+When an answer cannot promise a result, it must acknowledge what the guest is
+trying to confirm, explain the uncertainty in plain language, and offer the
+part that can be checked. A policy or government-system disclaimer cannot be
+the complete answer.
 
 Realtime Voice receives the same contract as immutable session instructions,
 because audio is generated peer-to-peer and no server-side text exists to

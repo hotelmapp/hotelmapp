@@ -34,10 +34,11 @@ test("the screenshot follow-up becomes date applicability and asks only for the 
     history, grounding: selected, temporalContext,
     env: { AI_FIRST_ORCHESTRATOR_ENABLED: "false" }, logger: silentLogger
   });
-  assert.match(answer, /^了解～您是想確認國定連假前一天/u);
-  assert.match(answer, /國定連續假日本身不適用/u);
+  assert.match(answer, /^了解😊 您是想先確認國定連假前一天/u);
+  assert.match(answer, /政府活動系統當下的查詢結果為準/u);
   assert.match(answer, /週日至週四/u);
-  assert.match(answer, /預計入住的日期/u);
+  assert.match(answer, /無法先保證一定可以使用，還請您見諒/u);
+  assert.match(answer, /預計入住日期/u);
   assert.doesNotMatch(answer, /^您好/u, "a follow-up should connect naturally instead of greeting again");
   assert.doesNotMatch(answer, /^是否適用仍需以政府活動系統/u);
 });
@@ -83,7 +84,7 @@ test("a formal government-system deflection fails both usefulness and warmth che
   const selected = grounding(message);
   const facts = groundedFactSet(selected.facts);
   const cold = "是否適用仍需以政府活動系統查詢結果為準；即使是國定連假前一天，也無法先保證一定可使用。活動規則與額度請以政府最新公告為準。";
-  const natural = "了解～您是想確認國定連假前一天入住能不能使用補助。國定連續假日本身不適用；連假前一天要看實際入住日期是否落在週日至週四。方便告訴我預計入住的日期嗎？";
+  const natural = "了解😊 您是想先確認國定連假前一天入住是否能使用補助。是否符合補助資格，仍需以政府活動系統當下的查詢結果為準；即使是連假前一天，也要看實際入住日期是否落在週日至週四，因此目前無法先保證一定可以使用，還請您見諒～方便告訴我預計入住日期嗎？";
   assert.deepEqual(validateUnifiedReply({ answer: cold, message, history, grounding: selected, selectedFacts: facts }), { valid: false, reason: "current_need_not_answered_first" });
   assert.equal(validateUnifiedReply({ answer: natural, message, history, grounding: selected, selectedFacts: facts }).valid, true);
 });
@@ -102,7 +103,7 @@ test("the unified composer retries a cold mid-conversation answer with a context
   };
   const replies = [
     "是否適用仍需以政府活動系統查詢結果為準；即使是國定連假前一天，也無法先保證一定可使用。活動規則與額度請以政府最新公告為準。",
-    "了解～您是想確認國定連假前一天入住能不能使用補助。國定連續假日本身不適用；連假前一天要看實際入住日期是否落在週日至週四。方便告訴我預計入住的日期嗎？"
+    "了解😊 您是想先確認國定連假前一天入住是否能使用補助。是否符合補助資格，仍需以政府活動系統當下的查詢結果為準；即使是連假前一天，也要看實際入住日期是否落在週日至週四，因此目前無法先保證一定可以使用，還請您見諒～方便告訴我預計入住日期嗎？"
   ];
   const payloads = [];
   const result = await orchestrateHospitalityTurn({
@@ -114,5 +115,5 @@ test("the unified composer retries a cold mid-conversation answer with a context
   });
   assert.equal(payloads.length, 2);
   assert.match(payloads[1].instructions, /current_need_not_answered_first/u);
-  assert.match(result.answer, /^了解～您是想確認/u);
+  assert.match(result.answer, /^了解😊 您是想先確認/u);
 });
