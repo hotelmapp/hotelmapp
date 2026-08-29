@@ -79,7 +79,7 @@ test("semantic router applies a strict current-turn-first model decision", async
     usedHistory: false,
     clarificationNeeded: false,
     handoff: { requested: false, category: null },
-    routerVersion: "2.1"
+    routerVersion: "2.2"
   });
   assert.equal(calls.length, 1);
   assert.match(calls[0].payload.instructions, /complete CURRENT message/u);

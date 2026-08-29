@@ -4,6 +4,7 @@ import { advanceHandoffAuthorization, performAuthorizedHandoff } from "../handof
 import { ConversationService } from "./service.js";
 import { conversationStoreFromEnv } from "./store.js";
 import { resolveSemanticKnowledgeGrounding } from "../semantic-router.js";
+import { temporalContextProvider } from "../temporal-context.js";
 
 const memoryUnavailableHandoff = async () => ({
   attempted: true, delivered: false,
@@ -29,6 +30,7 @@ export async function answerWithConversation({
   env = process.env,
   logger = console
 }) {
+  const temporalContext = temporalContextProvider.getContext();
   let history;
   let durableHandoff = null;
   let storedTopic = null;
@@ -46,11 +48,11 @@ export async function answerWithConversation({
       const response = (await memoryUnavailableHandoff()).answer;
       return { answer: response, durable: false, memoryError: error };
     }
-    const response = await answer(message, { history: [], channel, identity });
+    const response = await answer(message, { history: [], channel, identity, temporalContext });
     return { answer: response, durable: false, memoryError: error };
   }
 
-  const grounding = await route(message, history, storedTopic, storedIntent, { env, logger });
+  const grounding = await route(message, history, storedTopic, storedIntent, { env, logger, temporalContext });
   const decision = resolveHandoffDecision(message, history, grounding?.semanticRoute);
   const authorization = advanceHandoffAuthorization({ message, history, identity, current: durableHandoff, decision });
   let nextHandoff = authorization.handoff || durableHandoff || { state: "none" };
@@ -80,7 +82,7 @@ export async function answerWithConversation({
     response = authorization.reply;
   } else {
     response = await answer(message, {
-      history, channel, identity, grounding
+      history, channel, identity, grounding, temporalContext
     });
   }
 

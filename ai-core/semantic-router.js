@@ -1,9 +1,9 @@
-import { explicitTopics, groundingForTopics, resolveKnowledgeGrounding } from "./knowledge-grounding.js";
+import { explicitTopics, groundingForTopics, resolveKnowledgeGrounding, resolveRequestedIntent, subsidyDateRequestContext } from "./knowledge-grounding.js";
 import { requestGroundedResponse } from "./response-service.js";
 import { HANDOFF_CATEGORY_NAMES } from "./handoff.js";
 import { configuredReasoning, configuredTextModel, DEFAULT_ROUTING_REASONING_EFFORT } from "./model-config.js";
 
-export const SEMANTIC_ROUTER_VERSION = "2.1";
+export const SEMANTIC_ROUTER_VERSION = "2.2";
 export const SEMANTIC_ROUTER_FEATURE_FLAG = "SEMANTIC_ROUTER_ENABLED";
 
 const MAX_HISTORY_MESSAGES = 12;
@@ -13,7 +13,7 @@ const DEFAULT_TIMEOUT_MS = 5_000;
 const INTENTS_BY_TOPIC = Object.freeze({
   breakfast: ["breakfast"],
   parking: ["parking_availability", "parking_fee", "parking_partner_location", "parking_location", "parking_process", "parking_reservation", "parking_problem"],
-  subsidy: ["subsidy_overview", "subsidy_participation", "subsidy_amount", "subsidy_period", "subsidy_booking_channel", "subsidy_participation_limit", "subsidy_birthday_voucher", "subsidy_taiwan_pass", "subsidy_stacking", "subsidy_registration", "subsidy_documentation", "subsidy_eligibility", "subsidy_third_night"],
+  subsidy: ["subsidy_overview", "subsidy_participation", "subsidy_date_applicability", "subsidy_amount", "subsidy_period", "subsidy_booking_channel", "subsidy_participation_limit", "subsidy_birthday_voucher", "subsidy_taiwan_pass", "subsidy_stacking", "subsidy_registration", "subsidy_documentation", "subsidy_eligibility", "subsidy_third_night"],
   booking: ["booking_direct", "booking_availability", "booking_modify_cancel"],
   wifi: ["wifi"],
   check_in: ["check_in"],
@@ -130,6 +130,7 @@ Critical continuity rules:
 - “那第二台呢？” immediately after parking may use history and is parking_fee.
 - “配合的停車場在哪邊？” and “門口滿了，特約停車場在哪裡？” are parking_partner_location. They require the partner lot's actual landmark, walking time, and plate-registration flow; never answer only with the entrance-space count.
 - A question asking whether HotelMapp participates in the subsidy, including a negative form such as 「你們沒有參加國旅補助嗎？」, is subsidy_participation. It is not a request for every subsidy rule.
+- A question asking whether a specific date, weekday, the day before a national long holiday, or a long-holiday date is covered by the subsidy is subsidy_date_applicability, not subsidy_eligibility. If the guest gives no actual stay date, set clarification_needed=true so the answer can state the published day rule and ask only for that date. Personal qualification, allowance, or remaining funding is subsidy_eligibility.
 - The word 折抵 alone is ambiguous. Route it to parking only when the current sentence or the uninterrupted recent topic is actually about parking.
 - Use unknown only when no supported topic can be determined. Use multiple routes only when the current request truly contains multiple needs.
 
@@ -152,9 +153,10 @@ function safeErrorCode(error) {
 export async function resolveSemanticKnowledgeGrounding(message, history = [], storedTopic = null, storedIntent = null, {
   request = requestGroundedResponse,
   env = process.env,
-  logger = console
+  logger = console,
+  temporalContext = null
 } = {}) {
-  const fallback = resolveKnowledgeGrounding(message, history, storedTopic, storedIntent);
+  const fallback = resolveKnowledgeGrounding(message, history, storedTopic, storedIntent, temporalContext);
   if (!semanticRouterEnabled(env)) return fallback;
   // Unit tests and local deterministic operation do not need to manufacture an
   // upstream error when no production API key exists. Injected requests still
@@ -169,7 +171,21 @@ export async function resolveSemanticKnowledgeGrounding(message, history = [], s
       apiKey: env.OPENAI_API_KEY?.trim(),
       timeoutMs
     });
-    const decision = parseSemanticRoute(result.answer, message);
+    let decision = parseSemanticRoute(result.answer, message);
+    // Date applicability is a factual calendar boundary, not a soft model
+    // preference. Preserve the model's whole-sentence understanding while
+    // preventing a high-confidence date question from collapsing back into a
+    // generic personal-eligibility disclaimer.
+    const routedSubsidy = decision.routes.some(route => route.topic === "subsidy");
+    const subsidyIntent = routedSubsidy ? resolveRequestedIntent(message, "subsidy", history, storedIntent) : null;
+    if (routedSubsidy && subsidyIntent === "subsidy_date_applicability") {
+      const requestContext = subsidyDateRequestContext(message, temporalContext);
+      decision = {
+        ...decision,
+        routes: decision.routes.map(route => route.topic === "subsidy" ? { ...route, intent: "subsidy_date_applicability" } : route),
+        clarification_needed: decision.clarification_needed || !requestContext.requestedStayDate
+      };
+    }
     const knownRoutes = decision.routes.filter(route => route.topic !== "unknown");
     const topics = knownRoutes.map(route => route.topic);
     const intents = Object.fromEntries(knownRoutes.map(route => [route.topic, route.intent]));
@@ -181,7 +197,7 @@ export async function resolveSemanticKnowledgeGrounding(message, history = [], s
       clarificationNeeded: decision.clarification_needed
     });
     return {
-      ...groundingForTopics(message, topics, history, storedIntent, intents),
+      ...groundingForTopics(message, topics, history, storedIntent, intents, temporalContext),
       semanticRoute: Object.freeze({
         currentNeed: decision.current_need,
         usedHistory: decision.uses_history,
