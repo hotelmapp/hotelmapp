@@ -96,6 +96,21 @@ test("parking intent selects fee, availability, process, and authoritative follo
   assert.doesNotMatch(reservation, /目前沒有確認|建議.*櫃檯確認/u);
 });
 
+test("partner parking location answers the requested address instead of replaying entrance capacity", async () => {
+  for (const message of ["配合的停車場在哪邊？", "門口滿了，特約停車場在哪裡呢？"]) {
+    const grounding = resolveKnowledgeGrounding(message);
+    assert.equal(grounding.topic, "parking");
+    assert.equal(grounding.intent, "parking_partner_location");
+    assert.equal(grounding.facts.parking.partnerLots[0].address, "台中市西屯區智惠街135號旁空地");
+
+    const answer = await answerGuestMessage(message, { channel: "line", handoffService: noHandoff });
+    assert.match(answer, /智惠全國停車場/u);
+    assert.match(answer, /台中市西屯區智惠街135號旁空地/u);
+    assert.match(answer, /車牌.*櫃檯.*折抵/u);
+    assert.doesNotMatch(answer, /門口有 3 個車位|門口可停 3 台車/u);
+  }
+});
+
 test("Wi-Fi is grounded by room number with the confirmed password", async () => {
   const grounding = resolveKnowledgeGrounding("房間 WiFi 怎麼連？");
   assert.equal(grounding.topic, "wifi");

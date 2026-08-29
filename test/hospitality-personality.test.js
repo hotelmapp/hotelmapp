@@ -72,6 +72,12 @@ test("simple breakfast time stays concise and naturally friendly", () => {
   assert.equal(breakfastReply("早餐幾點？"), "早餐時間是 08:00–10:00 喔～");
 });
 
+test("shared personality requires contextual warmth rather than a bare acknowledgement prefix", () => {
+  const instructions = hospitalityPersonalityInstructions();
+  assert.match(instructions, /不能只在資料句前加「了解」、「好的」或「可以的」/u);
+  assert.match(instructions, /不得把上一輪答案換個開頭再重複一次/u);
+});
+
 test("vegetarian breakfast offers the confirmed arrangement in a service-first tone", () => {
   const answer = breakfastReply("早餐可以素食嗎？");
   assert.match(answer, /^可以喔～/);

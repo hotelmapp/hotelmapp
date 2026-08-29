@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { answerGuestMessage } from "../ai-core/guest-response.js";
 import { resolveKnowledgeGrounding } from "../ai-core/knowledge-grounding.js";
 import { resolveHandoffDecision } from "../ai-core/handoff.js";
 import {
@@ -26,6 +27,30 @@ test("historical topic mistakes stay fixed as one regression matrix", () => {
     assert.equal(grounding.topic, topic, message);
     assert.equal(grounding.intent, intent, message);
   }
+});
+
+test("parking address follow-ups and dated booking links keep the newly requested detail", async () => {
+  const parkingHistory = [
+    { role: "user", content: "配合的停車場在哪邊？" },
+    { role: "assistant", content: "飯店門口有 3 個車位。" }
+  ];
+  const parking = resolveKnowledgeGrounding("門口滿了，特約停車場在哪裡呢？", parkingHistory);
+  assert.equal(parking.intent, "parking_partner_location");
+  const parkingAnswer = await answerGuestMessage("門口滿了，特約停車場在哪裡呢？", {
+    history: parkingHistory,
+    channel: "line"
+  });
+  assert.match(parkingAnswer, /智惠全國停車場.*台中市西屯區智惠街135號旁空地/u);
+  assert.doesNotMatch(parkingAnswer, /門口有 3 個車位|門口可停 3 台車/u);
+
+  const bookingAnswer = await answerGuestMessage("請問9月30號還有房間嗎？", {
+    channel: "line",
+    temporalContext: { date: "2026-08-29", timezone: "Asia/Taipei" },
+    env: { AI_FIRST_ORCHESTRATOR_ENABLED: "false" }
+  });
+  assert.match(bookingAnswer, /checkInDate=2026-09-30/u);
+  assert.match(bookingAnswer, /checkOutDate=2026-10-01/u);
+  assert.match(bookingAnswer, /把日期帶進官方訂房頁面/u);
 });
 
 test("information, booking and staff-action meanings remain distinct", () => {

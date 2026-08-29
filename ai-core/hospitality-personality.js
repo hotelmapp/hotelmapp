@@ -3,7 +3,7 @@
 // how an already-grounded answer is communicated.
 export function hospitalityPersonalityInstructions() {
   return `你是希堤微旅的櫃檯同事，以溫暖、自然、可靠的台灣待客方式協助旅客。你聽起來應像成熟、會看場合的真人櫃檯夥伴，不像資料庫、客服腳本、政策文件、主播、電商客服或 IVR。
-先判斷需求與情緒，再決定回答方式。一般情境保持愉快、爽朗、坦率、親切，不官腔也不過度熱情。回答順序固定以服務價值為準：先直接回答客人當下真正問的事，再自然補充最重要的相關細節；只有確實能推進旅程時，才提供一個具體下一步或問一個簡短的相關問題。可以從語境理解客人可能在意的事，但不可把推測當成飯店事實。不要每則都追問，也不要固定追問「還有什麼可以幫您」。簡單 FAQ 一兩句就能說清楚時不要刻意拉長；可直接協助的需求，說明能如何安排；需要客人採取行動時，再自然補上下一步。
+先判斷需求與情緒，再決定回答方式。一般情境保持愉快、爽朗、坦率、親切，不官腔也不過度熱情。回答順序固定以服務價值為準：先直接回答客人當下真正問的事，再自然補充最重要的相關細節；只有確實能推進旅程時，才提供一個具體下一步或問一個簡短的相關問題。可以從語境理解客人可能在意的事，但不可把推測當成飯店事實。不要每則都追問，也不要固定追問「還有什麼可以幫您」。簡單 FAQ 一兩句就能說清楚時不要刻意拉長；可直接協助的需求，說明能如何安排；需要客人採取行動時，再自然補上下一步。親切感要來自理解本輪細節、自然承接與實用措辭，不能只在資料句前加「了解」、「好的」或「可以的」。客人追問時只補充新問的部分，不得把上一輪答案換個開頭再重複一次。
 一般 FAQ、早餐、停車與旅遊資訊可依語境自然輪替「有喔～」、「可以喔～」、「沒問題～」、「好的～」、「可以的」、「當然可以」、「如果您需要的話」、「如果您是開車過來」、「我這邊幫您說明一下」等台灣口語。保留這些服務溫度，但不要每次固定開場、堆疊語助詞、過度撒嬌或形成罐頭模板。
 資訊不完整或不確定時，溫和坦白地說「我這邊目前沒有確認到耶～」，並說明如何取得較準確的資訊，不使用機械式系統語言。遇到限制時，先說可以怎麼協助，再說明限制。
 客訴、設備故障、付款問題、退款爭議、訂房異常、遺失物、緊急需求，或客人明顯焦急、不滿時，立即收斂成平穩、明確、有同理心的語氣；不用歡樂 emoji、「～」或「沒問題喔」等輕快承接，也不淡化情況。清楚說明應由誰協助與安全的下一步，不假裝事情已處理完成。
@@ -27,11 +27,11 @@ export function styledInstructions(channel = "web") {
   return `${hospitalityPersonalityInstructions()}\n${channelPresentationInstructions(channel)}`;
 }
 
-export const CORE_PERSONALITY_CONTRACT_VERSION = "hotelmapp-core-personality/1";
+export const CORE_PERSONALITY_CONTRACT_VERSION = "hotelmapp-core-personality/2";
 export const CUSTOMER_CHANNELS = Object.freeze(["web", "line", "messenger", "instagram", "voice"]);
 
 const WARM_OPENING = Object.freeze({
-  "zh-TW": ["好的，", "了解，", "可以的，"],
+  "zh-TW": ["好的～", "可以喔～", "沒問題，"],
   en: ["Certainly—", "Of course—", "Got it—"],
   ja: ["承知しました。", "はい、", "かしこまりました。"],
   ko: ["네, ", "알겠습니다. ", "물론입니다. "]
@@ -85,6 +85,16 @@ function subsidyStatusText(subsidy, temporalContext, language) {
   return "希堤微旅目前有參加 2026 平日住宿補助，活動期間至 11 月 30 日止";
 }
 
+function shortStayDate(iso, language) {
+  const match = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})$/u);
+  if (!match) return iso;
+  const [, year, month, day] = match;
+  if (language === "en") return `${year}-${month}-${day}`;
+  if (language === "ja") return `${Number(month)}月${Number(day)}日`;
+  if (language === "ko") return `${Number(month)}월 ${Number(day)}일`;
+  return `${Number(month)} 月 ${Number(day)} 日`;
+}
+
 // This is the sole finalization boundary for ordinary guest-facing answers.
 // It may change presentation, never the selected fact set. Callers pass the
 // already-grounded draft; adapters only transport the returned text.
@@ -103,7 +113,7 @@ export function applyCorePersonalityContract({ draft, message, language = "zh-TW
 
 // Renderers receive an already-selected authoritative fact subset. They must
 // never look up hotel data themselves: personality is presentation, not truth.
-export function renderHospitalityFact({ topic, intent, facts, language = "zh-TW", channel = "web", temporalContext }) {
+export function renderHospitalityFact({ topic, intent, facts, language = "zh-TW", channel = "web", temporalContext, bookingDates }) {
   const voice = channel === "voice";
   if (topic === "subsidy") {
     const subsidy = facts?.governmentSubsidy2026 || {};
@@ -166,6 +176,14 @@ export function renderHospitalityFact({ topic, intent, facts, language = "zh-TW"
       return `如果是直接向飯店或官網訂房，可以在 ${contact.deskHours} 撥櫃檯電話 ${contact.frontDeskPhone} 協助確認；若是 Agoda、Booking.com、Trip.com 等平台訂房，原則上要向原平台申請修改或取消。`;
     }
     if (intent === "booking_availability") {
+      if (bookingDates) {
+        const arrival = shortStayDate(bookingDates.checkInDate, language);
+        const departure = shortStayDate(bookingDates.checkOutDate, language);
+        if (language === "en") return `Of course—I've set the official booking page to your ${arrival} check-in and ${departure} check-out dates, so the link opens directly to the latest rates and availability: ${bookingUrl}`;
+        if (language === "ja") return `はい、${arrival}チェックイン・${departure}チェックアウトの日付を公式予約ページに設定しました。リンクを開くと、その日程の最新料金と空室状況を直接確認できます：${bookingUrl}`;
+        if (language === "ko") return `네, 공식 예약 페이지에 ${arrival} 체크인, ${departure} 체크아웃 날짜를 미리 설정했습니다. 링크를 열면 해당 일정의 최신 요금과 객실 상황을 바로 확인할 수 있습니다: ${bookingUrl}`;
+        return `可以喔～您要查的是 ${arrival}入住、${departure}退房，我已經把日期帶進官方訂房頁面了；點開就會直接看到這段日期的即時房價與房況：${bookingUrl}`;
+      }
       if (language === "en") return `For current room availability and rates, please check the official booking page: ${bookingUrl}`;
       if (language === "ja") return `最新の空室状況と料金は、公式予約ページでご確認いただけます：${bookingUrl}`;
       if (language === "ko") return `실시간 객실 상황과 요금은 공식 예약 페이지에서 확인해 주세요: ${bookingUrl}`;
@@ -190,11 +208,20 @@ export function renderHospitalityFact({ topic, intent, facts, language = "zh-TW"
       if (language === "ko") return `네, 객실당 차량 ${freeCars}대는 무료이고 두 번째 차량은 ${additionalFee}입니다.`;
       return `可以的${voice ? "，" : "～如果您是兩台車過來，"}${String(rule).replace("每間客房提供", "每間客房都有").replace("；", "，")}`;
     }
+    if (intent === "parking_partner_location") {
+      const lot = parking.partnerLots?.[0];
+      if (!lot) return null;
+      if (language === "en") return `If the entrance spaces are full, you can use ${lot.name} at ${lot.address} (${lot.landmark}). After parking, please give your license plate number to the front desk for validation.`;
+      if (language === "ja") return `ホテル入口が満車の場合は「${lot.name}」をご利用いただけます。住所は${lot.address}で、${lot.landmark} 駐車後、割引処理のためフロントへ車両番号をお知らせください。`;
+      if (language === "ko") return `호텔 입구가 만차이면 '${lot.name}'을 이용하실 수 있습니다. 주소는 ${lot.address}이며 ${lot.landmark} 주차 후 할인 처리를 위해 프런트에 차량 번호를 알려 주세요.`;
+      return `可以喔～門口滿位時，請導航到配合停車場「${lot.name}」，地址是 ${lot.address}，位置在${lot.landmark}。停好後再把車牌告訴櫃檯，我們會幫您辦理折抵。`;
+    }
     if (intent === "parking_location") {
+      const lot = parking.partnerLots?.[0];
       if (language === "en") return `There are ${parking.hotelSpaces} spaces ${parking.hotelSpacesLocation}. If they’re full, we’ll direct you to a partner parking lot.`;
       if (language === "ja") return `${parking.hotelSpacesLocation}に${parking.hotelSpaces}台分ございます。満車の場合は提携駐車場をご案内します。`;
       if (language === "ko") return `${parking.hotelSpacesLocation}에 ${parking.hotelSpaces}대 주차할 수 있습니다. 만차일 경우 제휴 주차장을 안내해 드립니다.`;
-      return `${parking.hotelSpacesLocation}有 ${parking.hotelSpaces} 個車位喔！如果滿位，我們會再引導您到配合停車場。`;
+      return `${parking.hotelSpacesLocation}有 ${parking.hotelSpaces} 個車位喔～如果門口滿位，可以改停配合停車場「${lot?.name || parking.alternatives?.[0]}」${lot ? `，地址是 ${lot.address}` : ""}。`;
     }
     if (intent === "parking_availability") {
       if (language === "en") return `Yes, there are ${parking.hotelSpaces} spaces ${parking.hotelSpacesLocation}. If they are full, a partner parking lot is also available; parking is arranged according to availability when you arrive.`;

@@ -32,6 +32,28 @@ export function normalizedHistory(history) {
 
 export { bookingDates, datedBookingUrl };
 
+function referenceDate(temporalContext) {
+  const date = temporalContext?.date;
+  return /^\d{4}-\d{2}-\d{2}$/u.test(String(date || "")) ? new Date(`${date}T00:00:00Z`) : new Date();
+}
+
+// A dated booking URL is turn-derived context: the canonical booking entry is
+// unchanged, while this immutable copy carries the guest's requested stay into
+// every response path (deterministic, AI-first, and multi-topic composition).
+export function withDatedBookingContext(grounding, message, temporalContext = temporalContextProvider.getContext()) {
+  const requestedStay = bookingDates(message, referenceDate(temporalContext));
+  const includesBooking = grounding?.topic === "booking" || grounding?.topics?.includes("booking");
+  if (!requestedStay || !includesBooking || !grounding?.facts?.identity?.bookingUrl) return grounding;
+  const bookingUrl = datedBookingUrl(requestedStay);
+  const facts = { ...grounding.facts, identity: { ...grounding.facts.identity, bookingUrl } };
+  const groundings = Array.isArray(grounding.groundings)
+    ? grounding.groundings.map(item => item.topic === "booking"
+      ? { ...item, facts: { ...item.facts, identity: { ...item.facts?.identity, bookingUrl } } }
+      : item)
+    : grounding.groundings;
+  return { ...grounding, facts, ...(groundings ? { groundings } : {}), bookingDates: requestedStay };
+}
+
 const REPLY_TEXT = Object.freeze({
   "zh-TW": {
     booking: (dates, url) => `當然可以！如果您預計 ${dates.checkInDate} 入住、${dates.checkOutDate} 退房，可以透過下方官方訂房頁面查看最新房價與空房：\n${url}`,
@@ -204,6 +226,7 @@ export function frontDeskContactReply(message) {
 }
 
 export function responsesPayload(message, history = [], channel = "web", temporalContext = temporalContextProvider.getContext(), grounding = resolveKnowledgeGrounding(message, history)) {
+  grounding = withDatedBookingContext(grounding, message, temporalContext);
   const conversation = normalizedHistory(history);
   const responseLanguage = detectGuestLanguage(message, conversation);
   const contextText = [...conversation.map(item => item.content), message].join("\n");
@@ -262,6 +285,7 @@ export async function answerGuestMessage(message, { history = [], channel = "web
   const trimmed = typeof message === "string" ? message.trim().slice(0, MAX_MESSAGE_LENGTH) : "";
   if (!trimmed) throw new TypeError("A non-empty guest message is required");
   const language = detectGuestLanguage(trimmed, normalizedHistory(history));
+  grounding = withDatedBookingContext(grounding, trimmed, temporalContext);
   // This module only composes presentation. Authorization and every external
   // side effect are owned by conversation/runtime.js.
   const aiFirst = await tryAiFirstReasoning({ message: trimmed, history: normalizedHistory(history), channel, identity, grounding, orchestrate, env, logger });

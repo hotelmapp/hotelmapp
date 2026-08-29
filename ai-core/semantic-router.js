@@ -2,7 +2,7 @@ import { explicitTopics, groundingForTopics, resolveKnowledgeGrounding } from ".
 import { requestGroundedResponse } from "./response-service.js";
 import { HANDOFF_CATEGORY_NAMES } from "./handoff.js";
 
-export const SEMANTIC_ROUTER_VERSION = "2.0";
+export const SEMANTIC_ROUTER_VERSION = "2.1";
 export const SEMANTIC_ROUTER_FEATURE_FLAG = "SEMANTIC_ROUTER_ENABLED";
 
 const MAX_HISTORY_MESSAGES = 12;
@@ -11,7 +11,7 @@ const DEFAULT_TIMEOUT_MS = 5_000;
 
 const INTENTS_BY_TOPIC = Object.freeze({
   breakfast: ["breakfast"],
-  parking: ["parking_availability", "parking_fee", "parking_location", "parking_process", "parking_reservation", "parking_problem"],
+  parking: ["parking_availability", "parking_fee", "parking_partner_location", "parking_location", "parking_process", "parking_reservation", "parking_problem"],
   subsidy: ["subsidy_overview", "subsidy_amount", "subsidy_period", "subsidy_booking_channel", "subsidy_participation_limit", "subsidy_birthday_voucher", "subsidy_taiwan_pass", "subsidy_stacking", "subsidy_registration", "subsidy_documentation", "subsidy_eligibility", "subsidy_third_night"],
   booking: ["booking_direct", "booking_availability", "booking_modify_cancel"],
   wifi: ["wifi"],
@@ -122,6 +122,7 @@ Critical continuity rules:
 - Preserve conditions and relationships. “If X, can I Y?” is not the same question as X alone, and a comparison may require multiple routes.
 - Example: after an earlier parking question and then a booking question, “可否直接跟櫃檯訂呢？” is booking_direct, never parking.
 - “那第二台呢？” immediately after parking may use history and is parking_fee.
+- “配合的停車場在哪邊？” and “門口滿了，特約停車場在哪裡？” are parking_partner_location. They ask for the partner lot's actual location, not whether the hotel has parking; never replay the entrance-space answer.
 - The word 折抵 alone is ambiguous. Route it to parking only when the current sentence or the uninterrupted recent topic is actually about parking.
 - Use unknown only when no supported topic can be determined. Use multiple routes only when the current request truly contains multiple needs.
 

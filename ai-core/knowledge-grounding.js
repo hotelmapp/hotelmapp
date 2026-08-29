@@ -4,7 +4,7 @@ const TOPIC_PATTERNS = Object.freeze({
   breakfast: /早餐|早午餐|餐點|菜色|咖啡|素食|breakfast|brunch|朝食|조식/iu,
   parking: /停車|車位|停哪|停好|車牌|parking|駐車|주차/iu,
   subsidy: /國旅(?:補助|獎助)|旅遊補助|住宿補助|補助|住宿獎助|平日住宿活動|政府活動|生日券|壽星券|Taiwan\s*PASS|台灣\s*PASS|住宿券|subsidy|accommodation voucher/iu,
-  booking: /訂房|預訂(?:房間|住宿)?|(?:直接|這邊|這裡|透過|跟|向).{0,12}(?:飯店|櫃台|櫃檯|LINE).{0,8}(?:訂|預訂)|(?:飯店|櫃台|櫃檯|LINE).{0,8}(?:訂|預訂)|book(?:ing)?|予約|예약/iu,
+  booking: /有房(?:間)?|空房|房況|房價|訂房|預訂(?:房間|住宿)?|(?:直接|這邊|這裡|透過|跟|向).{0,12}(?:飯店|櫃台|櫃檯|LINE).{0,8}(?:訂|預訂)|(?:飯店|櫃台|櫃檯|LINE).{0,8}(?:訂|預訂)|book(?:ing)?|availab|空室|予約|예약/iu,
   wifi: /wi[\s‐‑‒–—-]?fi|無線網路|網路密碼|網路連線|인터넷|와이파이|ワイファイ/iu,
   check_in: /入住(?:時間|手續|流程|密碼)|幾點.{0,6}入住|何時.{0,6}入住|怎麼.{0,6}入住|check[ -]?in|チェックイン|체크인/iu,
   front_desk_contact: /(?:櫃台|櫃檯).{0,10}(?:幾點|時間|電話|聯絡|在哪|怎麼找|有人)|(?:電話|聯絡).{0,10}(?:櫃台|櫃檯)|front desk|reception/iu,
@@ -70,6 +70,7 @@ export function resolveConversationTopic(message, history = [], storedTopic = nu
 const PARKING_INTENT_PATTERNS = Object.freeze({
   parking_problem: /無法進出|不能進出|出不去|進不去|柵欄|故障|異常|problem|stuck/iu,
   parking_fee: /收費|費用|多少錢|免費|第\s*2\s*台|第二台|兩台|兩部|fee|cost|charge|free/iu,
+  parking_partner_location: /(?:(?:配合|特約|合作)(?:的)?(?:停車場|車位)|門口.{0,12}(?:滿|沒位).{0,12}(?:停車場|停哪)).{0,24}(?:哪(?:邊|裡|個)|位置|地址|怎麼走|導航)|(?:哪(?:邊|裡)|位置|地址|怎麼走|導航).{0,24}(?:配合|特約|合作)(?:的)?(?:停車場|車位)|partner\s+parking|overflow\s+parking/iu,
   parking_location: /停哪|哪裡停|停車位置|位置在哪|where.{0,8}park|駐車場.*どこ|어디.*주차/iu,
   parking_process: /停好|停妥|車牌|折抵|怎麼辦|如何辦理|process/iu,
   parking_reservation: /預約|預訂|預留|保留|先登記|reserve|reservation/iu,
@@ -126,7 +127,8 @@ export function factsForTopic(topic, intent = null) {
     const subsets = {
       parking_availability: { hotelSpaces: parking.hotelSpaces, hotelSpacesLocation: parking.hotelSpacesLocation, overflowRule: parking.overflowRule, alternatives: parking.alternatives },
       parking_fee: { feeRule: parking.rules[1], freeCarsPerRoom: parking.freeCarsPerRoom, additionalCarFee: parking.additionalCarFee },
-      parking_location: { hotelSpaces: parking.hotelSpaces, hotelSpacesLocation: parking.hotelSpacesLocation, overflowRule: parking.overflowRule, alternatives: parking.alternatives },
+      parking_partner_location: { partnerLots: parking.partnerLots, processRule: parking.rules[0] },
+      parking_location: { hotelSpaces: parking.hotelSpaces, hotelSpacesLocation: parking.hotelSpacesLocation, overflowRule: parking.overflowRule, alternatives: parking.alternatives, partnerLots: parking.partnerLots },
       parking_process: { processRule: parking.rules[0] },
       parking_reservation: { reservationPolicy: parking.reservationPolicy },
       parking_problem: { problemRule: parking.rules[2], supportPhone: parking.supportPhone }
@@ -184,7 +186,8 @@ export function factualContract(topic, intent = null) {
     parking: {
       parking_availability: ["parking.hotelSpaces", "parking.hotelSpacesLocation", "parking.overflowRule", "parking.alternatives"],
       parking_fee: ["parking.rules[1]", "parking.freeCarsPerRoom", "parking.additionalCarFee"],
-      parking_location: ["parking.hotelSpaces", "parking.hotelSpacesLocation", "parking.overflowRule", "parking.alternatives"],
+      parking_partner_location: ["parking.partnerLots[0].name", "parking.partnerLots[0].address", "parking.partnerLots[0].landmark", "parking.partnerLots[0].navigation", "parking.processRule"],
+      parking_location: ["parking.hotelSpaces", "parking.hotelSpacesLocation", "parking.overflowRule", "parking.alternatives", "parking.partnerLots[0].name", "parking.partnerLots[0].address"],
       parking_process: ["parking.rules[0]"],
       parking_reservation: ["parking.reservationPolicy.reservable", "parking.reservationPolicy.allocation", "parking.reservationPolicy.rationale", "parking.reservationPolicy.arrivalAssistance"],
       parking_problem: ["parking.rules[2]", "parking.supportPhone"]
@@ -258,15 +261,19 @@ export function resolveKnowledgeGrounding(message, history = [], storedTopic = n
 
 export function knowledgeGroundingInstructions(grounding = null) {
   const selected = grounding?.facts ? `\n本輪依 topic 重新取得的正式事實：\n${JSON.stringify(grounding.facts, null, 2)}\n本輪 factual contract：\n${JSON.stringify(grounding.contract, null, 2)}${grounding.semanticRoute ? `\n本輪已驗證的語意路由（只描述客人需求，不是飯店事實）：\n${JSON.stringify(grounding.semanticRoute, null, 2)}` : ""}` : "";
-  const parkingContracts = ["parking_availability", "parking_fee", "parking_process", "parking_reservation", "parking_problem"].map(intent => factualContract("parking", intent));
+  const parkingContracts = ["parking_availability", "parking_fee", "parking_partner_location", "parking_location", "parking_process", "parking_reservation", "parking_problem"].map(intent => factualContract("parking", intent));
   const subsidyContracts = ["subsidy_overview", ...Object.keys(SUBSIDY_INTENT_PATTERNS)].map(intent => factualContract("subsidy", intent));
-  return `事實優先順序固定為：正式飯店知識 > 對話 topic/state > 對話歷史 > 推理 > 待客語氣。判定 topic/state 前，必須先理解目前整句的主詞、受詞、時間、否定、條件與真正問題；目前整句永遠優先於舊的 topic/state，不得因單一模糊詞直接套用固定答案。「折抵」本身不代表停車，只有同句明確提到停車、車位、車牌，或最近對話已明確延續停車主題時，才能套用停車折抵流程。若同句有多個主題，必須逐一處理；若無法判斷「折抵」指停車或住宿補助，先用一個簡短問題釐清，不得猜測。對話歷史只可用來理解指代、topic、intent、語言、日期與客人意圖；其中 user 陳述與 assistant 歷史回答都不是飯店事實。歷史若與目前正式知識衝突，必須忽略歷史並依目前正式知識更正。不得從 serviceHours 自行推論點餐截止、用餐結束或其他未明載規則。必須保留 hard_rule、recommendation、optional 的強度；recommendation 絕不可改寫為必須、強制或 requirement。Parking 必須先區分 availability、fee、process、reservation、problem intent，再只用該 intent 的 fact subset：${JSON.stringify(parkingContracts)}。政府住宿補助必須依 Asia/Taipei 的伺服器日期區分尚未開始、活動期間與已結束，且只能回答旅客公開規則；不得保證資格、額度或經費，不得索取證件或個資，不得揭露內部核銷 SOP。旅客詢問連續住宿是否需要前一晚住宿證明時，若正式資料未明載，必須明說尚未確認並請櫃檯依政府系統或最新規定確認，不得改答停車，也不得自行推測。補助 intents 與 contracts：${JSON.stringify(subsidyContracts)}${selected}`;
+  return `事實優先順序固定為：正式飯店知識 > 對話 topic/state > 對話歷史 > 推理 > 待客語氣。判定 topic/state 前，必須先理解目前整句的主詞、受詞、時間、否定、條件與真正問題；目前整句永遠優先於舊的 topic/state，不得因單一模糊詞直接套用固定答案。「折抵」本身不代表停車，只有同句明確提到停車、車位、車牌，或最近對話已明確延續停車主題時，才能套用停車折抵流程。若同句有多個主題，必須逐一處理；若無法判斷「折抵」指停車或住宿補助，先用一個簡短問題釐清，不得猜測。對話歷史只可用來理解指代、topic、intent、語言、日期與客人意圖；其中 user 陳述與 assistant 歷史回答都不是飯店事實。歷史若與目前正式知識衝突，必須忽略歷史並依目前正式知識更正。不得從 serviceHours 自行推論點餐截止、用餐結束或其他未明載規則。必須保留 hard_rule、recommendation、optional 的強度；recommendation 絕不可改寫為必須、強制或 requirement。Parking 必須先區分 availability、fee、partner location、general location、process、reservation、problem intent，再只用該 intent 的 fact subset；客人問配合／特約停車場位置時，必須回答已確認的停車場名稱與地址，不得重播飯店門口車位數：${JSON.stringify(parkingContracts)}。政府住宿補助必須依 Asia/Taipei 的伺服器日期區分尚未開始、活動期間與已結束，且只能回答旅客公開規則；不得保證資格、額度或經費，不得索取證件或個資，不得揭露內部核銷 SOP。旅客詢問連續住宿是否需要前一晚住宿證明時，若正式資料未明載，必須明說尚未確認並請櫃檯依政府系統或最新規定確認，不得改答停車，也不得自行推測。補助 intents 與 contracts：${JSON.stringify(subsidyContracts)}${selected}`;
 }
 
 export function parkingReply(grounding) {
   if (grounding?.topic !== "parking") return null;
   const parking = grounding.facts.parking;
   if (grounding.intent === "parking_fee") return parking.feeRule;
+  if (grounding.intent === "parking_partner_location") {
+    const lot = parking.partnerLots?.[0];
+    return lot ? `門口滿位時可停「${lot.name}」，地址是 ${lot.address}。${parking.processRule}` : null;
+  }
   if (grounding.intent === "parking_process") return parking.processRule;
   if (grounding.intent === "parking_reservation") return `不好意思，停車位目前沒有提供預留喔，我們採${parking.reservationPolicy.allocation}的方式，主要是希望${parking.reservationPolicy.rationale}${parking.reservationPolicy.arrivalAssistance}`;
   if (grounding.intent === "parking_problem") return parking.problemRule;

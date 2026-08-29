@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import handler, { availabilityReply, bookingDates, breakfastReply, datedBookingUrl, informationalReply, normalizedHistory, relevantKnowledge, responseText, responsesPayload, specialRequestReply } from "../api/chat.js";
+import handler, { answerGuestMessage, availabilityReply, bookingDates, breakfastReply, datedBookingUrl, informationalReply, normalizedHistory, relevantKnowledge, responseText, responsesPayload, specialRequestReply } from "../api/chat.js";
 import { hotelKnowledge, knowledgeForPrompt } from "../data/hotel-info.js";
 import { voiceInstructions } from "../api/realtime.js";
 import { detectGuestLanguage } from "../guest-language.js";
@@ -128,6 +128,19 @@ test("puts the requested stay length in the dated booking link and AI reply", ()
   assert.match(reply, /checkOutDate=2026-08-22/);
 });
 
+test("the production answer carries a requested date into the official booking page", async () => {
+  const answer = await answerGuestMessage("請問9月30號還有房間嗎？", {
+    channel: "line",
+    temporalContext: { date: "2026-08-29", timezone: "Asia/Taipei" },
+    env: { AI_FIRST_ORCHESTRATOR_ENABLED: "false" }
+  });
+
+  assert.match(answer, /9 月 30 日入住.*10 月 1 日退房/u);
+  assert.match(answer, /checkInDate=2026-09-30/u);
+  assert.match(answer, /checkOutDate=2026-10-01/u);
+  assert.match(answer, /把日期帶進官方訂房頁面/u);
+});
+
 test("answers both booking dates and a cot request in the same message", async t => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => {
@@ -169,7 +182,8 @@ test("answers dated availability requests without claiming live availability", a
   await handler({ method: "POST", body: { message: "2026/8/15 有房嗎？", history: [] } }, res);
 
   assert.equal(res.statusCode, 200);
-  assert.match(res.body.answer, /^當然可以！/);
+  assert.match(res.body.answer, /^可以喔～/);
+  assert.match(res.body.answer, /把日期帶進官方訂房頁面/u);
   assert.doesNotMatch(res.body.answer, /AI 無法|系統無法/);
   assert.match(res.body.answer, /checkInDate=2026-08-15/);
   assert.match(res.body.answer, /checkOutDate=2026-08-16/);
@@ -290,9 +304,9 @@ test("makes an outgoing Responses API request before returning its answer", asyn
   assert.equal(requested, true);
   assert.equal(res.statusCode, 200);
   assert.match(res.body.answer, /飯店地址是台中市上石路158號。/u);
-  assert.match(res.body.answer, /^(?:好的|了解|可以的)，/u);
-  assert.equal(res.body.diagnostic.knowledgeVersion, "2.2");
-  assert.equal(res.headers["X-Chat-Knowledge-Version"], "2.2");
+  assert.match(res.body.answer, /^(?:好的～|可以喔～|沒問題，)/u);
+  assert.equal(res.body.diagnostic.knowledgeVersion, "2.3");
+  assert.equal(res.headers["X-Chat-Knowledge-Version"], "2.3");
 });
 
 test("prominently grounds the checkout question in the unchanged fact", () => {
@@ -301,7 +315,7 @@ test("prominently grounds the checkout question in the unchanged fact", () => {
   });
   const payload = responsesPayload("飯店幾點退房？");
   assert.deepEqual(payload.input, [{ role: "user", content: "飯店幾點退房？" }]);
-  assert.match(payload.instructions, /正式知識庫（V2\.2）/);
+  assert.match(payload.instructions, /正式知識庫（V2\.3）/);
   assert.match(payload.instructions, /本題相關欄位/);
   assert.match(payload.instructions, /"checkOut": "11:00 前"/);
   assert.doesNotMatch(payload.instructions, /中午12點/);
@@ -326,7 +340,7 @@ test("sends the confirmed checkout fact to the Responses API", async t => {
   await handler({ method: "POST", body: { message: "飯店幾點退房？" } }, res);
   assert.equal(res.statusCode, 200);
   assert.match(res.body.answer, /退房時間為上午 11:00 前。/u);
-  assert.match(res.body.answer, /^(?:好的|了解|可以的)，/u);
+  assert.match(res.body.answer, /^(?:好的～|可以喔～|沒問題，)/u);
 });
 
 test("contains confirmed answers for the required guest scenarios", () => {

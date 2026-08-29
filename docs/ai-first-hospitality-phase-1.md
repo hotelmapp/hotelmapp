@@ -60,7 +60,7 @@ For flagged parking turns the model resolves intent and omitted subjects, summar
 
 ```json
 {
-  "intent": "parking_availability | parking_fee | parking_location | parking_process | parking_reservation | parking_problem",
+  "intent": "parking_availability | parking_fee | parking_partner_location | parking_location | parking_process | parking_reservation | parking_problem",
   "user_need": "short semantic summary",
   "facts_to_use": ["IDs from the supplied grounded subset only"],
   "action": "none | contact_front_desk",
