@@ -3,6 +3,7 @@ import { KNOWLEDGE_VERSION } from "./knowledge.js";
 import { CORE_PERSONALITY_CONTRACT_VERSION, styledInstructions } from "./hospitality-personality.js";
 import { requestGroundedResponse } from "./response-service.js";
 import { availableCapabilities, responseProvenance, verifyFinalResponse } from "./reasoning-core.js";
+import { configuredReasoning, configuredTextModel, DEFAULT_ROUTING_REASONING_EFFORT, DEFAULT_TEXT_REASONING_EFFORT } from "./model-config.js";
 
 export const AI_FIRST_FEATURE_FLAG = "AI_FIRST_ORCHESTRATOR_ENABLED";
 export const ORCHESTRATION_VERSION = "2.1";
@@ -77,30 +78,38 @@ function parseDecision(answer, context) {
   return Object.freeze(value);
 }
 
-function decisionPayload({ message, history, grounding, facts, channel, availableTools }) {
+function decisionPayload({ message, history, grounding, facts, channel, availableTools, env }) {
+  const model = configuredTextModel(env, "OPENAI_ORCHESTRATOR_MODEL");
   const payload = {
-    model: process.env.OPENAI_ORCHESTRATOR_MODEL?.trim() || process.env.OPENAI_MODEL?.trim() || "gpt-4.1-mini",
-    max_output_tokens: 500,
+    model,
+    max_output_tokens: 900,
+    ...configuredReasoning(model, env, {
+      componentKeys: ["OPENAI_ORCHESTRATOR_DECISION_REASONING_EFFORT", "OPENAI_ORCHESTRATOR_REASONING_EFFORT"],
+      fallback: DEFAULT_ROUTING_REASONING_EFFORT
+    }),
     instructions: `You are HotelMapp's service decision core. Return only the required JSON. First understand the complete current sentence: subject, object, time, negation, conditions, and every explicit request. A single ambiguous word must never override stronger context; in particular, the word 折抵 alone does not mean parking. Use recent history only to resolve omitted subjects. If the current message contains multiple independent or relational hotel topics, use intent=multiple and select facts for every relevant part. If the relationship asked about is absent from the supplied facts, mark clarification_needed=true or response_strategy=unknown rather than guessing. Select only fact IDs supplied below. Unknown facts stay unknown. Never infer hotel facts. Tool availability is a hard permission boundary.`,
     input: JSON.stringify({ current_user_message: message, recent_history: history, grounded_facts: facts, grounding_contract: grounding.contract, available_tools: availableTools, channel }),
     text: { format: { type: "json_schema", name: "hospitality_decision", strict: true, schema: MODEL_DECISION_SCHEMA } }
   };
-  const effort = process.env.OPENAI_ORCHESTRATOR_REASONING_EFFORT?.trim();
-  if (effort) payload.reasoning = { effort };
   return payload;
 }
 
-function prosePayload({ message, history, decision, selectedFacts, toolResult, channel }) {
+function prosePayload({ message, history, decision, selectedFacts, toolResult, channel, env }) {
   const language = detectGuestLanguage(message, history);
+  const model = configuredTextModel(env, "OPENAI_ORCHESTRATOR_MODEL");
   return {
-    model: process.env.OPENAI_ORCHESTRATOR_MODEL?.trim() || process.env.OPENAI_MODEL?.trim() || "gpt-4.1-mini",
-    max_output_tokens: 350,
+    model,
+    max_output_tokens: 1_200,
+    ...configuredReasoning(model, env, {
+      componentKeys: ["OPENAI_ORCHESTRATOR_PROSE_REASONING_EFFORT", "OPENAI_ORCHESTRATOR_REASONING_EFFORT"],
+      fallback: DEFAULT_TEXT_REASONING_EFFORT
+    }),
     instructions: `${styledInstructions(channel)}\nUse only selected_grounded_facts and successful tool_result as hotel truth. A fact with certainty=unknown must be described as unconfirmed and must not be guessed. Do not claim an action happened unless tool_result.status is completed. Answer in ${language}. Address the current need first, cover every explicit part of the current message, preserve relationships and conditions between topics, and answer the new information requested instead of replaying the previous answer. Warmth must come from natural acknowledgement and useful wording, not from adding a bare “了解” or “好的” before a database-like sentence. Do not force a follow-up question.`,
     input: JSON.stringify({ current_user_message: message, recent_history: history, verified_decision: decision, selected_grounded_facts: selectedFacts, tool_result: toolResult })
   };
 }
 
-export async function orchestrateHospitalityTurn({ message, history = [], grounding, channel = "web", identity, authorization, executeTool, request = requestGroundedResponse, logger = console }) {
+export async function orchestrateHospitalityTurn({ message, history = [], grounding, channel = "web", identity, authorization, executeTool, request = requestGroundedResponse, logger = console, env = process.env }) {
   const started = Date.now();
   safeLog(logger, "orchestration_started", { channel, topic: grounding?.topic });
   const facts = groundingFactEntries(grounding);
@@ -110,7 +119,7 @@ export async function orchestrateHospitalityTurn({ message, history = [], ground
   const permissions = toolPermissions({ identity, authorization });
   const availableTools = Object.entries(permissions).filter(([, allowed]) => allowed).map(([name]) => name);
   const allowedFactIds = new Set(facts.map(fact => fact.id));
-  const decisionResponse = await request({ payload: decisionPayload({ message, history, grounding, facts, channel, availableTools }) });
+  const decisionResponse = await request({ payload: decisionPayload({ message, history, grounding, facts, channel, availableTools, env }) });
   const decision = parseDecision(decisionResponse.answer, { allowedFactIds, allowedTools: availableTools });
   safeLog(logger, "model_decision_completed", { intent: decision.intent, strategy: decision.response_strategy, selectedFactCount: decision.facts_to_use.length });
   let toolResult = { name: "none", status: "not_requested" };
@@ -121,7 +130,7 @@ export async function orchestrateHospitalityTurn({ message, history = [], ground
     safeLog(logger, "tool_completed", { tool: decision.action, status: toolResult.status });
   }
   const selectedFacts = decision.facts_to_use.map(id => facts.find(fact => fact.id === id));
-  const composed = await request({ payload: prosePayload({ message, history, decision, selectedFacts, toolResult, channel }) });
+  const composed = await request({ payload: prosePayload({ message, history, decision, selectedFacts, toolResult, channel, env }) });
   if (!composed.answer?.trim()) throw new Error("empty_composed_response");
   const verification = verifyFinalResponse({ answer: composed.answer, selectedFacts, toolResult });
   if (!verification.valid) throw new Error(verification.reason);

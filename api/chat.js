@@ -3,6 +3,7 @@ import { OpenAIResponseError } from "../ai-core/response-service.js";
 import { answerGuestMessage } from "../ai-core/guest-response.js";
 import { opaqueConversationId } from "../ai-core/conversation/record.js";
 import { answerWithConversation, configuredConversationService } from "../ai-core/conversation/runtime.js";
+import { configuredTextModel } from "../ai-core/model-config.js";
 
 export * from "../ai-core/guest-response.js";
 
@@ -50,7 +51,8 @@ export default async function handler(req, res) {
       diagnostic: {
         knowledgeVersion: KNOWLEDGE_VERSION,
         commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) || "local",
-        conversationMemory: result.durable ? "durable" : "stateless"
+        conversationMemory: result.durable ? "durable" : "stateless",
+        textModel: configuredTextModel(process.env)
       }
     });
   } catch (error) {

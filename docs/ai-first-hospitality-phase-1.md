@@ -159,8 +159,9 @@ Phase 1 adds two serial model calls for enabled parking turns. Expected model la
 ## 14. Environment variables
 
 * **New:** `AI_FIRST_ORCHESTRATOR_ENABLED` (default false; only literal case-insensitive `true` enables).
-* **Optional new:** `OPENAI_ORCHESTRATOR_MODEL` to separate orchestration from the existing `OPENAI_MODEL` default.
-* **Optional new:** `OPENAI_ORCHESTRATOR_REASONING_EFFORT`; omitted by default because it is only valid for applicable models.
+* **Optional:** `OPENAI_ORCHESTRATOR_MODEL` to separate orchestration from the shared `OPENAI_MODEL`; both fall back to the central `gpt-5.6-terra` default.
+* **Optional:** `OPENAI_ORCHESTRATOR_REASONING_EFFORT` overrides both orchestration stages. The decision stage defaults to low reasoning and prose composition to medium reasoning. Stage-specific overrides are `OPENAI_ORCHESTRATOR_DECISION_REASONING_EFFORT` and `OPENAI_ORCHESTRATOR_PROSE_REASONING_EFFORT`.
+* **Optional:** `OPENAI_REASONING_EFFORT` sets a shared reasoning override; unsupported legacy models omit the reasoning field instead of receiving an incompatible parameter.
 * **Existing:** `OPENAI_API_KEY` remains required for enabled AI calls and is never hardcoded/logged.
 
 No new secret is required. Operational deployment should continue using the existing secret manager.
