@@ -211,23 +211,23 @@ export function renderHospitalityFact({ topic, intent, facts, language = "zh-TW"
     if (intent === "parking_partner_location") {
       const lot = parking.partnerLots?.[0];
       if (!lot) return null;
-      if (language === "en") return `If the entrance spaces are full, you can use ${lot.name} at ${lot.address} (${lot.landmark}). After parking, please give your license plate number to the front desk for validation.`;
-      if (language === "ja") return `ホテル入口が満車の場合は「${lot.name}」をご利用いただけます。住所は${lot.address}で、${lot.landmark} 駐車後、割引処理のためフロントへ車両番号をお知らせください。`;
-      if (language === "ko") return `호텔 입구가 만차이면 '${lot.name}'을 이용하실 수 있습니다. 주소는 ${lot.address}이며 ${lot.landmark} 주차 후 할인 처리를 위해 프런트에 차량 번호를 알려 주세요.`;
-      return `可以喔～門口滿位時，請導航到配合停車場「${lot.name}」，地址是 ${lot.address}，位置在${lot.landmark}。停好後再把車牌告訴櫃檯，我們會幫您辦理折抵。`;
+      if (language === "en") return `If the ${parking.hotelSpaces} roadside spaces outside the hotel are full, the front desk will direct you to our partner lot next to the All Nation Electronics Fengjia store on Qinghai Road, about a ${lot.walkingMinutes}-minute walk away. After parking, please give your license plate number to the front desk so we can enter it in the system for free entry and exit.`;
+      if (language === "ja") return `ホテル前の路上駐車枠${parking.hotelSpaces}台分が満車の場合、徒歩約${lot.walkingMinutes}分、青海路の全国電子逢甲店隣にある提携駐車場へフロントがご案内します。駐車後は車両番号をフロントへお知らせください。システム登録後は自由に出入りできます。`;
+      if (language === "ko") return `호텔 앞 노상 주차 공간 ${parking.hotelSpaces}곳이 모두 차면 프런트에서 도보 약 ${lot.walkingMinutes}분 거리인 칭하이로의 전국전자 펑지아점 옆 제휴 주차장으로 안내해 드립니다. 주차 후 차량 번호를 프런트에 알려 주시면 시스템 등록 후 자유롭게 출입하실 수 있습니다.`;
+      return `有喔～飯店門口的 ${parking.hotelSpaces} 個路邊停車格如果停滿，櫃檯會引導您到步行約 ${lot.walkingMinutes} 分鐘、位於青海路「全國電子逢甲店」隔壁的配合停車場。停好後記得把車號告訴櫃檯，我們輸入系統後，您就可以自由進出。`;
     }
     if (intent === "parking_location") {
       const lot = parking.partnerLots?.[0];
       if (language === "en") return `There are ${parking.hotelSpaces} spaces ${parking.hotelSpacesLocation}. If they’re full, we’ll direct you to a partner parking lot.`;
       if (language === "ja") return `${parking.hotelSpacesLocation}に${parking.hotelSpaces}台分ございます。満車の場合は提携駐車場をご案内します。`;
       if (language === "ko") return `${parking.hotelSpacesLocation}에 ${parking.hotelSpaces}대 주차할 수 있습니다. 만차일 경우 제휴 주차장을 안내해 드립니다.`;
-      return `${parking.hotelSpacesLocation}有 ${parking.hotelSpaces} 個車位喔～如果門口滿位，可以改停配合停車場「${lot?.name || parking.alternatives?.[0]}」${lot ? `，地址是 ${lot.address}` : ""}。`;
+      return `飯店門口有 ${parking.hotelSpaces} 個路邊停車格喔～如果已經停滿，櫃檯會引導您到步行約 ${lot?.walkingMinutes || 3} 分鐘、位於${lot?.location || parking.alternatives?.[0]}的配合停車場。`;
     }
     if (intent === "parking_availability") {
       if (language === "en") return `Yes, there are ${parking.hotelSpaces} spaces ${parking.hotelSpacesLocation}. If they are full, a partner parking lot is also available; parking is arranged according to availability when you arrive.`;
       if (language === "ja") return `はい、${parking.hotelSpacesLocation}に${parking.hotelSpaces}台分ございます。満車の場合は提携駐車場をご案内し、当日の空き状況に合わせて対応いたします。`;
       if (language === "ko") return `네, ${parking.hotelSpacesLocation}에 ${parking.hotelSpaces}대 주차할 수 있습니다. 만차일 경우 제휴 주차장을 안내하며, 당일 주차 상황에 따라 도와드립니다.`;
-      return `有的，${parking.hotelSpacesLocation}可停 ${parking.hotelSpaces} 台車；飯店門口停滿時，也有配合停車場可以使用。我們會依當天現場車位情形協助安排。`;
+      return `有喔～飯店門口有 ${parking.hotelSpaces} 個路邊停車格，採先到先停；如果停滿，櫃檯會引導您到步行約 ${parking.partnerLots?.[0]?.walkingMinutes || 3} 分鐘的配合停車場。`;
     }
     if (intent === "parking_process") {
       if (language === "zh-TW") return `可以的，${parking.processRule}如果您已經停好車，照這個方式辦理就可以了。`;

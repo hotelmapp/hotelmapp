@@ -40,8 +40,9 @@ test("parking address follow-ups and dated booking links keep the newly requeste
     history: parkingHistory,
     channel: "line"
   });
-  assert.match(parkingAnswer, /智惠全國停車場.*台中市西屯區智惠街135號旁空地/u);
-  assert.doesNotMatch(parkingAnswer, /門口有 3 個車位|門口可停 3 台車/u);
+  assert.match(parkingAnswer, /3 個路邊停車格.*步行約 3 分鐘.*青海路.*全國電子逢甲店.*隔壁/u);
+  assert.match(parkingAnswer, /車號.*輸入系統.*自由進出/u);
+  assert.doesNotMatch(parkingAnswer, /智惠|135號/u);
 
   const bookingAnswer = await answerGuestMessage("請問9月30號還有房間嗎？", {
     channel: "line",

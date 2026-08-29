@@ -46,9 +46,10 @@ test("Voice retains the shared personality and adds speech-appropriate formattin
 
 test("personality changes presentation without changing canonical hotel facts", () => {
   const parking = informationalReply("請問有停車位嗎？");
-  assert.match(parking, new RegExp(`${hotelKnowledge.parking.hotelSpaces} 個車位`));
+  assert.match(parking, new RegExp(`${hotelKnowledge.parking.hotelSpaces} 個路邊停車格`));
   assert.match(parking, /配合停車場/);
-  assert.match(parking, /依當天現場狀況/);
+  assert.match(parking, /青海路全國電子逢甲店隔壁/);
+  assert.match(parking, /車號.*輸入系統.*自由進出/u);
   assert.equal(hotelKnowledge.breakfast.serviceHours, "08:00–10:00");
   assert.equal(hotelKnowledge.breakfast.childPrice, null);
 });
@@ -86,8 +87,8 @@ test("vegetarian breakfast offers the confirmed arrangement in a service-first t
 
 test("parking gives a useful next step without guaranteeing a space", () => {
   const answer = informationalReply("停車怎麼辦？");
-  assert.match(answer, /3 個車位.*配合停車場/);
-  assert.match(answer, /依當天現場狀況與車位情形協助安排/);
+  assert.match(answer, /3 個路邊停車格.*步行約 3 分鐘.*青海路全國電子逢甲店隔壁.*配合停車場/u);
+  assert.match(answer, /車號.*輸入系統.*自由進出/u);
   assert.doesNotMatch(answer, /保證|一定有/);
 });
 
@@ -95,8 +96,8 @@ test("LINE, Messenger, and Web render the same grounded parking answer", async (
   const options = { handoffService: async () => ({ attempted: false }) };
   const answers = await Promise.all(["line", "messenger", "web"].map(channel => answerGuestMessage("有附停車位嗎？", { ...options, channel })));
   assert.equal(new Set(answers).size, 1);
-  assert.match(answers[0], /^有的，.*3 台車/);
-  assert.match(answers[0], /配合停車場.*當天現場車位情形/);
+  assert.match(answers[0], /^有喔～.*3 個路邊停車格/u);
+  assert.match(answers[0], /停滿.*步行約 3 分鐘.*配合停車場/u);
 });
 
 test("equipment trouble and complaints use restrained handoff language", () => {
@@ -149,8 +150,8 @@ test("parking fee is complete and hospitable without disclosing location", async
 test("parking location is progressively disclosed on follow-up", async () => {
   const history = [{ role: "user", content: "停車要收費嗎？" }, { role: "assistant", content: "每房一台免費。" }];
   const answer = await answerGuestMessage("那要停哪裡？", { history, handoffService: async () => ({ attempted: false }) });
-  assert.match(answer, /門口.*3 個車位/);
-  assert.match(answer, /滿位.*配合停車場/);
+  assert.match(answer, /門口.*3 個路邊停車格/u);
+  assert.match(answer, /停滿.*步行約 3 分鐘.*青海路全國電子逢甲店隔壁.*配合停車場/u);
   assert.doesNotMatch(answer, /NT\$200/);
 });
 

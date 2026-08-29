@@ -73,8 +73,8 @@ test("parking intent selects fee, availability, process, and authoritative follo
   assert.doesNotMatch(fee, /只有 3 個車位|先跟我們說一聲/u);
 
   const availability = await answerGuestMessage("飯店有停車位嗎？", { handoffService: noHandoff });
-  assert.match(availability, /門口可停 3 台車/u);
-  assert.match(availability, /停滿時.*配合停車場/u);
+  assert.match(availability, /門口有 3 個路邊停車格/u);
+  assert.match(availability, /停滿.*步行約 3 分鐘.*配合停車場/u);
 
   const history = [
     { role: "user", content: "飯店有停車位嗎？" },
@@ -85,29 +85,33 @@ test("parking intent selects fee, availability, process, and authoritative follo
   assert.doesNotMatch(second, /第二台.*免費/u);
 
   const process = await answerGuestMessage("停好之後要怎麼辦？", { handoffService: noHandoff });
-  assert.match(process, /告知櫃檯車牌號碼/u);
-  assert.match(process, /櫃檯輸入辦理折抵/u);
+  assert.match(process, /告知櫃檯車號/u);
+  assert.match(process, /櫃檯輸入停車系統/u);
+  assert.match(process, /自由進出/u);
 
   const reservation = await answerGuestMessage("可以幫我預留停車位嗎？", { handoffService: noHandoff });
   assert.match(reservation, /沒有提供預留/u);
   assert.match(reservation, /先到先停/u);
   assert.match(reservation, /公平使用/u);
-  assert.match(reservation, /門口車位已滿.*現場狀況.*配合停車場/u);
+  assert.match(reservation, /門口 3 個路邊停車格已滿.*步行約 3 分鐘.*配合停車場/u);
   assert.doesNotMatch(reservation, /目前沒有確認|建議.*櫃檯確認/u);
 });
 
-test("partner parking location answers the requested address instead of replaying entrance capacity", async () => {
+test("partner parking location gives the operator-confirmed landmark and complete plate flow", async () => {
   for (const message of ["配合的停車場在哪邊？", "門口滿了，特約停車場在哪裡呢？"]) {
     const grounding = resolveKnowledgeGrounding(message);
     assert.equal(grounding.topic, "parking");
     assert.equal(grounding.intent, "parking_partner_location");
-    assert.equal(grounding.facts.parking.partnerLots[0].address, "台中市西屯區智惠街135號旁空地");
+    assert.equal(grounding.facts.parking.partnerLots[0].location, "青海路全國電子逢甲店隔壁");
+    assert.equal(grounding.facts.parking.partnerLots[0].walkingMinutes, 3);
+    assert.equal(grounding.facts.parking.addresses, undefined);
 
     const answer = await answerGuestMessage(message, { channel: "line", handoffService: noHandoff });
-    assert.match(answer, /智惠全國停車場/u);
-    assert.match(answer, /台中市西屯區智惠街135號旁空地/u);
-    assert.match(answer, /車牌.*櫃檯.*折抵/u);
-    assert.doesNotMatch(answer, /門口有 3 個車位|門口可停 3 台車/u);
+    assert.match(answer, /3 個路邊停車格/u);
+    assert.match(answer, /步行約 3 分鐘/u);
+    assert.match(answer, /青海路.*全國電子逢甲店.*隔壁/u);
+    assert.match(answer, /車號.*櫃檯.*輸入系統.*自由進出/u);
+    assert.doesNotMatch(answer, /智惠|135號/u);
   }
 });
 

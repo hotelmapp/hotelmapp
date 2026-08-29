@@ -171,7 +171,7 @@ test("answers every recognized need in a composite booking question", () => {
     new Date("2026-08-13T00:00:00Z")
   );
   assert.match(reply, /官方訂房頁面/);
-  assert.match(reply, /飯店有 3 個車位/);
+  assert.match(reply, /飯店門口有 3 個路邊停車格/u);
   assert.match(reply, /早餐供應時間為 08:00–10:00/);
   assert.match(reply, /不提供牙刷/);
   assert.doesNotMatch(reply, /^1\.|Booking \/ availability|AI 無法/u);
@@ -217,7 +217,7 @@ test("answers parking and breakfast together without mechanical section labels",
     "2026/8/20 入住，請問有停車位和早餐嗎？",
     new Date("2026-08-13T00:00:00Z")
   );
-  assert.match(reply, /飯店有 3 個車位/);
+  assert.match(reply, /飯店門口有 3 個路邊停車格/u);
   assert.match(reply, /不提供預留.*先到先停/u);
   assert.match(reply, /早餐供應時間為 08:00–10:00/);
   assert.doesNotMatch(reply, /留言給飯店人員/);
@@ -263,7 +263,7 @@ test("does not add booking links to breakfast or parking information", () => {
   const breakfast = informationalReply("早餐幾點？");
   const parking = informationalReply("請問有停車位嗎？");
   assert.match(breakfast, /08:00–10:00/);
-  assert.match(parking, /3 個車位/);
+  assert.match(parking, /3 個路邊停車格/u);
   assert.doesNotMatch(breakfast, /https?:\/\//u);
   assert.doesNotMatch(parking, /https?:\/\//u);
 });

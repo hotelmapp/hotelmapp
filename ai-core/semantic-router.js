@@ -122,7 +122,7 @@ Critical continuity rules:
 - Preserve conditions and relationships. “If X, can I Y?” is not the same question as X alone, and a comparison may require multiple routes.
 - Example: after an earlier parking question and then a booking question, “可否直接跟櫃檯訂呢？” is booking_direct, never parking.
 - “那第二台呢？” immediately after parking may use history and is parking_fee.
-- “配合的停車場在哪邊？” and “門口滿了，特約停車場在哪裡？” are parking_partner_location. They ask for the partner lot's actual location, not whether the hotel has parking; never replay the entrance-space answer.
+- “配合的停車場在哪邊？” and “門口滿了，特約停車場在哪裡？” are parking_partner_location. They require the partner lot's actual landmark, walking time, and plate-registration flow; never answer only with the entrance-space count.
 - The word 折抵 alone is ambiguous. Route it to parking only when the current sentence or the uninterrupted recent topic is actually about parking.
 - Use unknown only when no supported topic can be determined. Use multiple routes only when the current request truly contains multiple needs.
 

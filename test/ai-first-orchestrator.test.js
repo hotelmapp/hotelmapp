@@ -64,7 +64,7 @@ test("grounding cannot be bypassed and parking reservation policy is authoritati
     { id: "parking.reservationPolicy.reservable", value: false, certainty: "confirmed", source: "hotel_knowledge_v2.3" },
     { id: "parking.reservationPolicy.allocation", value: "先到先停", certainty: "confirmed", source: "hotel_knowledge_v2.3" },
     { id: "parking.reservationPolicy.rationale", value: "讓每位住客都能公平使用。", certainty: "confirmed", source: "hotel_knowledge_v2.3" },
-    { id: "parking.reservationPolicy.arrivalAssistance", value: "抵達時如果飯店門口車位已滿，會依現場狀況協助安排配合停車場。", certainty: "confirmed", source: "hotel_knowledge_v2.3" }
+    { id: "parking.reservationPolicy.arrivalAssistance", value: "抵達時如果飯店門口 3 個路邊停車格已滿，櫃檯會引導至步行約 3 分鐘的配合停車場。", certainty: "confirmed", source: "hotel_knowledge_v2.3" }
   ]);
 });
 
