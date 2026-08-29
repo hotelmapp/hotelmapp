@@ -68,8 +68,8 @@ test("topic resolver uses user continuity, not stale assistant claims", () => {
 
 test("parking intent selects fee, availability, process, and authoritative follow-up facts", async () => {
   const fee = await answerGuestMessage("停車要收費嗎？", { handoffService: noHandoff });
-  assert.match(fee, /每間客房可免費停 1 台車/u);
-  assert.match(fee, /第 2 台車加收 NT\$200/u);
+  assert.match(fee, /^您好～每間客房可以免費停 1 台車/u);
+  assert.match(fee, /第 2 台車.*NT\$200/u);
   assert.doesNotMatch(fee, /只有 3 個車位|先跟我們說一聲/u);
 
   const availability = await answerGuestMessage("飯店有停車位嗎？", { handoffService: noHandoff });
@@ -81,7 +81,7 @@ test("parking intent selects fee, availability, process, and authoritative follo
     { role: "assistant", content: "第二台也是免費的。" }
   ];
   const second = await answerGuestMessage("那第二台呢？", { history, handoffService: noHandoff });
-  assert.match(second, /第 2 台車加收 NT\$200/u);
+  assert.match(second, /第 2 台車.*NT\$200/u);
   assert.doesNotMatch(second, /第二台.*免費/u);
 
   const process = await answerGuestMessage("停好之後要怎麼辦？", { handoffService: noHandoff });
@@ -141,8 +141,8 @@ test("Web, LINE, and Voice expose the same parking intent contracts", async () =
     assert.match(payload.instructions, /parking_problem/u);
     assert.match(payload.instructions, /parking\.rules\[1\]/u);
     const answer = await answerGuestMessage("那第二台呢？", { history, channel, handoffService: noHandoff });
-    assert.match(answer, /每間客房可免費停 1 台車/u);
-    assert.match(answer, /第 2 台車加收 NT\$200 停車費/u);
+    assert.match(answer, /每間客房可以免費停 1 台車/u);
+    assert.match(answer, /第 2 台車.*NT\$200/u);
   }
   const voice = voiceInstructions();
   for (const intent of ["parking_availability", "parking_fee", "parking_process", "parking_problem"]) assert.match(voice, new RegExp(intent));

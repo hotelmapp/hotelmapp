@@ -97,7 +97,7 @@ test("LINE, Messenger, and Web render the same grounded parking answer", async (
   const options = { handoffService: async () => ({ attempted: false }) };
   const answers = await Promise.all(["line", "messenger", "web"].map(channel => answerGuestMessage("有附停車位嗎？", { ...options, channel })));
   assert.equal(new Set(answers).size, 1);
-  assert.match(answers[0], /^飯店門口有 3 個路邊停車格/u);
+  assert.match(answers[0], /^您好～飯店門口有 3 個路邊停車格/u);
   assert.match(answers[0], /停滿.*步行約 3 分鐘.*配合停車場/u);
 });
 
@@ -143,8 +143,9 @@ test("channel adapters contain presentation wiring, not duplicated personality r
 
 test("parking fee is complete and hospitable without disclosing location", async () => {
   const answer = await answerGuestMessage("停車要收費嗎？", { handoffService: async () => ({ attempted: false }) });
-  assert.match(answer, /每間客房可免費停 1 台車/);
+  assert.match(answer, /^您好～每間客房可以免費停 1 台車/u);
   assert.match(answer, /第 2 台車.*NT\$200/);
+  assert.match(answer, /喔。$/u);
   assert.doesNotMatch(answer, /3 個車位|配合停車場/);
 });
 

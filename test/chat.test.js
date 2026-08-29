@@ -182,7 +182,7 @@ test("answers dated availability requests without claiming live availability", a
   await handler({ method: "POST", body: { message: "2026/8/15 有房嗎？", history: [] } }, res);
 
   assert.equal(res.statusCode, 200);
-  assert.match(res.body.answer, /^您要查的是 8 月 15 日入住/u);
+  assert.match(res.body.answer, /^您好～您要查的是 8 月 15 日入住/u);
   assert.match(res.body.answer, /把日期帶進官方訂房頁面/u);
   assert.doesNotMatch(res.body.answer, /AI 無法|系統無法/);
   assert.match(res.body.answer, /checkInDate=2026-08-15/);

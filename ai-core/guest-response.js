@@ -306,7 +306,7 @@ export function groundedPresentationPayload({ message, history = [], channel = "
 
 Rewrite the supplied grounded_draft as one natural hotel front-desk reply in ${language}. The draft is a factual fallback, not a wording template. Use only grounded_facts as hotel truth and preserve every number, price, date, address, URL, condition, limitation, and action status exactly. Do not add a fact or claim that staff acted.
 
-Match the guest's actual speech act before choosing the opening. A question about location must answer where; a cost question must state the fee first; a time question must state the time; a process question must state the next step; a statement of confusion should be acknowledged with useful direction. Never begin with 可以、可以的、可以喔、當然可以、沒問題, or an equivalent permission confirmation unless the guest actually asked whether something is allowed, available, or can be arranged. Do not manufacture warmth with a generic acknowledgement, repeated ～, or a stock phrase. Keep LINE and messaging replies to one or two short paragraphs and do not repeat the previous answer.
+Match the guest's actual speech act before choosing the opening. A question about location must answer where; a cost question must state the fee first; a time question must state the time; a process question must state the next step; a statement of confusion should be acknowledged with useful direction. Never begin with 可以、可以的、可以喔、當然可以、沒問題, or an equivalent permission confirmation unless the guest actually asked whether something is allowed, available, or can be arranged. Use a small amount of context-specific warmth, such as a natural connective or one polite final particle, without adding a hotel fact. Do not add a greeting here because the shared finalizer adds it only on the first reply. Do not manufacture warmth with a generic acknowledgement, repeated ～, or a stock phrase. Keep LINE and messaging replies to one or two short paragraphs and do not repeat the previous answer.
 
 Return only the guest-facing reply.`,
     input: JSON.stringify({
@@ -326,11 +326,20 @@ function safePresentationError(error) {
   return typeof candidate === "string" && /^[a-z0-9_]{1,64}$/iu.test(candidate) ? candidate : "grounded_presentation_error";
 }
 
-const GENERIC_PERMISSION_OPENING = /^(?:好的|了解|可以(?:的|喔)?|當然可以|沒問題)(?:[～~，,。.!！\s]|$)/u;
+const GENERIC_PERMISSION_OPENING = /^(?:(?:您好|哈囉|嗨)[～~，,。.!！\s]*)?(?:好的|了解|可以(?:的|喔)?|當然可以|沒問題)(?:[～~，,。.!！\s]|$)/u;
 const EXPLICIT_PERMISSION_REQUEST = /(?:可以|可不可以|可否|能不能|能否|請幫|幫我|協助我|\b(?:can|could|may|would)\b.{0,24}\b(?:you|i|we)\b|できますか|可能ですか|お願い|할 수 있|가능한가|도와)/iu;
 
 function openingMatchesSpeechAct(answer, message) {
   return !GENERIC_PERMISSION_OPENING.test(String(answer || "").trim()) || EXPLICIT_PERMISSION_REQUEST.test(String(message || ""));
+}
+
+function presentationHasContextualWarmth(answer, message, history) {
+  const text = String(answer || "").trim();
+  const language = detectGuestLanguage(message, normalizedHistory(history));
+  if (language === "en") return /\b(?:please|you|your|we|our|glad|welcome|complimentary)\b/iu.test(text);
+  if (language === "ja") return /(?:です|ます|ください|いただ|いたします)/u.test(text);
+  if (language === "ko") return /(?:요|니다|세요|드립니다)/u.test(text);
+  return /(?:您|請|喔|呢|我們|～)/u.test(text);
 }
 
 export async function composeGroundedPresentation({ message, history = [], channel = "web", grounding, draft, env = process.env, request = requestGroundedResponse, logger = console }) {
@@ -340,7 +349,7 @@ export async function composeGroundedPresentation({ message, history = [], chann
     const result = await request({
       payload: groundedPresentationPayload({ message, history, channel, grounding, draft, env }),
       apiKey: env.OPENAI_API_KEY.trim(),
-      validate: answer => openingMatchesSpeechAct(answer, message) && validateGroundedResponse(answer, grounding) && verifyFinalResponse({
+      validate: answer => openingMatchesSpeechAct(answer, message) && presentationHasContextualWarmth(answer, message, history) && validateGroundedResponse(answer, grounding) && verifyFinalResponse({
         answer,
         selectedFacts,
         toolResult: { status: "not_requested" }
@@ -368,8 +377,9 @@ export function responseText(response) {
 }
 
 export function finalizeGuestAnswer(draft, { message, history = [], channel = "web" } = {}) {
-  const language = detectGuestLanguage(message, normalizedHistory(history));
-  return applyCorePersonalityContract({ draft, message, language, channel }).text;
+  const conversation = normalizedHistory(history);
+  const language = detectGuestLanguage(message, conversation);
+  return applyCorePersonalityContract({ draft, message, language, channel, conversationStart: conversation.length === 0 }).text;
 }
 
 export async function answerGuestMessage(message, { history = [], channel = "web", identity, temporalContext = temporalContextProvider.getContext(), grounding = resolveKnowledgeGrounding(message, history), orchestrate, request = requestGroundedResponse, env = process.env, logger = console } = {}) {

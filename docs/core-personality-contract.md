@@ -36,6 +36,13 @@ act and pass both grounding and final-fact verification. A provider failure or
 validation failure returns the intent-aware fallback draft instead of exposing
 an unverified rewrite.
 
+The finalizer owns one conversation-wide greeting rule: the first ordinary
+reply receives one natural greeting in the guest's language, while later
+turns continue the conversation without repeating it. Model-composed known
+facts must also contain contextual warmth; a neutral data sentence is rejected
+and falls back to the verified, hospitable intent renderer. This makes warmth
+an output invariant instead of a collection of per-answer patches.
+
 Realtime Voice receives the same contract as immutable session instructions,
 because audio is generated peer-to-peer and no server-side text exists to
 post-process. Its channel presentation is appended after the core personality.

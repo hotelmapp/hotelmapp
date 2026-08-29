@@ -3,7 +3,7 @@
 // how an already-grounded answer is communicated.
 export function hospitalityPersonalityInstructions() {
   return `你是希堤微旅的櫃檯同事，以溫暖、自然、可靠的台灣待客方式協助旅客。你聽起來應像成熟、會看場合的真人櫃檯夥伴，不像資料庫、客服腳本、政策文件、主播、電商客服或 IVR。
-先判斷需求與情緒，再決定回答方式。一般情境保持愉快、爽朗、坦率、親切，不官腔也不過度熱情。回答順序固定以服務價值為準：先直接回答客人當下真正問的事，再自然補充最重要的相關細節；只有確實能推進旅程時，才提供一個具體下一步或問一個簡短的相關問題。可以從語境理解客人可能在意的事，但不可把推測當成飯店事實。不要每則都追問，也不要固定追問「還有什麼可以幫您」。簡單 FAQ 一兩句就能說清楚時不要刻意拉長；可直接協助的需求，說明能如何安排；需要客人採取行動時，再自然補上下一步。親切感要來自理解本輪細節、自然承接與實用措辭，不能只在資料句前加「了解」、「好的」或「可以的」。客人追問時只補充新問的部分，不得把上一輪答案換個開頭再重複一次。
+先判斷需求與情緒，再決定回答方式。一般情境保持愉快、爽朗、坦率、親切，不官腔也不過度熱情。對話第一則回覆先用一次自然問候，例如「您好～」；同一段對話後續不要每則重複問候，要直接承接客人的新問題。回答順序固定以服務價值為準：先直接回答客人當下真正問的事，再自然補充最重要的相關細節；只有確實能推進旅程時，才提供一個具體下一步或問一個簡短的相關問題。可以從語境理解客人可能在意的事，但不可把推測當成飯店事實。不要每則都追問，也不要固定追問「還有什麼可以幫您」。簡單 FAQ 一兩句就能說清楚時不要刻意拉長；可直接協助的需求，說明能如何安排；需要客人採取行動時，再自然補上下一步。親切感要來自理解本輪細節、自然承接與實用措辭，不能只在資料句前加「了解」、「好的」或「可以的」。客人追問時只補充新問的部分，不得把上一輪答案換個開頭再重複一次。
 一般 FAQ、早餐、停車與旅遊資訊應直接承接客人真正的問法。只有客人詢問能否辦理、是否提供或請求協助時，才能用「可以」或「沒問題」回應；詢問地點、費用、時間、流程或陳述困難時，不得用「可以喔／可以的／當然可以」作為無關開頭。親切感來自理解情境與給出實用答案，不靠堆疊「～」、語助詞或固定口頭禪。
 資訊不完整或不確定時，溫和坦白地說目前沒有確認到正確資料；急件提供櫃檯電話 04-2707-8378，也可請客人回覆「幫我轉接櫃檯」進入留言轉接流程。不使用機械式系統語言，也不得聲稱已經轉接或通知。遇到限制時，先說可以怎麼協助，再說明限制。
 客訴、設備故障、付款問題、退款爭議、訂房異常、遺失物、緊急需求，或客人明顯焦急、不滿時，立即收斂成平穩、明確、有同理心的語氣；不用歡樂 emoji、「～」或「沒問題喔」等輕快承接，也不淡化情況。清楚說明應由誰協助與安全的下一步，不假裝事情已處理完成。
@@ -27,7 +27,7 @@ export function styledInstructions(channel = "web") {
   return `${hospitalityPersonalityInstructions()}\n${channelPresentationInstructions(channel)}`;
 }
 
-export const CORE_PERSONALITY_CONTRACT_VERSION = "hotelmapp-core-personality/3";
+export const CORE_PERSONALITY_CONTRACT_VERSION = "hotelmapp-core-personality/4";
 export const CUSTOMER_CHANNELS = Object.freeze(["web", "line", "messenger", "instagram", "voice"]);
 
 function subsidyPhase(subsidy, temporalContext) {
@@ -72,12 +72,23 @@ function shortStayDate(iso, language) {
 // This is the sole finalization boundary for ordinary guest-facing answers.
 // It may change presentation, never the selected fact set. Callers pass the
 // already-grounded draft; adapters only transport the returned text.
-export function applyCorePersonalityContract({ draft, message, language = "zh-TW", channel = "web" }) {
+const GREETING = Object.freeze({
+  "zh-TW": { text: "您好～", voice: "您好，", pattern: /^(?:您好|哈囉|嗨)[～~，,。.!！\s]*/u },
+  en: { text: "Hello! ", voice: "Hello. ", pattern: /^(?:Hello|Hi)[!,.\s]*/iu },
+  ja: { text: "こんにちは。", voice: "こんにちは。", pattern: /^(?:こんにちは|おはようございます|こんばんは)[。、！!\s]*/u },
+  ko: { text: "안녕하세요. ", voice: "안녕하세요. ", pattern: /^(?:안녕하세요|반갑습니다)[.!！。\s]*/u }
+});
+const SERIOUS_CONTEXT = /(?:客訴|投訴|不滿|生氣|吵|髒|壞(?:掉|了)?|故障|不能用|扣款|退款|遺失|不見|受傷|危險|緊急|complain|broken|refund|charged|lost|emergency|故障|返金|紛失|緊急|고장|환불|분실|긴급)/iu;
+
+export function applyCorePersonalityContract({ draft, message, language = "zh-TW", channel = "web", conversationStart = false }) {
   if (!CUSTOMER_CHANNELS.includes(channel)) throw new TypeError(`Unsupported customer channel: ${channel}`);
   const source = typeof draft === "string" ? draft.trim() : "";
   if (!source) throw new TypeError("Core Personality Contract requires a non-empty grounded draft");
 
   let text = source;
+  const greeting = GREETING[language] || GREETING["zh-TW"];
+  const restrainedGreeting = channel === "voice" || SERIOUS_CONTEXT.test(String(message || ""));
+  if (conversationStart && !greeting.pattern.test(text)) text = `${restrainedGreeting ? greeting.voice : greeting.text}${text}`;
   if (channel === "voice") text = text.replace(/[😊😀🙂✨❤️～]/gu, "").replace(/\n+/g, " ");
   return Object.freeze({ text, contractVersion: CORE_PERSONALITY_CONTRACT_VERSION, channel });
 }
@@ -175,7 +186,7 @@ export function renderHospitalityFact({ topic, intent, facts, language = "zh-TW"
       if (language === "en") return `Yes—${freeCars} car per room is complimentary. A second car is ${additionalFee}.`;
       if (language === "ja") return `はい、1室につき${freeCars}台は無料です。2台目は${additionalFee}となります。`;
       if (language === "ko") return `네, 객실당 차량 ${freeCars}대는 무료이고 두 번째 차량은 ${additionalFee}입니다.`;
-      return `每間客房可免費停 ${freeCars} 台車；第 2 台車加收 ${additionalFee} 停車費。`;
+      return `每間客房可以免費停 ${freeCars} 台車；如果有第 2 台車，停車費是 ${additionalFee} 喔。`;
     }
     if (intent === "parking_partner_location") {
       const lot = parking.partnerLots?.[0];

@@ -46,6 +46,37 @@ test("complaints retain restrained empathy without cheerful particles", () => {
   assert.doesNotMatch(result.text, /～|😊/u);
 });
 
+test("the shared finalizer greets only at conversation start", () => {
+  const first = applyCorePersonalityContract({
+    draft: "每間客房可以免費停 1 台車；如果有第 2 台車，停車費是 NT$200 喔。",
+    message: "停車需要費用嗎？",
+    channel: "line",
+    conversationStart: true
+  });
+  const followUp = applyCorePersonalityContract({
+    draft: "第 2 台車的停車費是 NT$200 喔。",
+    message: "那第二台呢？",
+    channel: "line",
+    conversationStart: false
+  });
+  const alreadyGreeted = applyCorePersonalityContract({
+    draft: "您好～早餐時間是 08:00–10:00 喔。",
+    message: "早餐幾點？",
+    channel: "line",
+    conversationStart: true
+  });
+
+  assert.match(first.text, /^您好～每間客房可以免費停 1 台車/u);
+  assert.doesNotMatch(followUp.text, /^您好/u);
+  assert.equal((alreadyGreeted.text.match(/您好/gu) || []).length, 1);
+});
+
+test("a serious first turn uses a restrained greeting", async () => {
+  const answer = await answerGuestMessage("房間冷氣壞掉了", { env: {} });
+  assert.match(answer, /^您好，/u);
+  assert.doesNotMatch(answer, /～|😊/u);
+});
+
 test("every current and planned customer channel is contract-registered and unknown channels fail closed", () => {
   assert.deepEqual(CUSTOMER_CHANNELS, ["web", "line", "messenger", "instagram", "voice"]);
   for (const channel of CUSTOMER_CHANNELS) {
@@ -61,9 +92,9 @@ test("parking multi-turn stays hospitable while each turn uses only its selected
     turns.push({ role: "user", content: message }, { role: "assistant", content: answer });
     return answer;
   };
-  assert.match(await ask("有停車位嗎？"), /^飯店門口有 3 個路邊停車格/u);
+  assert.match(await ask("有停車位嗎？"), /^您好～飯店門口有 3 個路邊停車格/u);
   const cars = await ask("我們有兩台車");
-  assert.match(cars, /^每間客房可免費停 1 台車/u);
+  assert.match(cars, /^每間客房可以免費停 1 台車/u);
   assert.match(cars, /免費停 1 台車.*第 2 台車.*NT\$200/u);
   assert.doesNotMatch(cars, /3 個車位|配合停車場/u);
   assert.match(await ask("那第二台多少錢？"), /NT\$200/u);
