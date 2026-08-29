@@ -28,6 +28,14 @@ Messenger, or a future Instagram adapter can receive ordinary reply text. The
 contract owns service presentation; grounding and business-rule modules still
 own the selected facts. Channel adapters remain transport-only.
 
+The finalizer no longer prepends a generic acknowledgement. For authoritative
+single-topic facts, `answerGuestMessage()` supplies only the selected fact
+subset, current user turn, recent context, and a verified fallback draft to the
+configured GPT-5.6 Terra text model. The result must match the user's speech
+act and pass both grounding and final-fact verification. A provider failure or
+validation failure returns the intent-aware fallback draft instead of exposing
+an unverified rewrite.
+
 Realtime Voice receives the same contract as immutable session instructions,
 because audio is generated peer-to-peer and no server-side text exists to
 post-process. Its channel presentation is appended after the core personality.
@@ -46,4 +54,3 @@ Only non-conversational protocol or operational responses bypass the contract:
 
 These are not normal hospitality answers and must remain deterministic for
 protocol correctness, security, monitoring, or truthful transaction state.
-

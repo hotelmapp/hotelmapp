@@ -7,6 +7,7 @@ import { temporalContextPrompt, temporalContextProvider } from "./temporal-conte
 import { breakfastArrivalReply, knowledgeGroundingInstructions, parkingReply, resolveKnowledgeGrounding, validateGroundedResponse } from "./knowledge-grounding.js";
 import { tryAiFirstReasoning } from "./ai-orchestrator.js";
 import { configuredReasoning, configuredTextModel, DEFAULT_TEXT_REASONING_EFFORT } from "./model-config.js";
+import { groundedFactSet, verifyFinalResponse } from "./reasoning-core.js";
 
 const MAX_HISTORY_MESSAGES = 20;
 const MAX_MESSAGE_LENGTH = 2_000;
@@ -58,7 +59,7 @@ const REPLY_TEXT = Object.freeze({
   "zh-TW": {
     booking: (dates, url) => `當然可以！如果您預計 ${dates.checkInDate} 入住、${dates.checkOutDate} 退房，可以透過下方官方訂房頁面查看最新房價與空房：\n${url}`,
     baby: name => `${name}可以協助提出需求；建議在入住前一天告知，會依數量與現場狀況安排，因此無法事先保證。`,
-    parking: `有喔～飯店門口有 ${hotelKnowledge.parking.hotelSpaces} 個路邊停車格，停車位不提供預留，採先到先停。如果已經停滿，櫃檯會引導您到步行約 ${hotelKnowledge.parking.partnerLots[0].walkingMinutes} 分鐘、位於${hotelKnowledge.parking.partnerLots[0].location}的配合停車場。停好後記得把車號告訴櫃檯，我們輸入系統後，您就可以自由進出。`,
+    parking: `飯店門口有 ${hotelKnowledge.parking.hotelSpaces} 個路邊停車格，停車位不提供預留，採先到先停。如果已經停滿，櫃檯會引導您到步行約 ${hotelKnowledge.parking.partnerLots[0].walkingMinutes} 分鐘、位於${hotelKnowledge.parking.partnerLots[0].location}的配合停車場。停好後記得把車號告訴櫃檯，我們輸入系統後，您就可以自由進出。`,
     breakfast: `有的～早餐供應時間為 ${hotelKnowledge.breakfast.serviceHours}；如果房價沒有含早餐，也可以用 ${hotelKnowledge.breakfast.pricePerPerson} 加購。`,
     confirm: summary => `如果您需要，我可以幫您把${summary}整理好，作為「留言給飯店人員」交由櫃檯確認。需要我幫您轉交嗎？`
   },
@@ -177,7 +178,7 @@ export function breakfastReply(message) {
     return `主餐有 ${breakfast.menuChoiceCount} 種口味可選，餐點內容會不定時更換，請以當天 Menu 為準。`;
   }
   if (/(兒童|小朋友|小孩).*(多少|價格|費用|價錢)|(?:多少|價格|費用|價錢).*(兒童|小朋友|小孩)/u.test(message)) {
-    return breakfast.childPrice === null ? "兒童早餐的價格我這邊目前沒有確認到正確資訊，為避免提供錯誤答案，需要我幫您轉請櫃檯回覆嗎？" : `有的～兒童早餐價格是 ${breakfast.childPrice}。`;
+    return breakfast.childPrice === null ? unknownInformationReply(message) : `有的～兒童早餐價格是 ${breakfast.childPrice}。`;
   }
   if (/(外帶|帶走)/u.test(message)) {
     return breakfast.takeawayAvailable ? `可以外帶，請${breakfast.notes.find(note => note.includes("外帶")).replace(/^如需外帶，可/, "")}` : "目前沒有提供早餐外帶。";
@@ -225,6 +226,28 @@ export function frontDeskContactReply(message) {
   return `可以直接撥櫃檯電話 ${hotelKnowledge.contact.frontDeskPhone}，服務時間是 ${hotelKnowledge.contact.deskHours}。需要我幫您通知櫃檯嗎？`;
 }
 
+const QUESTION_PATTERN = /[?？]|(?:嗎|呢|哪(?:裡|邊)?|多少|幾點|怎麼|如何|是否|有沒有)\s*[。！!]*$/iu;
+const UNSUPPORTED_HOTEL_DETAIL = /浴缸|熨斗|停車場客服|接駁|游泳池|健身(?:房|室)|微波爐|bathtub|iron|pool|gym|microwave|shuttle/iu;
+const DYNAMIC_LOCAL_TOPIC = /餐廳|美食|景點|附近|天氣|restaurant|attraction|weather/iu;
+const KNOWN_MISSING_DETAIL = /(?:兒童|小朋友|小孩).*(?:早餐).*(?:多少|價格|費用|價錢)|(?:早餐).*(?:兒童|小朋友|小孩).*(?:多少|價格|費用|價錢)|家庭房.*浴缸|浴缸.*家庭房|停車場.*(?:客服|電話)|(?:取消|退款).*(?:條件|規定|費用|金額)|(?:床墊|寢具).*(?:品牌|型號|尺寸|售價|哪一牌)|(?:補助|住宿獎助).*(?:第三晚|第\s*3\s*晚)|(?:第二晚|連續入住).*(?:第一晚|住宿證明|證明)|(?:機場|高鐵|車站)?.{0,8}接駁/iu;
+
+export function unknownInformationReply(message) {
+  const phone = hotelKnowledge.contact.frontDeskPhone;
+  const language = detectGuestLanguage(message);
+  if (language === "en") return `I’m sorry, but I don’t have confirmed information for this question. If you need an answer urgently, please call the front desk at ${phone}; or reply “Connect me with the front desk” and I’ll help you leave a message.`;
+  if (language === "ja") return `申し訳ありませんが、このご質問について確認済みの情報がありません。お急ぎの場合はフロント（${phone}）へお電話いただくか、「フロントに取り次いで」とご返信ください。伝言受付へご案内します。`;
+  if (language === "ko") return `죄송하지만 이 질문은 확인된 정보가 없습니다. 급하시면 프런트(${phone})로 전화하시거나 “프런트에 연결해 주세요”라고 답해 주시면 메시지 접수를 도와드리겠습니다.`;
+  return `不好意思，這個問題我目前沒有確認到正確資料。若您急著確認，可以撥打櫃檯電話 ${phone}；也可以回覆「幫我轉接櫃檯」，我會協助您留言給櫃檯。`;
+}
+
+function requiresUnknownInformationReply(message, grounding) {
+  const source = String(message || "");
+  if (KNOWN_MISSING_DETAIL.test(source)) return true;
+  if (grounding?.topic === "unknown") return true;
+  if (grounding?.topic !== null && grounding?.topic !== undefined) return false;
+  return QUESTION_PATTERN.test(source) && UNSUPPORTED_HOTEL_DETAIL.test(source) && !DYNAMIC_LOCAL_TOPIC.test(source);
+}
+
 export function responsesPayload(message, history = [], channel = "web", temporalContext = temporalContextProvider.getContext(), grounding = resolveKnowledgeGrounding(message, history), env = process.env) {
   grounding = withDatedBookingContext(grounding, message, temporalContext);
   const conversation = normalizedHistory(history);
@@ -249,10 +272,10 @@ ${knowledgeGroundingInstructions(grounding)}
 判斷時以旅客目前訊息為優先，並參考最近對話；回答原則上跟隨目前訊息的語言。
 先自然回應旅客的需求，再提供必要資訊與下一步。只抽取與旅客這次實際詢問直接相關的知識，不要整段複述知識來源，也不要自行增加同類用品（例如只問嬰兒床時，不得順帶列出床圍、消毒鍋或澡盆）。一般回答控制在 2～4 個短段落，每段只聚焦一件事，避免重複同義提醒。使用親切、簡潔、有服務感但不過度客套的語氣；不要採用系統公告、FAQ、制式標題或機械式編號清單。不要以「AI 無法」、「系統無法」、「AI cannot」或其他負面能力聲明開頭，也不要在每段重複致謝或「很高興為您服務」等客套話。
 只有旅客表達明確訂房或住宿意圖時，才在回答問題後自然提供一次官方訂房入口；單純詢問早餐、停車、交通或其他一般資訊時不得附上訂房連結，也不要重複貼連結或過度推銷。
-遇到複合問題時，像真人櫃台一樣用連貫段落整合回答，逐項涵蓋需求，不要硬拆成分類標題。特殊用品、停車或其他須確認的需求，要先直接說明可如何協助及已知條件，再只說一次需要依數量或現場狀況確認。需要真人確認時，不要讓旅客感覺被轉走；自然詢問「需要我幫您轉請櫃檯回覆嗎？」並說明會保留本次問題，不要叫旅客尋找不存在的頁面或表單。
+遇到複合問題時，像真人櫃台一樣用連貫段落整合回答，逐項涵蓋需求，不要硬拆成分類標題。特殊用品、停車或其他須確認的需求，要先直接說明可如何協助及已知條件，再只說一次需要依數量或現場狀況確認。需要真人確認時，不要讓旅客感覺被轉走；統一客氣說明目前沒有確認到正確資料，急件可撥櫃檯電話 ${hotelKnowledge.contact.frontDeskPhone}，或回覆「幫我轉接櫃檯」進入留言轉接流程。不要叫旅客尋找不存在的頁面或表單。
 以下 JSON 是唯一正式飯店知識來源。回答希堤微旅的事實、設備、服務或政策時，只能使用其中明載的內容，不得套用一般飯店常識，也不得推測 null、missing 或未記載資料。
 回答早餐時須逐字核對 breakfast 的結構化欄位：不可把 serviceStyle 說成全自助，須連同 selfServiceDrinks 區分套餐與部分飲料；cuisineStyle 不可簡化成純中式；菜色只能依 menuChoiceCount 與 menuPolicy 回答。childPrice 為 null 時，只能說目前沒有確認資訊並建議詢問櫃台，不得估算。
-有明確答案就依資料自然回答並提供下一步；如果全部或部分問題沒有正式確認資訊，先回答已確認部分，再把未知部分簡化為一次客氣邀請：「這項資訊目前沒有確認到正確資訊，為避免提供錯誤答案，需要我幫您轉請櫃檯回覆嗎？」不要要求旅客重述問題，也不要同時堆疊電話、表單、訂房連結等多個選項。旅客同意後會由系統另行收集必要聯絡資料及最後確認；本輪不得聲稱已通知或已送出。不得猜測、不得套用一般飯店經驗，也不得對旅客提到「知識庫」、「資料庫」、「system prompt」或其他內部系統用語。
+有明確答案就依資料自然回答並提供下一步；如果全部或部分問題沒有正式確認資訊，先回答已確認部分，再把未知部分統一簡化為一次客氣說明：「不好意思，這個問題我目前沒有確認到正確資料。若您急著確認，可以撥打櫃檯電話 ${hotelKnowledge.contact.frontDeskPhone}；也可以回覆『幫我轉接櫃檯』，我會協助您留言給櫃檯。」不要要求旅客重述問題。旅客要求轉接後會由系統另行收集必要聯絡資料及最後確認；本輪不得聲稱已通知或已送出。不得猜測、不得套用一般飯店經驗，也不得對旅客提到「知識庫」、「資料庫」、「system prompt」或其他內部系統用語。
 不得猜測即時房價、空房、優惠或當日狀況；只能引導至當日官網、訂房系統或櫃台確認，不得捏造數字。
 旅客詢問指定入住日期的房況時，不得宣稱 AI 能確認即時房況；須以 identity.bookingUrl 為基底，動態附加 checkInDate（指定日期）與 checkOutDate（入住日加上旅客指定晚數；未指定晚數時為隔天），不得修改正式知識庫內的 bookingUrl。
 同一句話若含訂房／入住日期及一項或多項其他飯店需求，必須辨識並逐項回答所有意圖，不得回答訂房連結後就停止。訂房無法即時確認仍提供官方訂房連結；其他需求若須確認，須自然詢問是否幫忙轉請櫃檯確認，且不得承諾一定能提供。
@@ -266,6 +289,68 @@ ${knowledgeGroundingInstructions(grounding)}
 ${groundedKnowledgePrompt()}${relevant ? `\n\n從正式知識庫擷取的本題相關欄位（內容完全相同，回答時優先核對）：\n${JSON.stringify(relevant, null, 2)}` : ""}`,
     input: [...conversation, { role: "user", content: message }]
   };
+}
+
+export function groundedPresentationPayload({ message, history = [], channel = "web", grounding, draft, env = process.env }) {
+  const conversation = normalizedHistory(history);
+  const language = detectGuestLanguage(message, conversation);
+  const model = configuredTextModel(env);
+  return {
+    model,
+    max_output_tokens: 500,
+    ...configuredReasoning(model, env, {
+      componentKeys: ["OPENAI_RESPONSE_REASONING_EFFORT"],
+      fallback: DEFAULT_TEXT_REASONING_EFFORT
+    }),
+    instructions: `${styledInstructions(channel)}
+
+Rewrite the supplied grounded_draft as one natural hotel front-desk reply in ${language}. The draft is a factual fallback, not a wording template. Use only grounded_facts as hotel truth and preserve every number, price, date, address, URL, condition, limitation, and action status exactly. Do not add a fact or claim that staff acted.
+
+Match the guest's actual speech act before choosing the opening. A question about location must answer where; a cost question must state the fee first; a time question must state the time; a process question must state the next step; a statement of confusion should be acknowledged with useful direction. Never begin with 可以、可以的、可以喔、當然可以、沒問題, or an equivalent permission confirmation unless the guest actually asked whether something is allowed, available, or can be arranged. Do not manufacture warmth with a generic acknowledgement, repeated ～, or a stock phrase. Keep LINE and messaging replies to one or two short paragraphs and do not repeat the previous answer.
+
+Return only the guest-facing reply.`,
+    input: JSON.stringify({
+      current_user_message: message,
+      recent_history: conversation,
+      topic: grounding?.topic,
+      intent: grounding?.intent,
+      grounded_facts: grounding?.facts,
+      factual_contract: grounding?.contract,
+      grounded_draft: draft
+    })
+  };
+}
+
+function safePresentationError(error) {
+  const candidate = error?.code || error?.message;
+  return typeof candidate === "string" && /^[a-z0-9_]{1,64}$/iu.test(candidate) ? candidate : "grounded_presentation_error";
+}
+
+const GENERIC_PERMISSION_OPENING = /^(?:好的|了解|可以(?:的|喔)?|當然可以|沒問題)(?:[～~，,。.!！\s]|$)/u;
+const EXPLICIT_PERMISSION_REQUEST = /(?:可以|可不可以|可否|能不能|能否|請幫|幫我|協助我|\b(?:can|could|may|would)\b.{0,24}\b(?:you|i|we)\b|できますか|可能ですか|お願い|할 수 있|가능한가|도와)/iu;
+
+function openingMatchesSpeechAct(answer, message) {
+  return !GENERIC_PERMISSION_OPENING.test(String(answer || "").trim()) || EXPLICIT_PERMISSION_REQUEST.test(String(message || ""));
+}
+
+export async function composeGroundedPresentation({ message, history = [], channel = "web", grounding, draft, env = process.env, request = requestGroundedResponse, logger = console }) {
+  if (!env.OPENAI_API_KEY?.trim()) return draft;
+  const selectedFacts = groundedFactSet(grounding?.facts);
+  try {
+    const result = await request({
+      payload: groundedPresentationPayload({ message, history, channel, grounding, draft, env }),
+      apiKey: env.OPENAI_API_KEY.trim(),
+      validate: answer => openingMatchesSpeechAct(answer, message) && validateGroundedResponse(answer, grounding) && verifyFinalResponse({
+        answer,
+        selectedFacts,
+        toolResult: { status: "not_requested" }
+      }).valid
+    });
+    return result.answer.trim();
+  } catch (error) {
+    logger?.info?.("[grounded-presentation]", { event: "fallback_used", code: safePresentationError(error), topic: grounding?.topic || "unknown" });
+    return draft;
+  }
 }
 
 export function responseText(response) {
@@ -287,11 +372,14 @@ export function finalizeGuestAnswer(draft, { message, history = [], channel = "w
   return applyCorePersonalityContract({ draft, message, language, channel }).text;
 }
 
-export async function answerGuestMessage(message, { history = [], channel = "web", identity, temporalContext = temporalContextProvider.getContext(), grounding = resolveKnowledgeGrounding(message, history), orchestrate, env = process.env, logger = console } = {}) {
+export async function answerGuestMessage(message, { history = [], channel = "web", identity, temporalContext = temporalContextProvider.getContext(), grounding = resolveKnowledgeGrounding(message, history), orchestrate, request = requestGroundedResponse, env = process.env, logger = console } = {}) {
   const trimmed = typeof message === "string" ? message.trim().slice(0, MAX_MESSAGE_LENGTH) : "";
   if (!trimmed) throw new TypeError("A non-empty guest message is required");
   const language = detectGuestLanguage(trimmed, normalizedHistory(history));
   grounding = withDatedBookingContext(grounding, trimmed, temporalContext);
+  if (requiresUnknownInformationReply(trimmed, grounding)) {
+    return finalizeGuestAnswer(unknownInformationReply(trimmed), { message: trimmed, history, channel });
+  }
   // This module only composes presentation. Authorization and every external
   // side effect are owned by conversation/runtime.js.
   const aiFirst = await tryAiFirstReasoning({ message: trimmed, history: normalizedHistory(history), channel, identity, grounding, orchestrate, env, logger });
@@ -301,14 +389,18 @@ export async function answerGuestMessage(message, { history = [], channel = "web
   // isolation while still missing what the guest actually asked.
   if (grounding.topic === "multi" || grounding.semanticRoute?.clarificationNeeded) {
     const payload = responsesPayload(trimmed, history, channel, temporalContext, grounding, env);
-    const generated = (await requestGroundedResponse({ payload, validate: answer => validateGroundedResponse(answer, grounding) })).answer;
+    const generated = (await request({ payload, apiKey: env.OPENAI_API_KEY?.trim(), validate: answer => validateGroundedResponse(answer, grounding) })).answer;
     return finalizeGuestAnswer(generated, { message: trimmed, history, channel });
   }
   const groundedHospitalityAnswer = renderHospitalityFact({ ...grounding, language, channel, temporalContext });
-  const directAnswer = breakfastArrivalReply(trimmed, grounding) || groundedHospitalityAnswer || parkingReply(grounding) || frontDeskContactReply(trimmed) || sensitiveSituationReply(trimmed) || availabilityReply(trimmed) || specialRequestReply(trimmed) || informationalReply(trimmed);
+  if (groundedHospitalityAnswer) {
+    const presented = await composeGroundedPresentation({ message: trimmed, history, channel, grounding, draft: groundedHospitalityAnswer, env, request, logger });
+    return finalizeGuestAnswer(presented, { message: trimmed, history, channel });
+  }
+  const directAnswer = breakfastArrivalReply(trimmed, grounding) || parkingReply(grounding) || frontDeskContactReply(trimmed) || sensitiveSituationReply(trimmed) || availabilityReply(trimmed) || specialRequestReply(trimmed) || informationalReply(trimmed);
   if (directAnswer) return finalizeGuestAnswer(directAnswer, { message: trimmed, history, channel });
 
   const payload = responsesPayload(trimmed, history, channel, temporalContext, grounding, env);
-  const generated = (await requestGroundedResponse({ payload, validate: answer => validateGroundedResponse(answer, grounding) })).answer;
+  const generated = (await request({ payload, apiKey: env.OPENAI_API_KEY?.trim(), validate: answer => validateGroundedResponse(answer, grounding) })).answer;
   return finalizeGuestAnswer(generated, { message: trimmed, history, channel });
 }

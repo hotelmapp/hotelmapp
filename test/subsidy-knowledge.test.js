@@ -147,8 +147,8 @@ test("registration protects identity data and unknown third-night rules remain u
   assert.match(registration, /不要.*聊天中傳送證件照片、身分證字號或健保卡資料/u);
 
   const unknown = await answer("住宿補助第三晚還有嗎？");
-  assert.match(unknown, /第三晚.*目前沒有確認到/u);
-  assert.match(unknown, /政府最新公告或櫃檯查詢/u);
+  assert.match(unknown, /沒有確認到正確資料/u);
+  assert.match(unknown, /04-2707-8378.*幫我轉接櫃檯/u);
   assert.doesNotMatch(unknown, /第三晚.*NT\$/u);
 });
 

@@ -9,9 +9,7 @@ import {
 import { answerGuestMessage } from "../ai-core/guest-response.js";
 
 const noHandoff = async () => ({ attempted: false });
-const humanOpening = /^(?:好的|了解|可以的|有的|有喔|可以|當然|沒問題|很抱歉|房內|早餐|主餐|是中西式|兒童早餐)/u;
-
-test("20 hospitality scenarios preserve their grounded draft and gain a shared human service presentation", () => {
+test("20 hospitality scenarios preserve their grounded draft without a generic opening", () => {
   const cases = [
     ["停車", "有停車位嗎？", "飯店門口有三個車位。"],
     ["入住", "幾點入住？", "入住時間為下午三點。"],
@@ -38,8 +36,7 @@ test("20 hospitality scenarios preserve their grounded draft and gain a shared h
   for (const [name, message, fact] of cases) {
     const result = applyCorePersonalityContract({ draft: fact, message, channel: "web" });
     assert.equal(result.contractVersion, CORE_PERSONALITY_CONTRACT_VERSION, name);
-    assert.ok(result.text.includes(fact), `${name}: the contract must not rewrite or add grounded facts`);
-    assert.match(result.text, humanOpening, name);
+    assert.equal(result.text, fact, `${name}: the finalizer must not add unrelated wording`);
   }
 });
 
@@ -64,22 +61,24 @@ test("parking multi-turn stays hospitable while each turn uses only its selected
     turns.push({ role: "user", content: message }, { role: "assistant", content: answer });
     return answer;
   };
-  assert.match(await ask("有停車位嗎？"), /^有喔～.*3 個路邊停車格/u);
+  assert.match(await ask("有停車位嗎？"), /^飯店門口有 3 個路邊停車格/u);
   const cars = await ask("我們有兩台車");
-  assert.match(cars, /^可以的～如果您是兩台車過來/u);
-  assert.match(cars, /1 台免費.*第 2 台車.*NT\$200/u);
+  assert.match(cars, /^每間客房可免費停 1 台車/u);
+  assert.match(cars, /免費停 1 台車.*第 2 台車.*NT\$200/u);
   assert.doesNotMatch(cars, /3 個車位|配合停車場/u);
   assert.match(await ask("那第二台多少錢？"), /NT\$200/u);
   const location = await ask("停哪裡？");
   assert.match(location, /門口.*3 個路邊停車格.*步行約 3 分鐘.*青海路全國電子逢甲店隔壁.*配合停車場/u);
   assert.doesNotMatch(location, /NT\$200/u);
   const reservation = await ask("需要先預約嗎？");
-  assert.match(reservation, humanOpening);
+  assert.match(reservation, /^不好意思/u);
 });
 
 test("all deterministic, fallback, and generated presentation branches converge on the shared finalizer", async () => {
   const source = await readFile(new URL("../ai-core/guest-response.js", import.meta.url), "utf8");
   assert.doesNotMatch(source, /performHandoff|sendEmail/u);
+  assert.match(source, /if \(groundedHospitalityAnswer\)/u);
+  assert.match(source, /composeGroundedPresentation/u);
   assert.match(source, /if \(directAnswer\) return finalizeGuestAnswer/u);
   assert.match(source, /return finalizeGuestAnswer\(generated/u);
   assert.equal((source.match(/applyCorePersonalityContract\(/gu) || []).length, 1);

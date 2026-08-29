@@ -182,7 +182,7 @@ test("answers dated availability requests without claiming live availability", a
   await handler({ method: "POST", body: { message: "2026/8/15 有房嗎？", history: [] } }, res);
 
   assert.equal(res.statusCode, 200);
-  assert.match(res.body.answer, /^可以喔～/);
+  assert.match(res.body.answer, /^您要查的是 8 月 15 日入住/u);
   assert.match(res.body.answer, /把日期帶進官方訂房頁面/u);
   assert.doesNotMatch(res.body.answer, /AI 無法|系統無法/);
   assert.match(res.body.answer, /checkInDate=2026-08-15/);
@@ -227,7 +227,8 @@ test("answers parking and breakfast together without mechanical section labels",
 test("instructs uncertain requests to be handed over warmly without unsafe promises", () => {
   const instructions = responsesPayload("可以幫我準備無障礙淋浴椅嗎？").instructions;
   assert.match(instructions, /先直接說明可如何協助/);
-  assert.match(instructions, /需要我幫您轉請櫃檯回覆嗎/);
+  assert.match(instructions, /急件可撥櫃檯電話 04-2707-8378/u);
+  assert.match(instructions, /回覆「幫我轉接櫃檯」/u);
   assert.match(instructions, /不可聲稱已修改、取消、付款或退款/);
   assert.match(instructions, /不得承諾一定能提供/);
 });
@@ -304,7 +305,7 @@ test("makes an outgoing Responses API request before returning its answer", asyn
   assert.equal(requested, true);
   assert.equal(res.statusCode, 200);
   assert.match(res.body.answer, /飯店地址是台中市上石路158號。/u);
-  assert.match(res.body.answer, /^(?:好的～|可以喔～|沒問題，)/u);
+  assert.doesNotMatch(res.body.answer, /^(?:好的～|可以喔～|可以的|沒問題，)/u);
   assert.equal(res.body.diagnostic.knowledgeVersion, "2.3");
   assert.equal(res.headers["X-Chat-Knowledge-Version"], "2.3");
 });
@@ -340,7 +341,7 @@ test("sends the confirmed checkout fact to the Responses API", async t => {
   await handler({ method: "POST", body: { message: "飯店幾點退房？" } }, res);
   assert.equal(res.statusCode, 200);
   assert.match(res.body.answer, /退房時間為上午 11:00 前。/u);
-  assert.match(res.body.answer, /^(?:好的～|可以喔～|沒問題，)/u);
+  assert.doesNotMatch(res.body.answer, /^(?:好的～|可以喔～|可以的|沒問題，)/u);
 });
 
 test("contains confirmed answers for the required guest scenarios", () => {
@@ -373,7 +374,7 @@ test("answers breakfast regressions from structured facts without inventing menu
     ["早餐有什麼菜？", /4 種口味.*當天 Menu/u],
     ["早餐可以外帶嗎？", /可以外帶.*提前告知櫃台/u],
     ["早餐有素食嗎？", /提前告知櫃台.*蛋奶素/u],
-    ["小朋友早餐多少錢？", /兒童早餐的價格.*沒有確認到.*轉請櫃檯回覆/u]
+    ["小朋友早餐多少錢？", /沒有確認到正確資料.*04-2707-8378.*幫我轉接櫃檯/u]
   ];
   for (const [question, expected] of cases) assert.match(breakfastReply(question), expected);
   assert.doesNotMatch(breakfastReply("早餐有什麼菜？"), /吐司|沙拉|培根|稀飯|饅頭/u);
@@ -408,7 +409,8 @@ test("keeps remaining missing facts unknown while exposing confirmed Wi-Fi", () 
 
 test("uses guest-facing escalation language without internal terminology", () => {
   const instructions = responsesPayload("有接駁服務嗎？").instructions;
-  assert.match(instructions, /需要我幫您轉請櫃檯回覆嗎/);
+  assert.match(instructions, /急件可撥櫃檯電話 04-2707-8378/u);
+  assert.match(instructions, /回覆「幫我轉接櫃檯」/u);
   assert.match(instructions, /不得對旅客提到「知識庫」、「資料庫」、「system prompt」/);
   assert.match(instructions, /後勤客服 0927-708-908 洽陳先生/);
   assert.match(instructions, /夜間訂房客服 0927-708-908 洽陳先生/);
@@ -418,7 +420,7 @@ test("uses guest-facing escalation language without internal terminology", () =>
   assert.match(instructions, /沒有包月房價方案/);
   assert.match(instructions, /沒有提供休息/);
   assert.match(instructions, /先回答已確認部分/u);
-  assert.match(instructions, /不想先提供錯誤答案/u);
+  assert.match(instructions, /沒有確認到正確資料/u);
 });
 
 test("sends recent multi-turn context in Responses API message format", () => {
