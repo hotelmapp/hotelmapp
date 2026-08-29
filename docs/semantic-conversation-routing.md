@@ -8,7 +8,7 @@ the guest's current need.
 ## Turn flow
 
 1. Read the current message, recent durable turns, and the stored topic/intent.
-2. Ask Semantic Router v2 for strict JSON containing current topics/intents and
+2. Ask Semantic Router v2.2 for strict JSON containing current topics/intents and
    a non-authoritative handoff recommendation. The router cannot answer the
    guest, authorize delivery, select execution tools, or execute actions.
 3. Validate the JSON, topic/intent pairing, current-turn consistency, and output
@@ -26,6 +26,14 @@ object, time, and requested action are part of the routing instructions.
 Subsidy participation is its own `subsidy_participation` intent. Negative
 questions such as 「你們沒有參加國旅補助嗎？」 remain participation checks;
 they are not expanded into a full subsidy overview.
+
+Calendar applicability is a separate `subsidy_date_applicability` intent.
+Questions about a specific date, weekday, national long holiday, or the day
+before a long holiday cannot be collapsed into personal eligibility. The
+router derives the requested stay date and weekday from the current turn. With
+no exact date, the reply states the published day rule and asks only for the
+check-in date; with an exact date, it answers calendar applicability before any
+government-system qualification disclaimer.
 
 ## Failure behavior
 

@@ -8,6 +8,7 @@ import {
 } from "../ai-core/model-config.js";
 import { resolveKnowledgeGrounding } from "../ai-core/knowledge-grounding.js";
 import { semanticRoutePayload } from "../ai-core/semantic-router.js";
+import { qualityReviewPayload } from "../ai-core/conversation-quality-review.js";
 
 const silentLogger = { info() {} };
 
@@ -30,10 +31,14 @@ test("all text paths share GPT-5.6 Terra defaults with role-appropriate reasonin
 
   const response = responsesPayload("飯店地址在哪裡？", [], "web", undefined, undefined, {});
   const router = semanticRoutePayload("飯店地址在哪裡？", [], {});
+  const quality = qualityReviewPayload({ message: "飯店地址在哪裡？", proposedAnswer: "飯店地址已提供喔。", env: {} });
   assert.deepEqual({ model: response.model, reasoning: response.reasoning }, {
     model: "gpt-5.6-terra", reasoning: { effort: "medium" }
   });
   assert.deepEqual({ model: router.model, reasoning: router.reasoning }, {
+    model: "gpt-5.6-terra", reasoning: { effort: "low" }
+  });
+  assert.deepEqual({ model: quality.model, reasoning: quality.reasoning }, {
     model: "gpt-5.6-terra", reasoning: { effort: "low" }
   });
 
@@ -60,6 +65,7 @@ test("component overrides remain supported and reasoning is omitted for legacy m
   assert.equal(response.model, "gpt-4.1-mini");
   assert.equal(response.reasoning, undefined);
   assert.equal(configuredTextModel({ OPENAI_MODEL: "shared", OPENAI_ROUTER_MODEL: "router" }, "OPENAI_ROUTER_MODEL"), "router");
+  assert.equal(qualityReviewPayload({ message: "hi", proposedAnswer: "Hello.", env: { OPENAI_MODEL: "shared", OPENAI_QUALITY_MODEL: "quality" } }).model, "quality");
   assert.deepEqual(configuredReasoning("gpt-5.6-terra", { OPENAI_REASONING_EFFORT: "high" }), { reasoning: { effort: "high" } });
   assert.equal(supportsReasoning("gpt-4.1-mini"), false);
 });

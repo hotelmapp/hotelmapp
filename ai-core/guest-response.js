@@ -250,7 +250,7 @@ function requiresUnknownInformationReply(message, grounding) {
   return QUESTION_PATTERN.test(source) && UNSUPPORTED_HOTEL_DETAIL.test(source) && !DYNAMIC_LOCAL_TOPIC.test(source);
 }
 
-export function responsesPayload(message, history = [], channel = "web", temporalContext = temporalContextProvider.getContext(), grounding = resolveKnowledgeGrounding(message, history), env = process.env) {
+export function responsesPayload(message, history = [], channel = "web", temporalContext = temporalContextProvider.getContext(), grounding = resolveKnowledgeGrounding(message, history, null, null, temporalContext), env = process.env) {
   grounding = withDatedBookingContext(grounding, message, temporalContext);
   const conversation = normalizedHistory(history);
   const responseLanguage = detectGuestLanguage(message, conversation);
@@ -402,7 +402,7 @@ export async function answerGuestMessage(message, { history = [], channel = "web
   const trimmed = typeof message === "string" ? message.trim().slice(0, MAX_MESSAGE_LENGTH) : "";
   if (!trimmed) throw new TypeError("A non-empty guest message is required");
   const conversation = normalizedHistory(history);
-  if (grounding === undefined) grounding = await resolveSemanticKnowledgeGrounding(trimmed, conversation, null, null, { request, env, logger });
+  if (grounding === undefined) grounding = await resolveSemanticKnowledgeGrounding(trimmed, conversation, null, null, { request, env, logger, temporalContext });
   const language = detectGuestLanguage(trimmed, conversation);
   grounding = withDatedBookingContext(grounding, trimmed, temporalContext);
   if (requiresUnknownInformationReply(trimmed, grounding)) {

@@ -17,7 +17,7 @@ function flatten(value, prefix, output = []) {
     output.push(Object.freeze({
       id: prefix, value: value ?? null,
       certainty: value === null || value === undefined ? "unknown" : "confirmed",
-      source: `hotel_knowledge_v${KNOWLEDGE_VERSION}`
+      source: prefix.startsWith("requestContext.") ? "current_user_message" : `hotel_knowledge_v${KNOWLEDGE_VERSION}`
     }));
   }
   return output;

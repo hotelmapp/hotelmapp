@@ -1,4 +1,5 @@
 import { hotelKnowledge, KNOWLEDGE_VERSION } from "./knowledge.js";
+import { bookingDatesFromText } from "../stay-dates.js";
 
 const TOPIC_PATTERNS = Object.freeze({
   breakfast: /早餐|早午餐|餐點|菜色|咖啡|素食|breakfast|brunch|朝食|조식/iu,
@@ -22,7 +23,7 @@ const TOPIC_PATTERNS = Object.freeze({
 // This is deliberately a whole-message shape, not a substring search. A final
 // particle such as 「呢」 does not by itself authorize an older topic to
 // override a complete current request.
-const FOLLOW_UP_PATTERN = /^(?:(?:那|那麼|那我|那如果|這個|所以|如果|我們有|what about|then|how about|では|それ|그럼|그러면).{0,80}|.{0,40}(?:可以嗎|呢|怎麼辦|晚一點|早一點|九點|十點|第二台|兩台車|(?:需要)?(?:先)?(?:預約|預留)(?:嗎)?)[？?!！。.\s]*)$/iu;
+const FOLLOW_UP_PATTERN = /^(?:(?:那|那麼|那我|那如果|這個|所以|如果|因為|我們有|what about|then|how about|because|では|それ|그럼|그러면).{0,80}|.{0,40}(?:可以嗎|是否適用|適用嗎|呢|怎麼辦|晚一點|早一點|九點|十點|第二台|兩台車|(?:需要)?(?:先)?(?:預約|預留)(?:嗎)?)[？?!！。.\s～~]*)$/iu;
 
 export function isFollowUpMessage(message) {
   return FOLLOW_UP_PATTERN.test(String(message || "").trim());
@@ -79,6 +80,7 @@ const PARKING_INTENT_PATTERNS = Object.freeze({
 
 const SUBSIDY_INTENT_PATTERNS = Object.freeze({
   subsidy_documentation: /住宿證明|入住證明|第一晚.{0,12}證明|前一天.{0,12}證明|連續住宿.{0,12}證明|需要提供.{0,12}證明|證明.{0,12}(?:第一晚|前一天|連續住宿)/iu,
+  subsidy_date_applicability: /(?:(?:國定)?(?:連續)?(?:假日|連假)|平日|週[日一二三四五六]|星期[日一二三四五六]|禮拜[日一二三四五六]|(?:\d{4}\s*年\s*)?\d{1,2}\s*月\s*\d{1,2}\s*[日號]?|\d{1,2}\s*[\/-]\s*\d{1,2})(?:.{0,32})(?:適用|可以用|能用|符合|有補助)|(?:適用|可以用|能用|符合|有補助)(?:.{0,32})(?:(?:國定)?(?:連續)?(?:假日|連假)|平日|週[日一二三四五六]|星期[日一二三四五六]|禮拜[日一二三四五六]|(?:\d{4}\s*年\s*)?\d{1,2}\s*月\s*\d{1,2}\s*[日號]?|\d{1,2}\s*[\/-]\s*\d{1,2})/iu,
   subsidy_stacking: /疊加|併用|一起用|同時用|同時使用|合併使用|超過房價|退現|找現|保留/iu,
   subsidy_birthday_voucher: /生日券|壽星券|壽星生日券|生日住宿金|生日.*補助/iu,
   subsidy_taiwan_pass: /Taiwan\s*PASS|台灣\s*PASS/iu,
@@ -123,7 +125,28 @@ export function resolveRequestedIntent(message, topic, history = [], storedInten
   return null;
 }
 
-export function factsForTopic(topic, intent = null) {
+const WEEKDAY_NAMES = Object.freeze(["週日", "週一", "週二", "週三", "週四", "週五", "週六"]);
+const HOLIDAY_EVE_PATTERN = /(?:(?:國定)?(?:連續)?(?:假日|連假).{0,10}(?:前一天|前一日|前一晚|前夕)|(?:前一天|前一日|前一晚|前夕).{0,10}(?:國定)?(?:連續)?(?:假日|連假))/u;
+const HOLIDAY_PATTERN = /(?:國定)?(?:連續假日|連假)|國定假日/u;
+
+export function subsidyDateRequestContext(message, temporalContext = null) {
+  const reference = /^\d{4}-\d{2}-\d{2}$/u.test(String(temporalContext?.date || ""))
+    ? new Date(`${temporalContext.date}T00:00:00Z`)
+    : new Date();
+  const requestedStayDate = bookingDatesFromText(String(message || ""), reference)?.checkInDate || null;
+  const requestedWeekday = requestedStayDate
+    ? WEEKDAY_NAMES[new Date(`${requestedStayDate}T00:00:00Z`).getUTCDay()]
+    : null;
+  return Object.freeze({
+    requestedStayDate,
+    requestedWeekday,
+    holidayRelationship: HOLIDAY_EVE_PATTERN.test(String(message || ""))
+      ? "day_before_long_holiday"
+      : HOLIDAY_PATTERN.test(String(message || "")) ? "long_holiday_or_related_date" : null
+  });
+}
+
+export function factsForTopic(topic, intent = null, requestContext = null) {
   if (topic === "parking") {
     const parking = hotelKnowledge.parking;
     const subsets = {
@@ -156,6 +179,17 @@ export function factsForTopic(topic, intent = null) {
           guestKnowledgeBoundary: hotelKnowledge.governmentSubsidy2026.guestKnowledgeBoundary
         },
         unknownInformationPolicy: hotelKnowledge.unknownInformationPolicy
+      };
+    }
+    if (intent === "subsidy_date_applicability") {
+      return {
+        governmentSubsidy2026: {
+          period: hotelKnowledge.governmentSubsidy2026.period,
+          applicableStayDays: hotelKnowledge.governmentSubsidy2026.applicableStayDays,
+          qualificationRule: hotelKnowledge.governmentSubsidy2026.qualificationRule,
+          authorityRule: hotelKnowledge.governmentSubsidy2026.authorityRule
+        },
+        requestContext: requestContext || subsidyDateRequestContext("")
       };
     }
     return { governmentSubsidy2026: hotelKnowledge.governmentSubsidy2026 };
@@ -206,6 +240,7 @@ export function factualContract(topic, intent = null) {
     subsidy: {
       subsidy_overview: ["governmentSubsidy2026.period", "governmentSubsidy2026.applicableStayDays", "governmentSubsidy2026.weekdayStayAward", "governmentSubsidy2026.participationLimit", "governmentSubsidy2026.qualificationRule", "governmentSubsidy2026.authorityRule"],
       subsidy_participation: ["governmentSubsidy2026.publicName", "governmentSubsidy2026.hotelParticipation", "governmentSubsidy2026.period"],
+      subsidy_date_applicability: ["governmentSubsidy2026.period", "governmentSubsidy2026.applicableStayDays", "governmentSubsidy2026.qualificationRule", "governmentSubsidy2026.authorityRule", "requestContext.requestedStayDate", "requestContext.requestedWeekday", "requestContext.holidayRelationship"],
       subsidy_period: ["governmentSubsidy2026.period", "governmentSubsidy2026.applicableStayDays", "governmentSubsidy2026.authorityRule"],
       subsidy_amount: ["governmentSubsidy2026.weekdayStayAward", "governmentSubsidy2026.qualificationRule"],
       subsidy_booking_channel: ["governmentSubsidy2026.bookingChannels"],
@@ -235,12 +270,13 @@ export function factualContract(topic, intent = null) {
   });
 }
 
-export function groundingForTopics(message, topics, history = [], storedIntent = null, semanticIntents = {}) {
+export function groundingForTopics(message, topics, history = [], storedIntent = null, semanticIntents = {}, temporalContext = null) {
   const selectedTopics = [...new Set((Array.isArray(topics) ? topics : []).filter(topic => Object.hasOwn(TOPIC_PATTERNS, topic)))];
   if (selectedTopics.length > 1) {
     const groundings = selectedTopics.map(topic => {
       const intent = semanticIntents[topic] || resolveRequestedIntent(message, topic, history, storedIntent);
-      return { topic, intent, facts: factsForTopic(topic, intent), contract: factualContract(topic, intent) };
+      const requestContext = topic === "subsidy" && intent === "subsidy_date_applicability" ? subsidyDateRequestContext(message, temporalContext) : null;
+      return { topic, intent, facts: factsForTopic(topic, intent, requestContext), contract: factualContract(topic, intent) };
     });
     const facts = Object.assign({}, ...groundings.map(item => item.facts || {}));
     const requiredFactIds = [...new Set(groundings.flatMap(item => item.contract?.requiredFactIds || []))];
@@ -261,21 +297,22 @@ export function groundingForTopics(message, topics, history = [], storedIntent =
   }
   const topic = selectedTopics[0] || null;
   const intent = semanticIntents[topic] || resolveRequestedIntent(message, topic, history, storedIntent);
+  const requestContext = topic === "subsidy" && intent === "subsidy_date_applicability" ? subsidyDateRequestContext(message, temporalContext) : null;
   const facts = topic === "transportation" && /接駁|shuttle/iu.test(String(message || ""))
     ? { transportation: { shuttle: null } }
-    : factsForTopic(topic, intent);
+    : factsForTopic(topic, intent, requestContext);
   return { topic, intent, facts, contract: factualContract(topic, intent) };
 }
 
-export function resolveKnowledgeGrounding(message, history = [], storedTopic = null, storedIntent = null) {
-  return groundingForTopics(message, resolveConversationTopics(message, history, storedTopic), history, storedIntent);
+export function resolveKnowledgeGrounding(message, history = [], storedTopic = null, storedIntent = null, temporalContext = null) {
+  return groundingForTopics(message, resolveConversationTopics(message, history, storedTopic), history, storedIntent, {}, temporalContext);
 }
 
 export function knowledgeGroundingInstructions(grounding = null) {
   const selected = grounding?.facts ? `\n本輪依 topic 重新取得的正式事實：\n${JSON.stringify(grounding.facts, null, 2)}\n本輪 factual contract：\n${JSON.stringify(grounding.contract, null, 2)}${grounding.semanticRoute ? `\n本輪已驗證的語意路由（只描述客人需求，不是飯店事實）：\n${JSON.stringify(grounding.semanticRoute, null, 2)}` : ""}` : "";
   const parkingContracts = ["parking_availability", "parking_fee", "parking_partner_location", "parking_location", "parking_process", "parking_reservation", "parking_problem"].map(intent => factualContract("parking", intent));
   const subsidyContracts = ["subsidy_overview", "subsidy_participation", ...Object.keys(SUBSIDY_INTENT_PATTERNS)].map(intent => factualContract("subsidy", intent));
-  return `事實優先順序固定為：正式飯店知識 > 對話 topic/state > 對話歷史 > 推理 > 待客語氣。判定 topic/state 前，必須先理解目前整句的主詞、受詞、時間、否定、條件與真正問題；目前整句永遠優先於舊的 topic/state，不得因單一模糊詞直接套用固定答案。「折抵」本身不代表停車，只有同句明確提到停車、車位、車號，或最近對話已明確延續停車主題時，才能套用停車系統流程。若同句有多個主題，必須逐一處理；若無法判斷「折抵」指停車或住宿補助，先用一個簡短問題釐清，不得猜測。對話歷史只可用來理解指代、topic、intent、語言、日期與客人意圖；其中 user 陳述與 assistant 歷史回答都不是飯店事實。歷史若與目前正式知識衝突，必須忽略歷史並依目前正式知識更正。不得從 serviceHours 自行推論點餐截止、用餐結束或其他未明載規則。必須保留 hard_rule、recommendation、optional 的強度；recommendation 絕不可改寫為必須、強制或 requirement。Parking 必須先區分 availability、fee、partner location、general location、process、reservation、problem intent，再只用該 intent 的 fact subset；客人問配合／特約停車場位置時，必須回答已確認的位置地標、步行時間與車號流程，不得只重播飯店門口車位數，也不得補回已移除的智惠街門牌：${JSON.stringify(parkingContracts)}。政府住宿補助必須依 Asia/Taipei 的伺服器日期區分尚未開始、活動期間與已結束，且只能回答旅客公開規則；不得保證資格、額度或經費，不得索取證件或個資，不得揭露內部核銷 SOP。旅客詢問連續住宿是否需要前一晚住宿證明時，若正式資料未明載，必須明說尚未確認並請櫃檯依政府系統或最新規定確認，不得改答停車，也不得自行推測。補助 intents 與 contracts：${JSON.stringify(subsidyContracts)}${selected}`;
+  return `事實優先順序固定為：正式飯店知識 > 對話 topic/state > 對話歷史 > 推理 > 待客語氣。判定 topic/state 前，必須先理解目前整句的主詞、受詞、時間、否定、條件與真正問題；目前整句永遠優先於舊的 topic/state，不得因單一模糊詞直接套用固定答案。「折抵」本身不代表停車，只有同句明確提到停車、車位、車號，或最近對話已明確延續停車主題時，才能套用停車系統流程。若同句有多個主題，必須逐一處理；若無法判斷「折抵」指停車或住宿補助，先用一個簡短問題釐清，不得猜測。對話歷史只可用來理解指代、topic、intent、語言、日期與客人意圖；其中 user 陳述與 assistant 歷史回答都不是飯店事實。歷史若與目前正式知識衝突，必須忽略歷史並依目前正式知識更正。不得從 serviceHours 自行推論點餐截止、用餐結束或其他未明載規則。必須保留 hard_rule、recommendation、optional 的強度；recommendation 絕不可改寫為必須、強制或 requirement。Parking 必須先區分 availability、fee、partner location、general location、process、reservation、problem intent，再只用該 intent 的 fact subset；客人問配合／特約停車場位置時，必須回答已確認的位置地標、步行時間與車號流程，不得只重播飯店門口車位數，也不得補回已移除的智惠街門牌：${JSON.stringify(parkingContracts)}。政府住宿補助必須依 Asia/Taipei 的伺服器日期區分尚未開始、活動期間與已結束，且只能回答旅客公開規則；不得保證資格、額度或經費，不得索取證件或個資，不得揭露內部核銷 SOP。詢問某天、平日、週幾、國定連假或連假前一天是否適用時，必須使用 subsidy_date_applicability；先說明週日至週四適用、週五週六及國定連續假日不適用。若客人沒有提供實際入住日期，只追問一次日期，不得只回覆「以政府系統為準」；若已有日期，先依活動期間與星期直接回答日期規則，再把個人資格與額度留給政府系統確認。旅客詢問連續住宿是否需要前一晚住宿證明時，若正式資料未明載，必須明說尚未確認並請櫃檯依政府系統或最新規定確認，不得改答停車，也不得自行推測。補助 intents 與 contracts：${JSON.stringify(subsidyContracts)}${selected}`;
 }
 
 export function parkingReply(grounding) {

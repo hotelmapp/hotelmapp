@@ -5,9 +5,10 @@ import { requestGroundedResponse } from "./response-service.js";
 import { availableCapabilities, responseProvenance } from "./reasoning-core.js";
 import { configuredReasoning, configuredTextModel, DEFAULT_ROUTING_REASONING_EFFORT, DEFAULT_TEXT_REASONING_EFFORT } from "./model-config.js";
 import { validateUnifiedReply } from "./reply-quality.js";
+import { parseQualityReview, qualityReviewEnabled, qualityReviewPayload } from "./conversation-quality-review.js";
 
 export const AI_FIRST_FEATURE_FLAG = "AI_FIRST_ORCHESTRATOR_ENABLED";
-export const ORCHESTRATION_VERSION = "3.0";
+export const ORCHESTRATION_VERSION = "3.2";
 const MAX_DECISION_FACTS = 64;
 
 export const MODEL_DECISION_SCHEMA = Object.freeze({
@@ -15,7 +16,7 @@ export const MODEL_DECISION_SCHEMA = Object.freeze({
   additionalProperties: false,
   required: ["intent", "user_need", "facts_to_use", "action", "clarification_needed", "next_step", "response_strategy"],
   properties: {
-    intent: { type: "string", enum: ["multiple", "subsidy_overview", "subsidy_participation", "subsidy_amount", "subsidy_period", "subsidy_booking_channel", "subsidy_participation_limit", "subsidy_birthday_voucher", "subsidy_taiwan_pass", "subsidy_stacking", "subsidy_registration", "subsidy_documentation", "subsidy_eligibility", "subsidy_third_night", "booking_direct", "booking_availability", "booking_modify_cancel", "parking_availability", "parking_fee", "parking_partner_location", "parking_location", "parking_process", "parking_reservation", "parking_problem", "wifi", "check_in", "front_desk_contact", "check_out", "late_checkout", "breakfast", "luggage", "room_type", "baby_equipment", "transportation", "cancellation", "payment", "complaint", "unknown"] },
+    intent: { type: "string", enum: ["multiple", "subsidy_overview", "subsidy_participation", "subsidy_date_applicability", "subsidy_amount", "subsidy_period", "subsidy_booking_channel", "subsidy_participation_limit", "subsidy_birthday_voucher", "subsidy_taiwan_pass", "subsidy_stacking", "subsidy_registration", "subsidy_documentation", "subsidy_eligibility", "subsidy_third_night", "booking_direct", "booking_availability", "booking_modify_cancel", "parking_availability", "parking_fee", "parking_partner_location", "parking_location", "parking_process", "parking_reservation", "parking_problem", "wifi", "check_in", "front_desk_contact", "check_out", "late_checkout", "breakfast", "luggage", "room_type", "baby_equipment", "transportation", "cancellation", "payment", "complaint", "unknown"] },
     user_need: { type: "string", minLength: 1, maxLength: 240 },
     facts_to_use: { type: "array", maxItems: MAX_DECISION_FACTS, items: { type: "string", minLength: 1, maxLength: 120 } },
     action: { type: "string", enum: ["none", "contact_front_desk"] },
@@ -46,7 +47,12 @@ export function groundingFactEntries(grounding) {
   const visit = (value, path) => {
     if (Array.isArray(value)) value.forEach((item, index) => visit(item, `${path}[${index}]`));
     else if (value && typeof value === "object") Object.entries(value).forEach(([key, item]) => visit(item, path ? `${path}.${key}` : key));
-    else output.push({ id: path, value: value ?? null, certainty: value == null ? "unknown" : "confirmed", source: `hotel_knowledge_v${KNOWLEDGE_VERSION}` });
+    else output.push({
+      id: path,
+      value: value ?? null,
+      certainty: value == null ? "unknown" : "confirmed",
+      source: path.startsWith("requestContext.") ? "current_user_message" : `hotel_knowledge_v${KNOWLEDGE_VERSION}`
+    });
   };
   visit(grounding?.facts || {}, "");
   return output;
@@ -132,7 +138,9 @@ You are the one unified answer composer for every ordinary HotelMapp guest quest
 
 Understand the guest's complete current wording before writing. Resolve a yes/no or negative question directly in the first few words; for example, 「你們沒有參加補助嗎？」 must begin with a natural direct answer such as 「有參加喔，」 before dates or rules. A location, cost, time, or process question must lead with that requested information. Use only the details needed for the current need; do not dump every available fact, policy, or disclaimer. A simple question normally needs one or two short sentences. Cover all explicit needs in a multi-topic message, preserve conditions and relationships, and answer a follow-up with only the new information instead of replaying the previous answer.
 
-Warmth must come from understanding the current need and natural service wording, not from adding a bare 「了解」、「好的」 or 「可以的」 before a database-like sentence. Do not add the first-turn greeting here because the shared finalizer owns it. Do not force a follow-up question.${correction ? `\n\nYour previous answer was rejected for ${correction.reason}. Correct that exact issue while preserving all verified facts. Previous rejected answer: ${JSON.stringify(correction.answer)}` : ""}`,
+For subsidy_date_applicability, distinguish the published calendar rule from personal eligibility. If requestContext.requestedStayDate is unknown, acknowledge the exact concern, state the Sunday-through-Thursday rule and the Friday/Saturday/national-long-holiday exclusions, then ask only for the actual check-in date. If the date is known, answer its calendar applicability first from the campaign period, derived weekday, and published exclusion; only then note that personal qualification and allowance still require the government system. Never use a government-system disclaimer as the whole answer.
+
+Warmth must come from understanding the current need and natural service wording, not from adding a bare 「了解」、「好的」、「可以的」 or a lone polite word such as 「請」 before a database-like sentence. In a follow-up that expresses a concern or condition, naturally reflect that concern before giving the useful rule or next step. When a result cannot be guaranteed, acknowledge what the guest is trying to confirm, explain the uncertainty in plain language, and offer the part that can be checked; do not send a policy disclaimer by itself. Do not add the first-turn greeting here because the shared finalizer owns it. Do not force a follow-up question.${correction ? `\n\nYour previous answer was rejected for ${correction.reason}. ${correction.guidance ? `Independent reviewer guidance: ${JSON.stringify(correction.guidance)}. ` : ""}Correct that exact issue while preserving all verified facts. Previous rejected answer: ${JSON.stringify(correction.answer)}` : ""}`,
     input: JSON.stringify({ current_user_message: message, recent_history: history, semantic_route: grounding?.semanticRoute || null, verified_decision: decision, selected_grounded_facts: selectedFacts, tool_result: toolResult })
   };
 }
@@ -165,18 +173,42 @@ export async function orchestrateHospitalityTurn({ message, history = [], ground
   const selectedFacts = decision.facts_to_use.map(id => facts.find(fact => fact.id === id));
   let composed;
   let correction = null;
+  let qualityReview = null;
   for (let attempt = 0; attempt < 2; attempt++) {
     composed = await request({ payload: prosePayload({ message, history, grounding, decision, selectedFacts, toolResult, channel, correction, env }) });
     if (!composed.answer?.trim()) throw new Error("empty_composed_response");
     const verification = validateUnifiedReply({ answer: composed.answer, message, history, grounding, selectedFacts, toolResult });
-    if (verification.valid) break;
-    if (attempt === 1) throw new Error(verification.reason);
-    correction = { reason: verification.reason, answer: composed.answer.trim() };
-    safeLog(logger, "response_retry", { reason: verification.reason });
+    if (!verification.valid) {
+      if (attempt === 1) throw new Error(verification.reason);
+      correction = { reason: verification.reason, answer: composed.answer.trim() };
+      safeLog(logger, "response_retry", { reason: verification.reason });
+      continue;
+    }
+    if (!qualityReviewEnabled(env)) break;
+    try {
+      const reviewed = await request({
+        payload: qualityReviewPayload({ message, history, grounding, decision, selectedFacts, toolResult, proposedAnswer: composed.answer, channel, env }),
+        apiKey: env.OPENAI_API_KEY?.trim()
+      });
+      qualityReview = parseQualityReview(reviewed.answer);
+      safeLog(logger, "quality_review_completed", { verdict: qualityReview.verdict, issueCount: qualityReview.issues.length });
+    } catch (error) {
+      safeLog(logger, "quality_review_unavailable", { code: safeErrorCode(error) });
+      qualityReview = null;
+      break;
+    }
+    if (qualityReview.verdict === "pass") break;
+    if (attempt === 1) throw new Error(`quality_review_${qualityReview.issues[0] || "rejected"}`);
+    correction = {
+      reason: `quality_review:${qualityReview.issues.join(",")}`,
+      guidance: qualityReview.rewrite_guidance,
+      answer: composed.answer.trim()
+    };
+    safeLog(logger, "response_retry", { reason: "quality_review", issues: qualityReview.issues });
   }
   const provenance = responseProvenance({ grounding, selectedFacts, capability: decision.action, toolResult });
   safeLog(logger, "response_composed", { channel, latencyMs: Date.now() - started, personalityVersion: CORE_PERSONALITY_CONTRACT_VERSION });
-  return { answer: composed.answer.trim(), decision, selectedFacts, toolResult, provenance };
+  return { answer: composed.answer.trim(), decision, selectedFacts, toolResult, qualityReview, provenance };
 }
 
 export async function tryAiFirstReasoning(options) {

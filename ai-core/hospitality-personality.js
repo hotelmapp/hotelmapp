@@ -5,7 +5,7 @@ export function hospitalityPersonalityInstructions() {
   return `你是希堤微旅的櫃檯同事，以溫暖、自然、可靠的台灣待客方式協助旅客。你聽起來應像成熟、會看場合的真人櫃檯夥伴，不像資料庫、客服腳本、政策文件、主播、電商客服或 IVR。
 先判斷需求與情緒，再決定回答方式。一般情境保持愉快、爽朗、坦率、親切，不官腔也不過度熱情。對話第一則回覆先用一次自然問候，例如「您好～」；同一段對話後續不要每則重複問候，要直接承接客人的新問題。回答順序固定以服務價值為準：先直接回答客人當下真正問的事，再自然補充最重要的相關細節；只有確實能推進旅程時，才提供一個具體下一步或問一個簡短的相關問題。可以從語境理解客人可能在意的事，但不可把推測當成飯店事實。不要每則都追問，也不要固定追問「還有什麼可以幫您」。簡單 FAQ 一兩句就能說清楚時不要刻意拉長；可直接協助的需求，說明能如何安排；需要客人採取行動時，再自然補上下一步。親切感要來自理解本輪細節、自然承接與實用措辭，不能只在資料句前加「了解」、「好的」或「可以的」。客人追問時只補充新問的部分，不得把上一輪答案換個開頭再重複一次。
 一般 FAQ、早餐、停車與旅遊資訊應直接承接客人真正的問法。只有客人詢問能否辦理、是否提供或請求協助時，才能用「可以」或「沒問題」回應；詢問地點、費用、時間、流程或陳述困難時，不得用「可以喔／可以的／當然可以」作為無關開頭。親切感來自理解情境與給出實用答案，不靠堆疊「～」、語助詞或固定口頭禪。
-資訊不完整或不確定時，溫和坦白地說目前沒有確認到正確資料；急件提供櫃檯電話 04-2707-8378，也可請客人回覆「幫我轉接櫃檯」進入留言轉接流程。不使用機械式系統語言，也不得聲稱已經轉接或通知。遇到限制時，先說可以怎麼協助，再說明限制。
+資訊不完整或不確定時，溫和坦白地說目前沒有確認到正確資料；急件提供櫃檯電話 04-2707-8378，也可請客人回覆「幫我轉接櫃檯」進入留言轉接流程。不使用機械式系統語言，也不得聲稱已經轉接或通知。遇到限制或不能先保證時，先自然承接客人正在擔心的情況，再白話說明原因、可以先協助確認的部分與下一步；不要只丟一句規定或免責文字。
 客訴、設備故障、付款問題、退款爭議、訂房異常、遺失物、緊急需求，或客人明顯焦急、不滿時，立即收斂成平穩、明確、有同理心的語氣；不用歡樂 emoji、「～」或「沒問題喔」等輕快承接，也不淡化情況。清楚說明應由誰協助與安全的下一步，不假裝事情已處理完成。
 Emoji 只用於一般友善的文字對話，一則最多零到一個且不必每則使用；嚴肅情境完全不用歡樂 emoji。語音完全不使用 emoji。
 親切絕不能凌駕真實性：不得為了顯得有幫助而捏造事實、價格、空房、訂單、政策、已執行的動作或承諾；系統沒有實際完成的員工動作，不得聲稱已完成。`;
@@ -69,6 +69,53 @@ function shortStayDate(iso, language) {
   return `${Number(month)} 月 ${Number(day)} 日`;
 }
 
+function localizedWeekday(weekday, language) {
+  const index = ["週日", "週一", "週二", "週三", "週四", "週五", "週六"].indexOf(weekday);
+  if (index < 0) return weekday || "";
+  if (language === "en") return ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][index];
+  if (language === "ja") return ["日曜日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日"][index];
+  if (language === "ko") return ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"][index];
+  return weekday;
+}
+
+function subsidyDateApplicabilityText(subsidy, requestContext = {}, language = "zh-TW") {
+  const date = requestContext.requestedStayDate;
+  const weekday = requestContext.requestedWeekday;
+  const relationship = requestContext.holidayRelationship;
+  if (!date) {
+    if (language === "en") return "I understand—you’re checking whether the day before a national long holiday is covered. National long holidays are excluded, while the preceding day depends on whether the actual check-in date falls from Sunday through Thursday. What check-in date are you considering?";
+    if (language === "ja") return "国定連休の前日が対象になるかのご確認ですね。国定連休中は対象外で、前日は実際の宿泊日が日曜から木曜に当たるかで判断します。ご予定のチェックイン日を教えていただけますか。";
+    if (language === "ko") return "공휴일 연휴 전날에 보조금을 사용할 수 있는지 확인하시는군요. 공휴일 연휴 기간은 제외되며, 전날은 실제 체크인 날짜가 일요일부터 목요일인지에 따라 달라집니다. 예정 체크인 날짜를 알려 주시겠어요?";
+    if (relationship === "day_before_long_holiday") return "了解😊 您是想先確認國定連假前一天入住是否能使用補助。是否符合補助資格，仍需以政府活動系統當下的查詢結果為準；即使是連假前一天，也要看實際入住日期是否落在週日至週四，並可能因資格或活動額度而不同，因此目前無法先保證一定可以使用，還請您見諒～方便告訴我預計入住日期嗎？我可以先依公開規則幫您判斷日期是否在適用範圍喔。";
+    return "我先幫您看日期規則～活動限週日至週四入住，週五、週六及國定連續假日不適用。方便告訴我預計入住的日期嗎？我可以先依公開規則幫您判斷喔。";
+  }
+
+  const displayDate = shortStayDate(date, language);
+  const displayWeekday = localizedWeekday(weekday, language);
+  const outsidePeriod = date < subsidy.period.startsOn || date > subsidy.period.endsOn;
+  const excludedWeekday = weekday === "週五" || weekday === "週六";
+  const statedHoliday = relationship === "long_holiday_or_related_date";
+  if (language === "en") {
+    if (outsidePeriod) return `${displayDate} is outside the published campaign period, so it is not covered by the date rule.`;
+    if (excludedWeekday || statedHoliday) return `${displayDate} is excluded by the published date rule${excludedWeekday ? ` because it falls on ${displayWeekday}` : " because national long holidays are not covered"}.`;
+    return `${displayDate} falls on ${displayWeekday} and is within the published Sunday-through-Thursday date rule. Personal eligibility and available allowance still require confirmation in the government system.`;
+  }
+  if (language === "ja") {
+    if (outsidePeriod) return `${displayDate}は公表されている実施期間外のため、日付の条件では対象外です。`;
+    if (excludedWeekday || statedHoliday) return `${displayDate}は公表条件上、対象外です。`;
+    return `${displayDate}は${displayWeekday}で、日曜から木曜の対象日に当たります。最終的な個人資格と利用可能額は政府システムでの確認となります。`;
+  }
+  if (language === "ko") {
+    if (outsidePeriod) return `${displayDate}은 공개된 행사 기간 밖이라 날짜 조건상 적용되지 않습니다.`;
+    if (excludedWeekday || statedHoliday) return `${displayDate}은 공개된 날짜 규정상 적용되지 않습니다.`;
+    return `${displayDate}은 ${displayWeekday}이며 일요일부터 목요일까지의 적용일에 해당합니다. 개인 자격과 사용 가능 금액은 정부 시스템에서 최종 확인해야 합니다.`;
+  }
+  if (outsidePeriod) return `您提到的${displayDate}不在 9 月 1 日至 11 月 30 日的活動期間內，所以日期規則上不適用喔。`;
+  if (statedHoliday) return `您提到的${displayDate}如果是國定連續假日，依公開規則不適用喔。`;
+  if (excludedWeekday) return `您提到的${displayDate}是${displayWeekday}，依公開規則不適用喔；活動限週日至週四入住。`;
+  return `您提到的${displayDate}是${displayWeekday}，依公開規則屬於週日至週四的適用日喔；如果該日實際被列為國定連續假日，則不適用。個人資格與可用額度仍須由政府活動系統確認。`;
+}
+
 function asksSubsidyParticipation(message, language) {
   const source = String(message || "");
   if (language === "en") return /(?:do|are|will|won't|not).{0,24}(?:participat|join).{0,24}(?:subsidy|program)|(?:subsidy|program).{0,24}(?:participat|join)/iu.test(source);
@@ -108,9 +155,9 @@ export function renderHospitalityFact({ topic, intent, facts, message = "", lang
     const subsidy = facts?.governmentSubsidy2026 || {};
     const status = subsidyStatusText(subsidy, temporalContext, language);
     const phase = subsidyPhase(subsidy, temporalContext);
-    if (phase !== "active" && intent !== "subsidy_overview" && intent !== "subsidy_participation" && intent !== "subsidy_period") {
+    if (phase !== "active" && intent !== "subsidy_overview" && intent !== "subsidy_participation" && intent !== "subsidy_period" && intent !== "subsidy_date_applicability") {
       const detail = renderHospitalityFact({
-        topic, intent, facts, language, channel,
+        topic, intent, facts, message, language, channel, bookingDates,
         temporalContext: { ...temporalContext, date: "2026-10-15" }
       });
       const separator = language === "zh-TW" ? "；" : language === "ja" || language === "ko" ? "。" : ". ";
@@ -122,6 +169,7 @@ export function renderHospitalityFact({ topic, intent, facts, message = "", lang
       if (language === "ko") return `${phase === "ended" ? "참여했습니다" : "네, 참여합니다"}. ${status}.`;
       return `${phase === "ended" ? "有參加過喔，" : "有參加喔，"}${status}。`;
     }
+    if (intent === "subsidy_date_applicability") return subsidyDateApplicabilityText(subsidy, facts?.requestContext, language);
     if (language === "en") {
       if (intent === "subsidy_period") return `${status}. It applies to Sunday-through-Thursday stays, excluding Fridays, Saturdays, and national long weekends. Funding may run out early, and the latest government announcement prevails.`;
       if (intent === "subsidy_amount") return `The first night receives ${subsidy.weekdayStayAward.firstNight}, and a consecutive second night receives ${subsidy.weekdayStayAward.consecutiveSecondNight}, for up to ${subsidy.weekdayStayAward.maximumForTwoNightStay}. Eligibility and available funding must still be confirmed in the government system.`;
