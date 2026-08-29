@@ -5,7 +5,7 @@ import { requestGroundedResponse } from "./response-service.js";
 import { availableCapabilities, responseProvenance, verifyFinalResponse } from "./reasoning-core.js";
 
 export const AI_FIRST_FEATURE_FLAG = "AI_FIRST_ORCHESTRATOR_ENABLED";
-export const ORCHESTRATION_VERSION = "2.0";
+export const ORCHESTRATION_VERSION = "2.1";
 const MAX_DECISION_FACTS = 10;
 
 export const MODEL_DECISION_SCHEMA = Object.freeze({
@@ -13,7 +13,7 @@ export const MODEL_DECISION_SCHEMA = Object.freeze({
   additionalProperties: false,
   required: ["intent", "user_need", "facts_to_use", "action", "clarification_needed", "next_step", "response_strategy"],
   properties: {
-    intent: { type: "string", enum: ["multiple", "subsidy_overview", "subsidy_amount", "subsidy_period", "subsidy_booking_channel", "subsidy_participation_limit", "subsidy_birthday_voucher", "subsidy_taiwan_pass", "subsidy_stacking", "subsidy_registration", "subsidy_documentation", "subsidy_eligibility", "subsidy_third_night", "booking_direct", "booking_availability", "booking_modify_cancel", "parking_availability", "parking_fee", "parking_location", "parking_process", "parking_reservation", "parking_problem", "wifi", "check_in", "late_checkout", "breakfast", "luggage", "room_type", "baby_equipment", "transportation", "cancellation", "payment", "complaint", "unknown"] },
+    intent: { type: "string", enum: ["multiple", "subsidy_overview", "subsidy_amount", "subsidy_period", "subsidy_booking_channel", "subsidy_participation_limit", "subsidy_birthday_voucher", "subsidy_taiwan_pass", "subsidy_stacking", "subsidy_registration", "subsidy_documentation", "subsidy_eligibility", "subsidy_third_night", "booking_direct", "booking_availability", "booking_modify_cancel", "parking_availability", "parking_fee", "parking_partner_location", "parking_location", "parking_process", "parking_reservation", "parking_problem", "wifi", "check_in", "late_checkout", "breakfast", "luggage", "room_type", "baby_equipment", "transportation", "cancellation", "payment", "complaint", "unknown"] },
     user_need: { type: "string", minLength: 1, maxLength: 240 },
     facts_to_use: { type: "array", maxItems: MAX_DECISION_FACTS, items: { type: "string", minLength: 1, maxLength: 120 } },
     action: { type: "string", enum: ["none", "contact_front_desk"] },
@@ -95,7 +95,7 @@ function prosePayload({ message, history, decision, selectedFacts, toolResult, c
   return {
     model: process.env.OPENAI_ORCHESTRATOR_MODEL?.trim() || process.env.OPENAI_MODEL?.trim() || "gpt-4.1-mini",
     max_output_tokens: 350,
-    instructions: `${styledInstructions(channel)}\nUse only selected_grounded_facts and successful tool_result as hotel truth. A fact with certainty=unknown must be described as unconfirmed and must not be guessed. Do not claim an action happened unless tool_result.status is completed. Answer in ${language}. Address the current need first, cover every explicit part of the current message, preserve relationships and conditions between topics, avoid repeating prior detail, and do not force a follow-up question.`,
+    instructions: `${styledInstructions(channel)}\nUse only selected_grounded_facts and successful tool_result as hotel truth. A fact with certainty=unknown must be described as unconfirmed and must not be guessed. Do not claim an action happened unless tool_result.status is completed. Answer in ${language}. Address the current need first, cover every explicit part of the current message, preserve relationships and conditions between topics, and answer the new information requested instead of replaying the previous answer. Warmth must come from natural acknowledgement and useful wording, not from adding a bare “了解” or “好的” before a database-like sentence. Do not force a follow-up question.`,
     input: JSON.stringify({ current_user_message: message, recent_history: history, verified_decision: decision, selected_grounded_facts: selectedFacts, tool_result: toolResult })
   };
 }

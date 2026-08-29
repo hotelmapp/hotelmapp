@@ -1,8 +1,9 @@
-// 唯一內容來源：〈希堤微旅 AI 櫃檯知識庫 V2.2〉正式版（2026-08-23）。
-// V2.2 以 V2.1 為基礎，加入 2026 政府平日住宿補助的旅客公開規則；櫃檯內部核銷 SOP 不屬於旅客知識。
+// 唯一內容來源：〈希堤微旅 AI 櫃檯知識庫 V2.3〉正式版（2026-08-29）。
+// V2.3 以 V2.2 為基礎，補上飯店營運方確認的配合停車場位置與進出流程。
+// 櫃檯內部核銷 SOP 不屬於旅客知識。
 // 未出現在正式知識中的資訊必須維持 null，不得以 placeholder 或常識補值。
 export const hotelKnowledge = {
-  source: { title: "希堤微旅 AI 櫃檯知識庫 V2.2 正式版", date: "2026-08-23", basedOn: "V2.1 正式版（2026-08-21）" },
+  source: { title: "希堤微旅 AI 櫃檯知識庫 V2.3 正式版", date: "2026-08-29", basedOn: "V2.2 正式版（2026-08-23）" },
   identity: { name: "希堤微旅", address: "台中市上石路158號", website: "https://www.hotelm.com.tw/", bookingUrl: "https://book-directonline.com/properties/HotelMappTaichungDIrect?locale=zh-TW" },
   contact: {
     frontDeskPhone: "04-2707-8378",
@@ -56,16 +57,24 @@ export const hotelKnowledge = {
     hotelSpaces: 3,
     freeCarsPerRoom: 1,
     additionalCarFee: "NT$200",
-    hotelSpacesLocation: "飯店門口",
-    overflowRule: "飯店門口停滿時可使用配合停車場。",
+    hotelSpacesLocation: "飯店門口的路邊停車格",
+    overflowRule: "飯店門口 3 個路邊停車格停滿時，櫃檯會引導至步行約 3 分鐘的配合停車場。",
     reservationPolicy: {
       reservable: false,
       allocation: "先到先停",
       rationale: "讓每位住客都能公平使用。",
-      arrivalAssistance: "抵達時如果飯店門口車位已滿，會依現場狀況協助安排配合停車場。"
+      arrivalAssistance: "抵達時如果飯店門口 3 個路邊停車格已滿，櫃檯會引導至步行約 3 分鐘的配合停車場。"
     },
-    alternatives: ["配合的全國電子停車場", "智慧街家樂福後門之智慧街停車場"],
-    rules: ["停妥後務必告知櫃檯車牌號碼，由櫃檯輸入辦理折抵。", "每間客房提供 1 台免費停車；第 2 台車加收 NT$200 停車費。", "無法進出時聯絡停車場客服，告知為希堤微旅住客。"],
+    alternatives: ["青海路全國電子逢甲店隔壁的配合停車場"],
+    partnerLots: [{
+      name: "希堤微旅配合停車場",
+      location: "青海路全國電子逢甲店隔壁",
+      landmark: "全國電子逢甲店隔壁",
+      walkingMinutes: 3,
+      navigation: "可導航至「全國電子逢甲店」；抵達後依櫃檯引導停入隔壁的配合停車場。",
+      source: "飯店營運方於 2026-08-29 確認的停車說明與示意圖"
+    }],
+    rules: ["停妥後務必告知櫃檯車號，由櫃檯輸入停車系統；完成後即可自由進出。", "每間客房提供 1 台免費停車；第 2 台車加收 NT$200 停車費。", "無法進出時聯絡停車場客服，告知為希堤微旅住客。"],
     addresses: null, supportPhone: null
   },
   rooms: [
@@ -182,8 +191,8 @@ export const hotelKnowledge = {
     nextStep: "於 07:00–22:00 建議旅客直接洽詢櫃檯；如旅客希望轉交，依現有留言或人工轉接流程處理。",
     actionTruth: "未實際成功送達櫃檯前，不得聲稱已通知、已送出或已完成處理。"
   },
-  missing: ["配合停車場完整地址", "停車場客服電話", "家庭房是否有浴缸", "兒童早餐價格", "具體取消與退款條件", "床墊與寢具的品牌、型號、尺寸及售價", "2026 平日住宿加碼補助第三晚是否另有補助"],
-  review: { contradictions: [], notes: ["家庭房浴缸欄原記載「依現場資料」，正式版列為尚未提供。", "餐廳、房價、房況、優惠及營業狀況是變動資料，不固化為事實。", "2026-08-21 補充停車位不提供預留、採先到先停，以及客房 Wi-Fi 連線資訊。", "2026-08-23 補充政府平日住宿補助旅客公開規則；櫃檯內部核銷 SOP 排除於旅客知識。"] }
+  missing: ["停車場客服電話", "家庭房是否有浴缸", "兒童早餐價格", "具體取消與退款條件", "床墊與寢具的品牌、型號、尺寸及售價", "2026 平日住宿加碼補助第三晚是否另有補助"],
+  review: { contradictions: [], notes: ["家庭房浴缸欄原記載「依現場資料」，正式版列為尚未提供。", "餐廳、房價、房況、優惠及營業狀況是變動資料，不固化為事實。", "2026-08-21 補充停車位不提供預留、採先到先停，以及客房 Wi-Fi 連線資訊。", "2026-08-23 補充政府平日住宿補助旅客公開規則；櫃檯內部核銷 SOP 排除於旅客知識。", "2026-08-29 依飯店營運方說明與示意圖補正：門口為 3 個路邊停車格；停滿時由櫃檯引導至步行約 3 分鐘、位於青海路全國電子逢甲店隔壁的配合停車場；停妥後須提供車號，由櫃檯輸入系統後即可自由進出。舊有智惠街 135 號資料已移除。"] }
 };
 
 export function knowledgeForPrompt() {

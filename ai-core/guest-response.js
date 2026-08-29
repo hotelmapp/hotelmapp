@@ -32,32 +32,54 @@ export function normalizedHistory(history) {
 
 export { bookingDates, datedBookingUrl };
 
+function referenceDate(temporalContext) {
+  const date = temporalContext?.date;
+  return /^\d{4}-\d{2}-\d{2}$/u.test(String(date || "")) ? new Date(`${date}T00:00:00Z`) : new Date();
+}
+
+// A dated booking URL is turn-derived context: the canonical booking entry is
+// unchanged, while this immutable copy carries the guest's requested stay into
+// every response path (deterministic, AI-first, and multi-topic composition).
+export function withDatedBookingContext(grounding, message, temporalContext = temporalContextProvider.getContext()) {
+  const requestedStay = bookingDates(message, referenceDate(temporalContext));
+  const includesBooking = grounding?.topic === "booking" || grounding?.topics?.includes("booking");
+  if (!requestedStay || !includesBooking || !grounding?.facts?.identity?.bookingUrl) return grounding;
+  const bookingUrl = datedBookingUrl(requestedStay);
+  const facts = { ...grounding.facts, identity: { ...grounding.facts.identity, bookingUrl } };
+  const groundings = Array.isArray(grounding.groundings)
+    ? grounding.groundings.map(item => item.topic === "booking"
+      ? { ...item, facts: { ...item.facts, identity: { ...item.facts?.identity, bookingUrl } } }
+      : item)
+    : grounding.groundings;
+  return { ...grounding, facts, ...(groundings ? { groundings } : {}), bookingDates: requestedStay };
+}
+
 const REPLY_TEXT = Object.freeze({
   "zh-TW": {
     booking: (dates, url) => `當然可以！如果您預計 ${dates.checkInDate} 入住、${dates.checkOutDate} 退房，可以透過下方官方訂房頁面查看最新房價與空房：\n${url}`,
     baby: name => `${name}可以協助提出需求；建議在入住前一天告知，會依數量與現場狀況安排，因此無法事先保證。`,
-    parking: `有喔～飯店有 ${hotelKnowledge.parking.hotelSpaces} 個車位，位於飯店門口。停車位不提供預留，採先到先停。如果抵達時門口車位已滿，我們會再依當天現場狀況與車位情形協助安排配合停車場。`,
+    parking: `有喔～飯店門口有 ${hotelKnowledge.parking.hotelSpaces} 個路邊停車格，停車位不提供預留，採先到先停。如果已經停滿，櫃檯會引導您到步行約 ${hotelKnowledge.parking.partnerLots[0].walkingMinutes} 分鐘、位於${hotelKnowledge.parking.partnerLots[0].location}的配合停車場。停好後記得把車號告訴櫃檯，我們輸入系統後，您就可以自由進出。`,
     breakfast: `有的～早餐供應時間為 ${hotelKnowledge.breakfast.serviceHours}；如果房價沒有含早餐，也可以用 ${hotelKnowledge.breakfast.pricePerPerson} 加購。`,
     confirm: summary => `如果您需要，我可以幫您把${summary}整理好，作為「留言給飯店人員」交由櫃檯確認。需要我幫您轉交嗎？`
   },
   en: {
     booking: (dates, url) => `Certainly! For a stay from ${dates.checkInDate} to ${dates.checkOutDate}, you can check the latest room availability and rates through our official booking page below:\n${url}`,
     baby: name => `We can help request ${name}. Please let the hotel know one day before arrival; arrangements depend on availability during your stay, so this cannot be guaranteed in advance.`,
-    parking: `The hotel has ${hotelKnowledge.parking.hotelSpaces} spaces at the entrance. Parking cannot be reserved and is available on a first-come, first-served basis. If those spaces are full when you arrive, we’ll help arrange a partner parking lot based on the situation at that time.`,
+    parking: `The hotel has ${hotelKnowledge.parking.hotelSpaces} roadside spaces outside the entrance, available on a first-come, first-served basis. If they are full, the front desk will direct you to our partner lot next to the All Nation Electronics Fengjia store on Qinghai Road, about a ${hotelKnowledge.parking.partnerLots[0].walkingMinutes}-minute walk away. After parking, please give your license plate number to the front desk so we can enter it in the system for free entry and exit.`,
     breakfast: `Breakfast is served from ${hotelKnowledge.breakfast.serviceHours}. If it is not included in your stay, you can add it for ${hotelKnowledge.breakfast.pricePerPerson}.`,
     confirm: summary => `If you’d like, I can organize ${summary} as a “Message hotel staff” request for confirmation. Would you like me to hand it over?`
   },
   ja: {
     booking: (dates, url) => `承知いたしました。${dates.checkInDate}チェックイン、${dates.checkOutDate}チェックアウトの最新の空室状況と料金は、下記の公式予約ページでご確認いただけます。\n${url}`,
     baby: name => `${name}のリクエストを承ります。前日までにお知らせください。数に限りがあり、当日の状況によってはご用意できない場合がございます。`,
-    parking: `ホテル入口に${hotelKnowledge.parking.hotelSpaces}台分ございます。事前予約は承っておらず先着順です。到着時に満車の場合は、当日の状況に応じて提携駐車場をご案内します。`,
+    parking: `ホテル前に路上駐車枠が${hotelKnowledge.parking.hotelSpaces}台分あり、先着順です。満車の場合は、徒歩約${hotelKnowledge.parking.partnerLots[0].walkingMinutes}分、青海路の全国電子逢甲店隣にある提携駐車場へフロントがご案内します。駐車後は車両番号をフロントへお知らせください。システム登録後は自由に出入りできます。`,
     breakfast: `朝食は${hotelKnowledge.breakfast.serviceHours}にご利用いただけます。朝食なしのプランでも、${hotelKnowledge.breakfast.pricePerPerson}で追加できます。`,
     confirm: summary => `ご希望でしたら、${summary}を「ホテルスタッフへのメッセージ」としてまとめて確認を依頼できます。お取り次ぎしましょうか。`
   },
   ko: {
     booking: (dates, url) => `물론입니다. ${dates.checkInDate} 체크인, ${dates.checkOutDate} 체크아웃 일정의 최신 객실과 요금은 아래 공식 예약 페이지에서 확인하실 수 있습니다.\n${url}`,
     baby: name => `${name}를 요청하실 수 있습니다. 체크인 하루 전까지 알려 주세요. 수량과 당일 상황에 따라 준비되므로 사전에 확정해 드리기는 어렵습니다.`,
-    parking: `호텔 입구에 ${hotelKnowledge.parking.hotelSpaces}대의 주차 공간이 있습니다. 예약은 불가하며 선착순으로 운영됩니다. 도착 시 만차이면 현장 상황에 따라 제휴 주차장을 안내해 드립니다.`,
+    parking: `호텔 앞에 노상 주차 공간 ${hotelKnowledge.parking.hotelSpaces}곳이 있으며 선착순입니다. 만차이면 프런트에서 도보 약 ${hotelKnowledge.parking.partnerLots[0].walkingMinutes}분 거리인 칭하이로의 전국전자 펑지아점 옆 제휴 주차장으로 안내해 드립니다. 주차 후 차량 번호를 알려 주시면 시스템 등록 후 자유롭게 출입하실 수 있습니다.`,
     breakfast: `조식은 ${hotelKnowledge.breakfast.serviceHours}에 이용하실 수 있습니다. 조식이 포함되지 않은 경우 ${hotelKnowledge.breakfast.pricePerPerson}에 추가할 수 있습니다.`,
     confirm: summary => `원하시면 ${summary}을 ‘호텔 직원에게 메시지 보내기’ 내용으로 정리해 확인을 요청할 수 있습니다. 전달해 드릴까요?`
   }
@@ -204,6 +226,7 @@ export function frontDeskContactReply(message) {
 }
 
 export function responsesPayload(message, history = [], channel = "web", temporalContext = temporalContextProvider.getContext(), grounding = resolveKnowledgeGrounding(message, history)) {
+  grounding = withDatedBookingContext(grounding, message, temporalContext);
   const conversation = normalizedHistory(history);
   const responseLanguage = detectGuestLanguage(message, conversation);
   const contextText = [...conversation.map(item => item.content), message].join("\n");
@@ -262,6 +285,7 @@ export async function answerGuestMessage(message, { history = [], channel = "web
   const trimmed = typeof message === "string" ? message.trim().slice(0, MAX_MESSAGE_LENGTH) : "";
   if (!trimmed) throw new TypeError("A non-empty guest message is required");
   const language = detectGuestLanguage(trimmed, normalizedHistory(history));
+  grounding = withDatedBookingContext(grounding, trimmed, temporalContext);
   // This module only composes presentation. Authorization and every external
   // side effect are owned by conversation/runtime.js.
   const aiFirst = await tryAiFirstReasoning({ message: trimmed, history: normalizedHistory(history), channel, identity, grounding, orchestrate, env, logger });

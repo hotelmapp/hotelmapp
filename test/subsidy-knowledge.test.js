@@ -15,8 +15,8 @@ async function answer(message, date = "2026-08-23", channel = "web") {
   return answerGuestMessage(message, { channel, temporalContext: temporal(date), handoffService: noHandoff });
 }
 
-test("knowledge V2.2 contains only the confirmed public subsidy rules", () => {
-  assert.equal(KNOWLEDGE_VERSION, "2.2");
+test("knowledge V2.3 contains only the confirmed public subsidy rules", () => {
+  assert.equal(KNOWLEDGE_VERSION, "2.3");
   const subsidy = hotelKnowledge.governmentSubsidy2026;
   assert.deepEqual(subsidy.period, {
     startsOn: "2026-09-01", endsOn: "2026-11-30",

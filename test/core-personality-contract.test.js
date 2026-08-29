@@ -64,14 +64,14 @@ test("parking multi-turn stays hospitable while each turn uses only its selected
     turns.push({ role: "user", content: message }, { role: "assistant", content: answer });
     return answer;
   };
-  assert.match(await ask("有停車位嗎？"), /^有的，.*3 台車/u);
+  assert.match(await ask("有停車位嗎？"), /^有喔～.*3 個路邊停車格/u);
   const cars = await ask("我們有兩台車");
   assert.match(cars, /^可以的～如果您是兩台車過來/u);
   assert.match(cars, /1 台免費.*第 2 台車.*NT\$200/u);
   assert.doesNotMatch(cars, /3 個車位|配合停車場/u);
   assert.match(await ask("那第二台多少錢？"), /NT\$200/u);
   const location = await ask("停哪裡？");
-  assert.match(location, /門口.*3 個車位.*配合停車場/u);
+  assert.match(location, /門口.*3 個路邊停車格.*步行約 3 分鐘.*青海路全國電子逢甲店隔壁.*配合停車場/u);
   assert.doesNotMatch(location, /NT\$200/u);
   const reservation = await ask("需要先預約嗎？");
   assert.match(reservation, humanOpening);
