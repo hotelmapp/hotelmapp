@@ -74,7 +74,7 @@ const PARKING_INTENT_PATTERNS = Object.freeze({
   parking_partner_location: /(?:(?:配合|特約|合作)(?:的)?(?:停車場|車位)|門口.{0,12}(?:滿|沒位).{0,12}(?:停車場|停哪)).{0,24}(?:哪(?:邊|裡|個)|位置|地址|怎麼走|導航)|(?:哪(?:邊|裡)|位置|地址|怎麼走|導航).{0,24}(?:配合|特約|合作)(?:的)?(?:停車場|車位)|partner\s+parking|overflow\s+parking/iu,
   parking_location: /停哪|哪裡停|停車位置|位置在哪|where.{0,8}park|駐車場.*どこ|어디.*주차/iu,
   parking_process: /停好|停妥|車牌|車號|折抵|怎麼辦|如何辦理|process/iu,
-  parking_reservation: /預約|預訂|預留|保留|先登記|reserve|reservation/iu,
+  parking_reservation: /預約|預訂|預留|保留|先登記|(?:停車位|車位).{0,6}留|留.{0,6}(?:停車位|車位)|reserve|reservation/iu,
   parking_availability: /有(?:沒有)?(?:停車|車位)|幾個車位|幾台|停車場|滿了|availability|space/iu
 });
 

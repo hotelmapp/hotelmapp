@@ -9,6 +9,7 @@ import {
 import { resolveKnowledgeGrounding } from "../ai-core/knowledge-grounding.js";
 import { semanticRoutePayload } from "../ai-core/semantic-router.js";
 import { qualityReviewPayload } from "../ai-core/conversation-quality-review.js";
+import { handoffResolutionReviewPayload } from "../ai-core/handoff-resolution-review.js";
 
 const silentLogger = { info() {} };
 
@@ -32,6 +33,11 @@ test("all text paths share GPT-5.6 Terra defaults with role-appropriate reasonin
   const response = responsesPayload("飯店地址在哪裡？", [], "web", undefined, undefined, {});
   const router = semanticRoutePayload("飯店地址在哪裡？", [], {});
   const quality = qualityReviewPayload({ message: "飯店地址在哪裡？", proposedAnswer: "飯店地址已提供喔。", env: {} });
+  const actionReview = handoffResolutionReviewPayload({
+    message: "可以幫我確認飯店地址嗎？",
+    grounding: resolveKnowledgeGrounding("飯店地址在哪裡？"),
+    env: {}
+  });
   assert.deepEqual({ model: response.model, reasoning: response.reasoning }, {
     model: "gpt-5.6-terra", reasoning: { effort: "medium" }
   });
@@ -40,6 +46,9 @@ test("all text paths share GPT-5.6 Terra defaults with role-appropriate reasonin
   });
   assert.deepEqual({ model: quality.model, reasoning: quality.reasoning }, {
     model: "gpt-5.6-terra", reasoning: { effort: "low" }
+  });
+  assert.deepEqual({ model: actionReview.model, reasoning: actionReview.reasoning }, {
+    model: "gpt-5.6-terra", reasoning: { effort: "medium" }
   });
 
   const calls = [];
@@ -66,6 +75,7 @@ test("component overrides remain supported and reasoning is omitted for legacy m
   assert.equal(response.reasoning, undefined);
   assert.equal(configuredTextModel({ OPENAI_MODEL: "shared", OPENAI_ROUTER_MODEL: "router" }, "OPENAI_ROUTER_MODEL"), "router");
   assert.equal(qualityReviewPayload({ message: "hi", proposedAnswer: "Hello.", env: { OPENAI_MODEL: "shared", OPENAI_QUALITY_MODEL: "quality" } }).model, "quality");
+  assert.equal(handoffResolutionReviewPayload({ message: "hi", env: { OPENAI_MODEL: "shared", OPENAI_HANDOFF_REVIEW_MODEL: "action-review" } }).model, "action-review");
   assert.deepEqual(configuredReasoning("gpt-5.6-terra", { OPENAI_REASONING_EFFORT: "high" }), { reasoning: { effort: "high" } });
   assert.equal(supportsReasoning("gpt-4.1-mini"), false);
 });

@@ -1,6 +1,7 @@
 import { answerGuestMessage } from "../guest-response.js";
 import { decideHandoff, resolveHandoffDecision } from "../handoff.js";
 import { advanceHandoffAuthorization, performAuthorizedHandoff } from "../handoff-service.js";
+import { resolveAiFirstHandoffDecision } from "../handoff-resolution-review.js";
 import { ConversationService } from "./service.js";
 import { conversationStoreFromEnv } from "./store.js";
 import { resolveSemanticKnowledgeGrounding } from "../semantic-router.js";
@@ -26,6 +27,7 @@ export async function answerWithConversation({
   answer = answerGuestMessage,
   handoffService = performAuthorizedHandoff,
   route = resolveSemanticKnowledgeGrounding,
+  reviewHandoff = resolveAiFirstHandoffDecision,
   claimDelivery = claimHandoffDelivery,
   env = process.env,
   logger = console
@@ -53,7 +55,10 @@ export async function answerWithConversation({
   }
 
   const grounding = await route(message, history, storedTopic, storedIntent, { env, logger, temporalContext });
-  const decision = resolveHandoffDecision(message, history, grounding?.semanticRoute);
+  // Every turn is semantically routed first. A possible action then receives a
+  // separate grounded AI review before deterministic authorization begins.
+  // Regex matching is retained only inside the safe provider-outage fallback.
+  const decision = await reviewHandoff({ message, history, grounding, env, logger });
   const authorization = advanceHandoffAuthorization({ message, history, identity, current: durableHandoff, decision });
   let nextHandoff = authorization.handoff || durableHandoff || { state: "none" };
   let response;
