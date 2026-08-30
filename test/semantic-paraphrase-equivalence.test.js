@@ -38,7 +38,6 @@ test("parking reservation paraphrases share one semantic intent", () => {
     const grounding = resolveKnowledgeGrounding(message);
     assert.equal(grounding.topic, "parking", message);
     assert.equal(grounding.intent, "parking_reservation", message);
-    assert.equal(grounding.contract.actionPolicy, "answer_before_handoff", message);
   }
 });
 
@@ -48,7 +47,7 @@ test("a model-side polite-word handoff false positive cannot bypass a known poli
   assert.deepEqual(resolveHandoffDecision(message, [], grounding), {
     required: false,
     category: null,
-    source: "grounded_policy"
+    source: "safe_fallback"
   });
 });
 
@@ -90,5 +89,5 @@ test("an explicit request to transfer to the front desk remains a handoff", () =
 test("semantic router treats polite wording as speech style rather than handoff intent", () => {
   const payload = semanticRoutePayload(parkingReservationParaphrases[0], [], {});
   assert.match(payload.instructions, /Polite wording.*does not by itself request a staff handoff/iu);
-  assert.match(payload.instructions, /all parking_reservation with requested=false/iu);
+  assert.match(payload.instructions, /This rule applies across all topics/iu);
 });

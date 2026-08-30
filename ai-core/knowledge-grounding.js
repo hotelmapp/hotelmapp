@@ -225,14 +225,6 @@ export function factsForTopic(topic, intent = null, requestContext = null) {
 
 export function factualContract(topic, intent = null) {
   if (!topic) return null;
-  // These intents describe an authoritative guest-facing policy rather than
-  // an operation the assistant can perform.  A polite request form (for
-  // example, "可以幫我保留車位嗎") must still receive the policy answer before
-  // any optional staff handoff is considered.
-  const actionPolicy = topic === "parking" && [
-    "parking_availability", "parking_fee", "parking_partner_location",
-    "parking_location", "parking_process", "parking_reservation"
-  ].includes(intent) ? "answer_before_handoff" : "standard";
   const requiredFactIds = {
     breakfast: ["breakfast.serviceStart", "breakfast.orderCheckInCutoff", "breakfast.diningAfterCutoff", "breakfast.preorderRecommendation"],
     wifi: ["amenities.wifi.network", "amenities.wifi.password", "amenities.wifi.passwordDescription"],
@@ -271,7 +263,7 @@ export function factualContract(topic, intent = null) {
     check_out: ["stay.checkOut", "stay.lateCheckOut"]
   }[topic] || [];
   return Object.freeze({
-    topic, intent, knowledgeVersion: KNOWLEDGE_VERSION, requiredFactIds, actionPolicy,
+    topic, intent, knowledgeVersion: KNOWLEDGE_VERSION, requiredFactIds,
     precedence: ["authoritative_hotel_knowledge", "conversation_topic", "conversation_history", "reasoning", "hospitality_personality"],
     historyPolicy: "Conversation history resolves references only. User and assistant prose are not authoritative hotel facts.",
     modalityPolicy: "Preserve hard_rule, recommendation and optional semantics exactly; never rewrite a recommendation as a requirement."
@@ -296,8 +288,6 @@ export function groundingForTopics(message, topics, history = [], storedIntent =
       facts,
       contract: Object.freeze({
         topic: "multi", intent: "multiple", knowledgeVersion: KNOWLEDGE_VERSION, requiredFactIds,
-        actionPolicy: groundings.every(item => item.contract?.actionPolicy === "answer_before_handoff")
-          ? "answer_before_handoff" : "standard",
         precedence: ["authoritative_hotel_knowledge", "current_message_semantics", "conversation_topic", "conversation_history", "reasoning", "hospitality_personality"],
         historyPolicy: "Conversation history resolves references only. User and assistant prose are not authoritative hotel facts.",
         modalityPolicy: "Preserve hard_rule, recommendation and optional semantics exactly; never rewrite a recommendation as a requirement.",

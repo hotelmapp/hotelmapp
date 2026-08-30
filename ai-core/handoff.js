@@ -49,10 +49,15 @@ export function resolveHandoffDecision(message, history = [], semanticRoute) {
   const fallback = decideHandoff(message, history);
   if (
     validHandoffDecision(candidate) && candidate.required &&
-    grounding?.contract?.actionPolicy === "answer_before_handoff" &&
+    grounding?.topic && grounding.topic !== "unknown" &&
     !fallback.required
   ) {
-    return { required: false, category: null, source: "grounded_policy" };
+    // This branch is the fail-safe used only when the independent semantic
+    // action review is unavailable.  A known answer is safer than collecting
+    // personal data from a handoff recommendation that no second AI pass has
+    // confirmed. Explicit deterministic action patterns remain available for
+    // provider-outage operation.
+    return { required: false, category: null, source: "safe_fallback" };
   }
   if (validHandoffDecision(candidate)) return { ...candidate, source: "semantic" };
   return { ...fallback, source: "fallback" };

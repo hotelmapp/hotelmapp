@@ -2,6 +2,7 @@
 export { hotelKnowledge, knowledgeForPrompt, KNOWLEDGE_VERSION, groundingInstructions, groundedKnowledgePrompt } from "./knowledge.js";
 export { BOOKING_INTENT_PATTERN, hasBookingIntent, bookingDates, datedBookingUrl } from "./booking.js";
 export { HANDOFF_CATEGORY_NAMES, normalizedGuestMessages, stayDateFromHistory, contactDetails, decideHandoff, validHandoffDecision, resolveHandoffDecision } from "./handoff.js";
+export { HANDOFF_RESOLUTION_REVIEW_VERSION, HANDOFF_RESOLUTION_REVIEW_FEATURE_FLAG, HANDOFF_RESOLUTION_REVIEW_SCHEMA, handoffResolutionReviewEnabled, validateHandoffResolutionReview, parseHandoffResolutionReview, handoffResolutionReviewPayload, resolveAiFirstHandoffDecision } from "./handoff-resolution-review.js";
 export { HANDOFF_AUTHORIZATION_STATES, advanceHandoffAuthorization, hasRequiredHandoffContact, performAuthorizedHandoff, performHandoff, handoffEmail, handoffGuestReply } from "./handoff-service.js";
 export { CORE_PERSONALITY_CONTRACT_VERSION, CUSTOMER_CHANNELS, applyCorePersonalityContract, hospitalityPersonalityInstructions, channelPresentationInstructions, renderHospitalityFact, styledInstructions } from "./hospitality-personality.js";
 export { answerGuestMessage, finalizeGuestAnswer } from "./guest-response.js";

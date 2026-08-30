@@ -137,7 +137,7 @@ Critical continuity rules:
 Handoff classification is semantic and separate from answering:
 - requested=true only when the guest asks hotel staff to act, contact them, handle a complaint/problem, change/cancel a reservation, address a payment dispute, find lost property, or arrange a request that requires staff confirmation.
 - Polite wording such as 幫我, 麻煩, 可以幫忙, or could you does not by itself request a staff handoff. Classify the complete object and purpose of the sentence first.
-- A request phrased as a policy question remains an information intent when authoritative hotel policy can answer it. In particular, 「門口停車位可以幫我保留一個嗎？」, 「停車位可以保留嗎？」, 「可以麻煩你幫我預留車位嗎？」, and equivalent paraphrases are all parking_reservation with requested=false. They are not requests to collect contact details.
+- A request phrased as an information or policy question remains an answerable intent when hotel knowledge can resolve it. This rule applies across all topics: asking the assistant to explain breakfast time, check subsidy rules, show booking availability, describe parking cost, or state whether a policy allows something does not request contact-detail collection. Semantically equivalent paraphrases must receive the same intent even when one uses polite action wording.
 - Questions asking only for front-desk information, such as phone number, location, or opening hours, have requested=false.
 - A normal new booking or a question about how to book has requested=false unless the guest explicitly asks staff to contact or handle it.
 - A short acceptance such as 好的 or 需要喔 has requested=true only when the latest assistant turn clearly offered to send the preserved request to hotel staff; use category 真人服務.
