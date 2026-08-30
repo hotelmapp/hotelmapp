@@ -53,7 +53,10 @@ export async function answerWithConversation({
   }
 
   const grounding = await route(message, history, storedTopic, storedIntent, { env, logger, temporalContext });
-  const decision = resolveHandoffDecision(message, history, grounding?.semanticRoute);
+  // Handoff is decided after semantic grounding so an authoritative
+  // answer-first policy cannot be bypassed by a polite paraphrase such as
+  // "幫我保留" being mistaken for an explicit request to contact staff.
+  const decision = resolveHandoffDecision(message, history, grounding);
   const authorization = advanceHandoffAuthorization({ message, history, identity, current: durableHandoff, decision });
   let nextHandoff = authorization.handoff || durableHandoff || { state: "none" };
   let response;

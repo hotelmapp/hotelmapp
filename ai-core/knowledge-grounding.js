@@ -74,7 +74,7 @@ const PARKING_INTENT_PATTERNS = Object.freeze({
   parking_partner_location: /(?:(?:配合|特約|合作)(?:的)?(?:停車場|車位)|門口.{0,12}(?:滿|沒位).{0,12}(?:停車場|停哪)).{0,24}(?:哪(?:邊|裡|個)|位置|地址|怎麼走|導航)|(?:哪(?:邊|裡)|位置|地址|怎麼走|導航).{0,24}(?:配合|特約|合作)(?:的)?(?:停車場|車位)|partner\s+parking|overflow\s+parking/iu,
   parking_location: /停哪|哪裡停|停車位置|位置在哪|where.{0,8}park|駐車場.*どこ|어디.*주차/iu,
   parking_process: /停好|停妥|車牌|車號|折抵|怎麼辦|如何辦理|process/iu,
-  parking_reservation: /預約|預訂|預留|保留|先登記|reserve|reservation/iu,
+  parking_reservation: /預約|預訂|預留|保留|先登記|(?:停車位|車位).{0,6}留|留.{0,6}(?:停車位|車位)|reserve|reservation/iu,
   parking_availability: /有(?:沒有)?(?:停車|車位)|幾個車位|幾台|停車場|滿了|availability|space/iu
 });
 
@@ -225,6 +225,14 @@ export function factsForTopic(topic, intent = null, requestContext = null) {
 
 export function factualContract(topic, intent = null) {
   if (!topic) return null;
+  // These intents describe an authoritative guest-facing policy rather than
+  // an operation the assistant can perform.  A polite request form (for
+  // example, "可以幫我保留車位嗎") must still receive the policy answer before
+  // any optional staff handoff is considered.
+  const actionPolicy = topic === "parking" && [
+    "parking_availability", "parking_fee", "parking_partner_location",
+    "parking_location", "parking_process", "parking_reservation"
+  ].includes(intent) ? "answer_before_handoff" : "standard";
   const requiredFactIds = {
     breakfast: ["breakfast.serviceStart", "breakfast.orderCheckInCutoff", "breakfast.diningAfterCutoff", "breakfast.preorderRecommendation"],
     wifi: ["amenities.wifi.network", "amenities.wifi.password", "amenities.wifi.passwordDescription"],
@@ -263,7 +271,7 @@ export function factualContract(topic, intent = null) {
     check_out: ["stay.checkOut", "stay.lateCheckOut"]
   }[topic] || [];
   return Object.freeze({
-    topic, intent, knowledgeVersion: KNOWLEDGE_VERSION, requiredFactIds,
+    topic, intent, knowledgeVersion: KNOWLEDGE_VERSION, requiredFactIds, actionPolicy,
     precedence: ["authoritative_hotel_knowledge", "conversation_topic", "conversation_history", "reasoning", "hospitality_personality"],
     historyPolicy: "Conversation history resolves references only. User and assistant prose are not authoritative hotel facts.",
     modalityPolicy: "Preserve hard_rule, recommendation and optional semantics exactly; never rewrite a recommendation as a requirement."
@@ -288,6 +296,8 @@ export function groundingForTopics(message, topics, history = [], storedIntent =
       facts,
       contract: Object.freeze({
         topic: "multi", intent: "multiple", knowledgeVersion: KNOWLEDGE_VERSION, requiredFactIds,
+        actionPolicy: groundings.every(item => item.contract?.actionPolicy === "answer_before_handoff")
+          ? "answer_before_handoff" : "standard",
         precedence: ["authoritative_hotel_knowledge", "current_message_semantics", "conversation_topic", "conversation_history", "reasoning", "hospitality_personality"],
         historyPolicy: "Conversation history resolves references only. User and assistant prose are not authoritative hotel facts.",
         modalityPolicy: "Preserve hard_rule, recommendation and optional semantics exactly; never rewrite a recommendation as a requirement.",

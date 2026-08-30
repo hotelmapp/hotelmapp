@@ -37,12 +37,25 @@ export function decideHandoff(message, history = []) {
  * Neither path authorizes an external action.
  */
 export function resolveHandoffDecision(message, history = [], semanticRoute) {
-  const semantic = semanticRoute?.handoff;
+  // The runtime passes the full grounding object so a verified knowledge
+  // contract can prevent a model-side handoff false positive.  Direct callers
+  // may continue passing semanticRoute itself for backwards compatibility.
+  const grounding = semanticRoute?.semanticRoute ? semanticRoute : null;
+  const route = grounding?.semanticRoute || semanticRoute;
+  const semantic = route?.handoff;
   const candidate = semantic && typeof semantic.requested === "boolean"
     ? { required: semantic.requested, category: semantic.category }
     : null;
+  const fallback = decideHandoff(message, history);
+  if (
+    validHandoffDecision(candidate) && candidate.required &&
+    grounding?.contract?.actionPolicy === "answer_before_handoff" &&
+    !fallback.required
+  ) {
+    return { required: false, category: null, source: "grounded_policy" };
+  }
   if (validHandoffDecision(candidate)) return { ...candidate, source: "semantic" };
-  return { ...decideHandoff(message, history), source: "fallback" };
+  return { ...fallback, source: "fallback" };
 }
 
 export function normalizedGuestMessages(history) {

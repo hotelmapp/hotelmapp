@@ -8,7 +8,7 @@ the guest's current need.
 ## Turn flow
 
 1. Read the current message, recent durable turns, and the stored topic/intent.
-2. Ask Semantic Router v2.2 for strict JSON containing current topics/intents and
+2. Ask Semantic Router v2.3 for strict JSON containing current topics/intents and
    a non-authoritative handoff recommendation. The router cannot answer the
    guest, authorize delivery, select execution tools, or execute actions.
 3. Validate the JSON, topic/intent pairing, current-turn consistency, and output
@@ -22,6 +22,13 @@ Recent history may resolve a genuinely omitted subject, such as 「那第二台�
 after a parking question. It may not skip a newer self-contained booking turn to
 recover an older parking topic. Negation, conditions, comparisons, subject,
 object, time, and requested action are part of the routing instructions.
+
+Polite action wording is not itself a handoff signal. Semantically equivalent
+policy questions share one intent even when one says 「可以幫我」 and another
+does not. An answer-first factual contract is evaluated before handoff state, so
+a model-side false positive cannot turn a parking-reservation policy question
+into contact-detail collection. Explicit requests to contact staff, operational
+problems, and confirmed transactional handoffs retain their existing flow.
 
 Subsidy participation is its own `subsidy_participation` intent. Negative
 questions such as 「你們沒有參加國旅補助嗎？」 remain participation checks;
