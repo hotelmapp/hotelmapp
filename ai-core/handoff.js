@@ -1,4 +1,5 @@
 import { bookingDates } from "./booking.js";
+import { isAcknowledgementTurn } from "./acknowledgement.js";
 
 const MAX_HISTORY_MESSAGES = 20;
 const MAX_MESSAGE_LENGTH = 2_000;
@@ -37,6 +38,7 @@ export function decideHandoff(message, history = []) {
  * Neither path authorizes an external action.
  */
 export function resolveHandoffDecision(message, history = [], semanticRoute) {
+  if (isAcknowledgementTurn(message, semanticRoute)) return { required: false, category: null, source: "acknowledgement_boundary" };
   // The runtime passes the full grounding object so a verified knowledge
   // contract can prevent a model-side handoff false positive.  Direct callers
   // may continue passing semanticRoute itself for backwards compatibility.

@@ -8,7 +8,7 @@ the guest's current need.
 ## Turn flow
 
 1. Read the current message, recent durable turns, and the stored topic/intent.
-2. Ask Semantic Router v2.3 for strict JSON containing current topics/intents and
+2. Ask Semantic Router v2.4 for strict JSON containing current topics/intents and
    a non-authoritative handoff recommendation. The router cannot answer the
    guest, authorize delivery, select execution tools, or execute actions.
 3. Validate the JSON, topic/intent pairing, current-turn consistency, and output
@@ -33,6 +33,34 @@ first receives semantic routing, and every proposed handoff receives the same
 topic-neutral grounded AI review. If authoritative information answers the
 need, the answer path wins; explicit staff contact, operational problems, and
 confirmed transactional handoffs retain their existing flow.
+
+## Receipt and consent boundary
+
+`acknowledgement` is a semantic intent for receipts/thanks without a new need.
+The AI can recognize paraphrases, not just a list of short words. After that
+semantic pass, a deny-only whole-utterance guard protects common Chinese,
+English, Japanese and Korean acknowledgements even if the model misclassifies
+them. It never routes a hotel topic or authorizes an action. Mixed requests such
+as "OK, please ask reception to call me" still use complete-sentence semantics.
+
+A prior offer in assistant prose must never override a reviewed non-handoff
+decision. A bare "好 / OK / はい / 네" cannot start/restart contact collection,
+extract profile contact data, or repeat a stale collection prompt. Only an
+existing durable `ready_for_confirmation` request with complete contact details
+may accept an affirmative as final confirmation; thanks alone are not consent.
+Idempotency and verified delivery remain mandatory.
+
+Ordinary receipts use the same AI composer and quality reviewer, with no hotel
+facts or action permissions. The reply validator rejects contact collection,
+new offers, operational claims and repeated hotel facts in receipt replies.
+Provider failures use a short localized receipt, not an unknown-information
+handoff offer.
+
+This does not synchronize manual LINE Official Account replies or implement
+human-takeover pause/resume. The reported screenshot's stored production state
+is not available here. Tests cover both visible staff replies and an incomplete
+AI transcript retaining only an old offer; they are mocked regression tests,
+not proof that every live multilingual phrase has been evaluated.
 
 Subsidy participation is its own `subsidy_participation` intent. Negative
 questions such as 「你們沒有參加國旅補助嗎？」 remain participation checks;

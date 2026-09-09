@@ -1,9 +1,10 @@
 import { detectGuestLanguage } from "../guest-language.js";
+import { isAcknowledgementTurn } from "./acknowledgement.js";
 import { HANDOFF_CATEGORY_NAMES, resolveHandoffDecision, validHandoffDecision } from "./handoff.js";
 import { configuredReasoning, configuredTextModel, DEFAULT_TEXT_REASONING_EFFORT } from "./model-config.js";
 import { requestGroundedResponse } from "./response-service.js";
 
-export const HANDOFF_RESOLUTION_REVIEW_VERSION = "semantic-action-review/1";
+export const HANDOFF_RESOLUTION_REVIEW_VERSION = "semantic-action-review/2";
 export const HANDOFF_RESOLUTION_REVIEW_FEATURE_FLAG = "AI_HANDOFF_REVIEW_ENABLED";
 const DEFAULT_TIMEOUT_MS = 7_000;
 
@@ -14,7 +15,6 @@ const RESOLUTION_REASONS = Object.freeze([
   "explicit_staff_contact",
   "staff_operation_required",
   "service_problem_or_complaint",
-  "accepted_handoff_offer",
   "unknown_requires_staff"
 ]);
 
@@ -76,7 +76,9 @@ export function handoffResolutionReviewPayload({ message, history = [], groundin
 
 Judge the complete meaning in ${language}, including subject, object, negation, conditions, requested actor, and the immediate conversational context. Do not classify from isolated words. Polite expressions such as 幫我, 麻煩, 可以, please, or could you do not by themselves mean that hotel staff must be contacted.
 
-Choose resolution=answer when the supplied facts or policy directly resolve the current need, including a request worded as an action when policy says the requested action is unavailable. This applies across every topic—not only parking—and includes information, cost, location, time, eligibility, availability, process, and policy questions. Choose resolution=handoff only for an explicit request for hotel staff to contact or act, a real operation such as changing/cancelling an existing booking, a payment dispute, lost property, service failure, complaint, staff-confirmed special arrangement, an accepted prior handoff offer, or unknown information that actually requires staff confirmation. A normal booking enquiry or a request to explain/check information remains answer.
+Choose resolution=answer when the supplied facts or policy directly resolve the current need, including a request worded as an action when policy says the requested action is unavailable. This applies across every topic—not only parking—and includes information, cost, location, time, eligibility, availability, process, and policy questions. Choose resolution=handoff only for an explicit request for hotel staff to contact or act, a real operation such as changing/cancelling an existing booking, a payment dispute, lost property, service failure, complaint, staff-confirmed special arrangement, or unknown information that actually requires staff confirmation. A normal booking enquiry or a request to explain/check information remains answer.
+
+A bare receipt, thanks, or acceptance without a current action/object (好、好的、OK、Yes、はい、네 and semantic equivalents) is resolution=answer with reason=clarify_current_need, never a new handoff. Even the last visible assistant offer cannot establish current consent: staff messages outside this system may be absent. Only server-owned ready_for_confirmation state handles final confirmation. An explicit current request such as "Yes, please ask reception to call me" is different from a bare "Yes".
 
 The initial semantic route is only a recommendation. Correct it when its handoff flag conflicts with the whole sentence or authoritative facts. Do not require an exact phrase and do not count keywords.`,
     input: JSON.stringify({
@@ -104,6 +106,7 @@ export async function resolveAiFirstHandoffDecision({
   env = process.env,
   logger = console
 } = {}) {
+  if (isAcknowledgementTurn(message, grounding)) return { required: false, category: null, source: "acknowledgement_boundary" };
   const safeFallback = () => resolveHandoffDecision(message, history, grounding);
   const semantic = grounding?.semanticRoute?.handoff;
   const candidate = semantic && typeof semantic.requested === "boolean"
