@@ -76,7 +76,7 @@ export default async function handler(req, res) {
     log("error", "event_processing_failed", diagnostic);
     return json(res, 503, { error: "Unable to process webhook event", diagnostic });
   }
-  const summary = { processed: outcomes.filter(x => x.outcome === "replied").length, ignored: outcomes.filter(x => x.outcome === "ignored").length, duplicates: outcomes.filter(x => x.outcome === "duplicate").length };
+  const summary = { processed: outcomes.filter(x => x.outcome === "replied").length, ignored: outcomes.filter(x => x.outcome === "ignored").length, duplicates: outcomes.filter(x => x.outcome === "duplicate").length, human: outcomes.filter(x => x.outcome === "human").length };
   log("info", "request_completed", summary);
   return json(res, 200, { ok: true, ...summary });
 }

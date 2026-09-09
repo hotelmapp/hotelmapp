@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>希堤微旅｜櫃檯接手控制</title>
+  <link rel="stylesheet" href="/front-desk.css">
+  <script src="/front-desk.js" type="module"></script>
+</head>
+<body>
+  <header><div><small>HOTEL MAPP TAICHUNG</small><h1>櫃檯接手控制</h1></div><button id="logout" hidden>鎖定控制頁</button></header>
+  <p id="status" role="status" aria-live="polite">正在確認登入狀態…</p>
+  <section id="loginPanel" class="login" hidden>
+    <h2>管理員登入</h2><p>登入後供櫃檯共用，操作紀錄統一記為「櫃檯工作台」。</p>
+    <form id="loginForm"><label for="password">工作台專用管理員密碼</label><input id="password" type="password" autocomplete="current-password" required maxlength="256"><button type="submit">登入工作台</button></form>
+    <p class="muted">不是 LINE、Facebook 或 GitHub 的密碼。尚未設定時，請由管理員先完成啟用。</p>
+  </section>
+  <main id="workspace" hidden>
+    <aside><div class="section-head"><h2>旅客對話</h2><button id="refresh">重新整理</button></div><p class="muted">LINE 聊天留在原後台；這裡負責暫停與恢復 AI。僅顯示系統近期收到的文字。</p><div id="inbox"></div></aside>
+    <section class="conversation">
+      <div id="empty"><h2>選擇要接手的客人</h2><p>先核對客人及訊息內容，再按「人工接手，暫停 AI」。</p></div>
+      <div id="detail" hidden>
+        <div class="section-head"><div><h2 id="title"></h2><p id="mode"></p></div><button id="takeover">人工接手，暫停 AI</button></div>
+        <p id="notice" class="notice"></p>
+        <section id="nativeReply" class="native-panel" hidden>
+          <h3>在 LINE 回覆客人</h3>
+          <p>先在下方核對這位客人的近期訊息。按接手後，等到顯示「真人接手中・AI 已暫停」，再回 LINE 聊天。</p>
+          <label class="check"><input id="guestMatched" type="checkbox">我已在 LINE 核對這位客人及對話</label>
+          <div class="actions"><a href="https://chat.line.biz/" target="_blank" rel="noopener noreferrer" class="button secondary">開啟 LINE 官方帳號聊天</a></div>
+          <p class="muted">連結開啟 LINE 後台，請自行選擇同一位客人。這裡不會自動開啟指定聊天室。</p>
+          <label for="nativeGreeting">接手時的第一則訊息（複製後貼到 LINE）</label>
+          <textarea id="nativeGreeting" rows="2" readonly>【真人櫃檯回覆】您好，接下來由真人櫃檯為您服務😊</textarea>
+          <button id="copyGreeting" type="button" disabled>複製人工接手說明</button>
+          <p class="muted">AI 回覆會標示【AI 小幫手】。LINE 人工文字不會自動加標示或同步到此頁；處理完請留下交接摘要。</p>
+        </section>
+        <h3>近期訊息，供核對客人</h3>
+        <p class="muted">最多 20 則文字、最長 48 小時；完整紀錄、照片與檔案請在原平台查看。</p>
+        <div id="transcript" aria-label="對話紀錄"></div>
+        <form id="replyForm"><label for="reply">真人櫃檯回覆</label><textarea id="reply" rows="4" maxlength="1500" required placeholder="輸入回覆；系統會自動加上【真人櫃檯回覆】"></textarea><button id="send" type="submit">以真人櫃檯身分送出</button><button id="newReply" type="button" hidden>已在原平台確認，建立新回覆</button></form>
+        <section class="close-panel"><h3>處理完成後</h3><label for="summary">交接摘要（內部使用，不直接傳給旅客）</label><textarea id="summary" rows="2" maxlength="500" placeholder="簡述已處理事項及待辦；讓 AI 知道您在 LINE 的處理結果。不要填密碼、證件或信用卡資料。"></textarea><label class="check"><input id="resolved" type="checkbox">我已在原平台確認處理完成，並看過這位客人的最新訊息</label><button id="close">處理完成，恢復 AI</button><p class="muted">只有按此按鈕才會恢復。登出、久未操作或客人說「謝謝」都不會自動結案。有新訊息時，請重新核對。</p></section>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

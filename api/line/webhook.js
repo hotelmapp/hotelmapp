@@ -3,6 +3,9 @@ import { answerGuestMessage } from "../../ai-core/index.js";
 import { OpenAIResponseError } from "../../ai-core/response-service.js";
 import { lineConversationId } from "../../ai-core/conversation/record.js";
 import { answerWithConversation, configuredConversationService } from "../../ai-core/conversation/runtime.js";
+import { frontDeskService, preserveHumanHold } from "../../ai-core/front-desk/service.js";
+import { deskEnabled } from "../../ai-core/front-desk/store.js";
+import { aiMessage } from "../../ai-core/message-identity.js";
 
 const LINE_REPLY_URL = "https://api.line.me/v2/bot/message/reply";
 const MAX_BODY_BYTES = 1_000_000;
@@ -44,7 +47,8 @@ async function replyText(replyToken, text, accessToken, fetchImpl = fetch) {
   const response = await fetchImpl(LINE_REPLY_URL, {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ replyToken, messages: [{ type: "text", text }] })
+    body: JSON.stringify({ replyToken, messages: [{ type: "text", text: aiMessage(text) }] }),
+    signal: AbortSignal.timeout(8_000)
   });
   if (!response.ok) {
     const error = new Error("line_reply_failed");
@@ -54,24 +58,34 @@ async function replyText(replyToken, text, accessToken, fetchImpl = fetch) {
   }
 }
 
-export async function processLineEvent(event, { accessToken, fetchImpl = fetch, conversationService, hmacSecret, answer = answerGuestMessage } = {}) {
+export async function processLineEvent(event, { accessToken, fetchImpl = fetch, conversationService, hmacSecret, answer = answerGuestMessage, env = process.env, desk: suppliedDesk } = {}) {
   const key = eventKey(event);
   if (conversationService) {
     try {
       if (!await conversationService.store.claimIdempotencyKey("line", key, DEDUPE_TTL_MS)) return { outcome: "duplicate" };
     } catch {
-      // Continue only through answerWithConversation's stateless/fail-closed
-      // path; Redis failure must not become an implicit email handoff.
-      conversationService = { history: async () => { throw new Error("redis_unavailable"); } };
+      // A configured store may contain a human hold even if the UI opt-in
+      // has since been disabled. Never fall back to an unguarded AI reply.
+      throw new Error("front_desk_state_unavailable");
     }
   }
     if (event?.type !== "message" || event?.message?.type !== "text") {
       return { outcome: "ignored" };
     }
     if (typeof event.replyToken !== "string" || !event.replyToken) throw new Error("missing_reply_token");
+    if (deskEnabled(env) && (!conversationService || !hmacSecret)) throw new Error("front_desk_state_unavailable");
     let response;
     if (conversationService && hmacSecret) {
       const id = lineConversationId(event.source, hmacSecret);
+      const desk = event.source?.type === "user"
+        ? (suppliedDesk === undefined ? frontDeskService(conversationService, { ...env, CONVERSATION_HMAC_SECRET: hmacSecret }) : suppliedDesk) : null;
+      if (desk) return desk.incoming({
+        id, channel: "line", message: event.message.text,
+        route: { channel: "line", recipientId: event.source.userId, lastInboundAt: event.timestamp },
+        generate: mayAct => answerWithConversation({ id, channel: "line", message: event.message.text, service: conversationService, answer, beforeExternalAction: mayAct, deferPersistence: true }),
+        send: text => replyText(event.replyToken, text, accessToken, fetchImpl)
+      });
+      if (event.source?.type === "user" && await preserveHumanHold({ conversations: conversationService, id, channel: "line", message: event.message.text, env })) return { outcome: "human", conversationId: id };
       response = (await answerWithConversation({ id, channel: "line", message: event.message.text, service: conversationService, answer })).answer;
     } else {
       response = await answer(event.message.text, { channel: "line", handoffService: async () => ({ attempted: false }) });
@@ -128,6 +142,7 @@ export default async function handler(req, res) {
     ok: true,
     processed: outcomes.filter(item => item.outcome === "replied").length,
     ignored: outcomes.filter(item => item.outcome === "ignored").length,
+    human: outcomes.filter(item => item.outcome === "human").length,
     duplicates: outcomes.filter(item => item.outcome === "duplicate").length
   });
 }
