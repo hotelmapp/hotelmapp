@@ -3,9 +3,10 @@ import { FrontDeskError } from "./store.js";
 
 const COOKIE = "__Host-front_desk";
 const SESSION_SECONDS = 12 * 60 * 60;
+const ADMIN_KEY_MIN_LENGTH = 8;
 const digest = value => createHash("sha256").update(value).digest();
 export function assertDeskConfiguration(env) {
-  if (typeof env.FRONT_DESK_ADMIN_KEY !== "string" || env.FRONT_DESK_ADMIN_KEY.trim().length < 32 || env.FRONT_DESK_ADMIN_KEY.length > 256) throw new FrontDeskError("front_desk_not_configured", 503);
+  if (typeof env.FRONT_DESK_ADMIN_KEY !== "string" || env.FRONT_DESK_ADMIN_KEY.trim().length < ADMIN_KEY_MIN_LENGTH || env.FRONT_DESK_ADMIN_KEY.length > 256) throw new FrontDeskError("front_desk_not_configured", 503);
 }
 export function assertDeskOrigin(req, env) {
   const allowed = [env.FRONT_DESK_ORIGIN, env.VERCEL_URL && "https://" + env.VERCEL_URL, env.VERCEL_BRANCH_URL && "https://" + env.VERCEL_BRANCH_URL].filter(Boolean);

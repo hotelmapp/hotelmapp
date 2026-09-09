@@ -13,7 +13,7 @@
   <p id="status" role="status" aria-live="polite">正在確認登入狀態…</p>
   <section id="loginPanel" class="login" hidden>
     <h2>管理員登入</h2><p>登入後供櫃檯共用，操作紀錄統一記為「櫃檯工作台」。</p>
-    <form id="loginForm"><label for="password">工作台專用管理員密碼</label><input id="password" type="password" autocomplete="current-password" required maxlength="256"><button type="submit">登入工作台</button></form>
+    <form id="loginForm"><label for="password">工作台專用管理員密碼</label><input id="password" type="password" autocomplete="current-password" required minlength="8" maxlength="256"><button type="submit">登入工作台</button></form>
     <p class="muted">不是 LINE、Facebook 或 GitHub 的密碼。尚未設定時，請由管理員先完成啟用。</p>
   </section>
   <main id="workspace" hidden>

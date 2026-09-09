@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import { fixture } from "../test-support/front-desk-fixture.js";
 import { CONTROL_SCRIPT, LEASE_MS, RETENTION_MS, FrontDeskStore, deskNamespace } from "../ai-core/front-desk/store.js";
 import { HUMAN_LABEL, frontDeskService, humanReply, preserveHumanHold, sendStaffText, assertReplyWindow } from "../ai-core/front-desk/service.js";
-import { authenticateDesk, loginDesk, logoutDesk, deskCookie, assertDeskOrigin } from "../ai-core/front-desk/auth.js";
+import { authenticateDesk, loginDesk, logoutDesk, deskCookie, assertDeskConfiguration, assertDeskOrigin } from "../ai-core/front-desk/auth.js";
 import { answerWithConversation } from "../ai-core/conversation/runtime.js";
 import { lineConversationId } from "../ai-core/conversation/record.js";
 import { createFrontDeskHandler } from "../api/front-desk.js";
@@ -33,6 +33,12 @@ test("workbench is opt-in, missing configuration locks it, previews are isolated
   assert.throws(() => frontDeskService(f.conversations, { ...f.env, FRONT_DESK_DATA_KEY: "bad" }), /not_configured/);
   assert.throws(() => deskNamespace({ VERCEL_ENV: "preview" }), /preview_namespace_missing/);
   assert.notEqual(deskNamespace(f.env), deskNamespace({ VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_SHA: "a".repeat(40) }));
+});
+
+test("workbench admin password accepts eight characters but rejects seven", () => {
+  assert.doesNotThrow(() => assertDeskConfiguration({ FRONT_DESK_ADMIN_KEY: "A1b2!xY8" }));
+  assert.throws(() => assertDeskConfiguration({ FRONT_DESK_ADMIN_KEY: "A1b2!xY" }), /not_configured/);
+  assert.throws(() => assertDeskConfiguration({ FRONT_DESK_ADMIN_KEY: " 1234567 " }), /not_configured/);
 });
 
 test("route IDs are encrypted, context-bound, and absent from admin responses", async () => {
