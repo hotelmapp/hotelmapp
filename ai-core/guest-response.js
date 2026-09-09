@@ -10,6 +10,7 @@ import { resolveSemanticKnowledgeGrounding } from "./semantic-router.js";
 import { configuredReasoning, configuredTextModel, DEFAULT_TEXT_REASONING_EFFORT } from "./model-config.js";
 import { groundedFactSet } from "./reasoning-core.js";
 import { validateUnifiedReply } from "./reply-quality.js";
+import { acknowledgementFallback, withAcknowledgementBoundary } from "./acknowledgement.js";
 
 const MAX_HISTORY_MESSAGES = 20;
 const MAX_MESSAGE_LENGTH = 2_000;
@@ -404,6 +405,13 @@ export async function answerGuestMessage(message, { history = [], channel = "web
   const conversation = normalizedHistory(history);
   if (grounding === undefined) grounding = await resolveSemanticKnowledgeGrounding(trimmed, conversation, null, null, { request, env, logger, temporalContext });
   const language = detectGuestLanguage(trimmed, conversation);
+  grounding = withAcknowledgementBoundary(trimmed, grounding);
+  if (grounding?.topic === "acknowledgement") {
+    // Same AI composer and quality reviewer, but no hotel facts, side effects,
+    // contact collection or repeated handoff offer belong in a receipt.
+    const composed = await tryAiFirstReasoning({ message: trimmed, history: conversation, channel, grounding, request, env, logger });
+    return finalizeGuestAnswer(composed?.answer || acknowledgementFallback(language), { message: trimmed, history, channel });
+  }
   grounding = withDatedBookingContext(grounding, trimmed, temporalContext);
   if (requiresUnknownInformationReply(trimmed, grounding)) {
     return finalizeGuestAnswer(unknownInformationReply(trimmed), { message: trimmed, history, channel });

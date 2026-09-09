@@ -1,9 +1,10 @@
 import { explicitTopics, groundingForTopics, resolveKnowledgeGrounding, resolveRequestedIntent, subsidyDateRequestContext } from "./knowledge-grounding.js";
 import { requestGroundedResponse } from "./response-service.js";
 import { HANDOFF_CATEGORY_NAMES } from "./handoff.js";
+import { withAcknowledgementBoundary } from "./acknowledgement.js";
 import { configuredReasoning, configuredTextModel, DEFAULT_ROUTING_REASONING_EFFORT } from "./model-config.js";
 
-export const SEMANTIC_ROUTER_VERSION = "2.3";
+export const SEMANTIC_ROUTER_VERSION = "2.4";
 export const SEMANTIC_ROUTER_FEATURE_FLAG = "SEMANTIC_ROUTER_ENABLED";
 
 const MAX_HISTORY_MESSAGES = 12;
@@ -11,6 +12,7 @@ const MAX_MESSAGE_LENGTH = 2_000;
 const DEFAULT_TIMEOUT_MS = 5_000;
 
 const INTENTS_BY_TOPIC = Object.freeze({
+  acknowledgement: ["acknowledgement"],
   breakfast: ["breakfast"],
   parking: ["parking_availability", "parking_fee", "parking_partner_location", "parking_location", "parking_process", "parking_reservation", "parking_problem"],
   subsidy: ["subsidy_overview", "subsidy_participation", "subsidy_date_applicability", "subsidy_amount", "subsidy_period", "subsidy_booking_channel", "subsidy_participation_limit", "subsidy_birthday_voucher", "subsidy_taiwan_pass", "subsidy_stacking", "subsidy_registration", "subsidy_documentation", "subsidy_eligibility", "subsidy_third_night"],
@@ -93,13 +95,14 @@ export function validateSemanticRoute(value, message = "") {
     seen.add(route.topic);
   }
   if (seen.has("unknown") && seen.size > 1) return false;
+  if (seen.has("acknowledgement") && seen.size > 1) return false;
 
   // A complete current sentence is a hard boundary against stale history. A
   // route must retain at least one clear topic from the current message, while
   // still allowing the model to exclude a negated mention, add an implied need,
   // or choose unknown when every recognized word was explicitly rejected.
   const currentTopics = explicitTopics(message);
-  if (currentTopics.length && !seen.has("unknown") && !currentTopics.some(topic => seen.has(topic))) return false;
+  if (currentTopics.length && !seen.has("unknown") && !seen.has("acknowledgement") && !currentTopics.some(topic => seen.has(topic))) return false;
   return true;
 }
 
@@ -133,6 +136,7 @@ Critical continuity rules:
 - A question asking whether a specific date, weekday, the day before a national long holiday, or a long-holiday date is covered by the subsidy is subsidy_date_applicability, not subsidy_eligibility. If the guest gives no actual stay date, set clarification_needed=true so the answer can state the published day rule and ask only for that date. Personal qualification, allowance, or remaining funding is subsidy_eligibility.
 - The word 折抵 alone is ambiguous. Route it to parking only when the current sentence or the uninterrupted recent topic is actually about parking.
 - Use unknown only when no supported topic can be determined. Use multiple routes only when the current request truly contains multiple needs.
+- Use acknowledgement for a receipt, thanks, or bare acceptance with no new request. Understand paraphrases in all supported languages (zh-TW, English, Japanese, Korean); do not require an exact phrase. An acknowledgement mentioning an older topic is still a receipt, not a request to repeat that topic's facts. Any actual new question or explicit staff request in the same message must be preserved instead of collapsed into acknowledgement.
 
 Handoff classification is semantic and separate from answering:
 - requested=true only when the guest asks hotel staff to act, contact them, handle a complaint/problem, change/cancel a reservation, address a payment dispute, find lost property, or arrange a request that requires staff confirmation.
@@ -140,7 +144,7 @@ Handoff classification is semantic and separate from answering:
 - A request phrased as an information or policy question remains an answerable intent when hotel knowledge can resolve it. This rule applies across all topics: asking the assistant to explain breakfast time, check subsidy rules, show booking availability, describe parking cost, or state whether a policy allows something does not request contact-detail collection. Semantically equivalent paraphrases must receive the same intent even when one uses polite action wording.
 - Questions asking only for front-desk information, such as phone number, location, or opening hours, have requested=false.
 - A normal new booking or a question about how to book has requested=false unless the guest explicitly asks staff to contact or handle it.
-- A short acceptance such as 好的 or 需要喔 has requested=true only when the latest assistant turn clearly offered to send the preserved request to hotel staff; use category 真人服務.
+- A bare acceptance or receipt (好、好的、需要喔、OK、Yes、はい、네 and semantic equivalents) always has requested=false, even after an old or immediately preceding handoff offer. History can be incomplete when staff reply outside the AI. Starting a new handoff requires a current explicit request with an action/object, not implied consent from historical prose. Only the server's existing ready_for_confirmation state can authorize final confirmation; never infer that state here.
 - This classification is only a recommendation to the server. It never authorizes or performs an external action.`,
     input: JSON.stringify({ current_user_message: String(message || "").slice(0, MAX_MESSAGE_LENGTH), recent_history: normalizedHistory(history) }),
     text: { format: { type: "json_schema", name: "semantic_conversation_route", strict: true, schema: SEMANTIC_ROUTE_SCHEMA } }
@@ -158,7 +162,7 @@ export async function resolveSemanticKnowledgeGrounding(message, history = [], s
   logger = console,
   temporalContext = null
 } = {}) {
-  const fallback = resolveKnowledgeGrounding(message, history, storedTopic, storedIntent, temporalContext);
+  const fallback = withAcknowledgementBoundary(message, resolveKnowledgeGrounding(message, history, storedTopic, storedIntent, temporalContext));
   if (!semanticRouterEnabled(env)) return fallback;
   // Unit tests and local deterministic operation do not need to manufacture an
   // upstream error when no production API key exists. Injected requests still
@@ -198,8 +202,9 @@ export async function resolveSemanticKnowledgeGrounding(message, history = [], s
       usedHistory: decision.uses_history,
       clarificationNeeded: decision.clarification_needed
     });
-    return {
+    return withAcknowledgementBoundary(message, {
       ...groundingForTopics(message, topics, history, storedIntent, intents, temporalContext),
+      ...(topics.includes("acknowledgement") ? { topic: "acknowledgement", intent: "acknowledgement" } : {}),
       semanticRoute: Object.freeze({
         currentNeed: decision.current_need,
         usedHistory: decision.uses_history,
@@ -207,7 +212,7 @@ export async function resolveSemanticKnowledgeGrounding(message, history = [], s
         handoff: Object.freeze({ requested: decision.handoff.requested, category: decision.handoff.category }),
         routerVersion: SEMANTIC_ROUTER_VERSION
       })
-    };
+    });
   } catch (error) {
     logger?.info?.("[semantic-router]", {
       event: "semantic_route_fallback",

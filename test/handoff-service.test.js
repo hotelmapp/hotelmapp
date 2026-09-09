@@ -90,7 +90,7 @@ test("the latest LINE screenshot phrasing keeps handoff through booking, date, n
   assert.equal(state.authorized, true);
 });
 
-test("a natural model offer followed by 好的 starts deterministic handoff", () => {
+test("a natural model offer followed by 好的 cannot start a new handoff", () => {
   const state = advanceHandoffAuthorization({
     message: "好的",
     history: [
@@ -99,8 +99,8 @@ test("a natural model offer followed by 好的 starts deterministic handoff", ()
     ],
     current: { state: "none" }
   });
-  assert.equal(state.handoff.state, "collecting_required_fields");
-  assert.equal(state.handoff.category, "真人服務");
+  assert.equal(state.handoff.state, "none");
+  assert.equal(state.reply, undefined);
 });
 
 test("partial contact details do not get discarded as a new booking question", () => {
@@ -113,7 +113,7 @@ test("partial contact details do not get discarded as a new booking question", (
   assert.match(state.reply, /姓名/u);
 });
 
-test("a short acceptance immediately after an unknown-information offer starts handoff", () => {
+test("a receipt after an unknown-information offer does not imply handoff consent", () => {
   const state = advanceHandoffAuthorization({
     message: "好的",
     history: [
@@ -122,9 +122,8 @@ test("a short acceptance immediately after an unknown-information offer starts h
     ],
     current: { state: "none" }
   });
-  assert.equal(state.handoff.state, "collecting_required_fields");
-  assert.equal(state.handoff.category, "真人服務");
-  assert.match(state.reply, /姓名.*電話或 Email/u);
+  assert.equal(state.handoff.state, "none");
+  assert.equal(state.reply, undefined);
 });
 
 test("the offered transfer phrase enters contact collection without sending", () => {

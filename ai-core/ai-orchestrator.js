@@ -8,7 +8,7 @@ import { validateUnifiedReply } from "./reply-quality.js";
 import { parseQualityReview, qualityReviewEnabled, qualityReviewPayload } from "./conversation-quality-review.js";
 
 export const AI_FIRST_FEATURE_FLAG = "AI_FIRST_ORCHESTRATOR_ENABLED";
-export const ORCHESTRATION_VERSION = "3.2";
+export const ORCHESTRATION_VERSION = "3.3";
 const MAX_DECISION_FACTS = 64;
 
 export const MODEL_DECISION_SCHEMA = Object.freeze({
@@ -16,7 +16,7 @@ export const MODEL_DECISION_SCHEMA = Object.freeze({
   additionalProperties: false,
   required: ["intent", "user_need", "facts_to_use", "action", "clarification_needed", "next_step", "response_strategy"],
   properties: {
-    intent: { type: "string", enum: ["multiple", "subsidy_overview", "subsidy_participation", "subsidy_date_applicability", "subsidy_amount", "subsidy_period", "subsidy_booking_channel", "subsidy_participation_limit", "subsidy_birthday_voucher", "subsidy_taiwan_pass", "subsidy_stacking", "subsidy_registration", "subsidy_documentation", "subsidy_eligibility", "subsidy_third_night", "booking_direct", "booking_availability", "booking_modify_cancel", "parking_availability", "parking_fee", "parking_partner_location", "parking_location", "parking_process", "parking_reservation", "parking_problem", "wifi", "check_in", "front_desk_contact", "check_out", "late_checkout", "breakfast", "luggage", "room_type", "baby_equipment", "transportation", "cancellation", "payment", "complaint", "unknown"] },
+    intent: { type: "string", enum: ["acknowledgement", "multiple", "subsidy_overview", "subsidy_participation", "subsidy_date_applicability", "subsidy_amount", "subsidy_period", "subsidy_booking_channel", "subsidy_participation_limit", "subsidy_birthday_voucher", "subsidy_taiwan_pass", "subsidy_stacking", "subsidy_registration", "subsidy_documentation", "subsidy_eligibility", "subsidy_third_night", "booking_direct", "booking_availability", "booking_modify_cancel", "parking_availability", "parking_fee", "parking_partner_location", "parking_location", "parking_process", "parking_reservation", "parking_problem", "wifi", "check_in", "front_desk_contact", "check_out", "late_checkout", "breakfast", "luggage", "room_type", "baby_equipment", "transportation", "cancellation", "payment", "complaint", "unknown"] },
     user_need: { type: "string", minLength: 1, maxLength: 240 },
     facts_to_use: { type: "array", maxItems: MAX_DECISION_FACTS, items: { type: "string", minLength: 1, maxLength: 120 } },
     action: { type: "string", enum: ["none", "contact_front_desk"] },
@@ -136,6 +136,8 @@ function prosePayload({ message, history, grounding, decision, selectedFacts, to
 
 You are the one unified answer composer for every ordinary HotelMapp guest question. Use only selected_grounded_facts and successful tool_result as hotel truth. A fact with certainty=unknown must be described as unconfirmed and must not be guessed. Do not claim an action happened unless tool_result.status is completed. Answer in ${language}.
 
+For intent=acknowledgement, the guest is only acknowledging receipt or thanking you, not asking a new hotel question or authorizing staff contact. Reply with one short, natural acknowledgement in the guest's language. Use history only for tone, never as a current request. Do not repeat old facts, offers or questions; do not collect a name, phone, email or other personal data; do not claim an operation/payment/booking was processed. No new handoff or action has occurred. This rule outranks suggestions elsewhere to offer next steps for unknown questions.
+
 Understand the guest's complete current wording before writing. Resolve a yes/no or negative question directly in the first few words; for example, 「你們沒有參加補助嗎？」 must begin with a natural direct answer such as 「有參加喔，」 before dates or rules. A location, cost, time, or process question must lead with that requested information. Use only the details needed for the current need; do not dump every available fact, policy, or disclaimer. A simple question normally needs one or two short sentences. Cover all explicit needs in a multi-topic message, preserve conditions and relationships, and answer a follow-up with only the new information instead of replaying the previous answer.
 
 For subsidy_date_applicability, distinguish the published calendar rule from personal eligibility. If requestContext.requestedStayDate is unknown, acknowledge the exact concern, state the Sunday-through-Thursday rule and the Friday/Saturday/national-long-holiday exclusions, then ask only for the actual check-in date. If the date is known, answer its calendar applicability first from the campaign period, derived weekday, and published exclusion; only then note that personal qualification and allowance still require the government system. Never use a government-system disclaimer as the whole answer.
@@ -152,7 +154,7 @@ export async function orchestrateHospitalityTurn({ message, history = [], ground
   safeLog(logger, "orchestration_started", { channel, topic: grounding?.topic });
   if (!grounding?.topic) grounding = { topic: "unknown", intent: "unknown", facts: { unknown: null }, contract: { historyPolicy: "references_only" } };
   const facts = groundingFactEntries(grounding);
-  if (!facts.length) facts.push({ id: "unknown", value: null, certainty: "unknown", source: `hotel_knowledge_v${KNOWLEDGE_VERSION}` });
+  if (!facts.length && grounding.topic !== "acknowledgement") facts.push({ id: "unknown", value: null, certainty: "unknown", source: `hotel_knowledge_v${KNOWLEDGE_VERSION}` });
   safeLog(logger, "grounding_completed", { topic: grounding.topic, factCount: facts.length, knowledgeVersion: KNOWLEDGE_VERSION });
   const permissions = toolPermissions({ identity, authorization });
   const availableTools = Object.entries(permissions).filter(([, allowed]) => allowed).map(([name]) => name);

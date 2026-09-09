@@ -5,14 +5,12 @@ import { sendEmail } from "./email-transport.js";
 import { frontDeskEmail } from "./operational-config.js";
 import { hasBookingIntent } from "./booking.js";
 import { explicitTopic } from "./knowledge-grounding.js";
+import { isStandaloneAcknowledgement, isHandoffConfirmation } from "./acknowledgement.js";
 
 const SENDER = "希堤微旅 AI 智慧櫃台 <onboarding@resend.dev>";
 const SAFE_IDENTIFIER_KEYS = new Set(["displayName", "email", "phone"]);
 const PHONE_PATTERN = /(?<!\d)(?:\+?886[- ]?)?0?9\d{2}[- ]?\d{3}[- ]?\d{3}(?!\d)/u;
 const EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/iu;
-const OFFER_ACCEPT_PATTERN = /^(?:需要|需要喔|要|好|好的|可以|麻煩|麻煩你|請幫我|ok|okay|yes)[！!。,．.～~\s]*$/iu;
-const HANDOFF_OFFER_PATTERN = /需要我幫您.{0,12}(?:(?:通知|聯絡|轉告).{0,8}(?:櫃台|櫃檯|飯店人員)|(?:轉請|請).{0,8}(?:櫃台|櫃檯|飯店人員).{0,8}(?:回覆|確認))嗎|(?:留下|提供).{0,24}(?:聯絡方式|電話|email).{0,24}(?:整理|留言|轉交).{0,18}(?:櫃台|櫃檯|飯店人員).{0,24}(?:回覆|聯絡|確認)|回覆.{0,12}(?:幫我)?轉接.{0,8}(?:櫃台|櫃檯|飯店人員)/iu;
-const CONFIRM_PATTERN = /^(?:好|好的|可以|確認|確認送出|同意|送出|麻煩送出|ok|okay|yes|可以送出)[！!。,.\s]*$/iu;
 const CANCEL_PATTERN = /^(?:不要|不用|取消|先不用|不用了|先不用了|no|cancel)[！!。,.\s]*$/iu;
 
 function clean(value, limit = 2_000) {
@@ -94,12 +92,6 @@ function startsIndependentServiceQuestion(message) {
   return Boolean(explicitTopic(message) || hasBookingIntent(message));
 }
 
-function acceptsRecentHandoffOffer(message, history) {
-  if (!OFFER_ACCEPT_PATTERN.test(clean(message, 80)) || !Array.isArray(history)) return false;
-  const latestTurn = [...history].reverse().find(item => item && typeof item.content === "string");
-  return latestTurn?.role === "assistant" && HANDOFF_OFFER_PATTERN.test(clean(latestTurn.content, 1_000));
-}
-
 function requestId(existing) {
   return clean(existing?.requestId, 80) || randomBytes(18).toString("base64url");
 }
@@ -116,19 +108,22 @@ function detectedHandoffDecision(message, history, decision) {
 export function advanceHandoffAuthorization({ message, history = [], identity, current, decision: semanticDecision } = {}) {
   const existing = current && typeof current === "object" ? current : { state: "none" };
   const state = existing.state || "none";
-  const detected = detectedHandoffDecision(message, history, semanticDecision);
-  const decision = detected.required || !acceptsRecentHandoffOffer(message, history)
-    ? detected
-    : { required: true, category: "真人服務" };
+  const acknowledgement = isStandaloneAcknowledgement(message) || semanticDecision?.source === "acknowledgement_boundary";
+  const decision = acknowledgement ? { required: false, category: null } : detectedHandoffDecision(message, history, semanticDecision);
 
   if (state === "ready_for_confirmation") {
     if (CANCEL_PATTERN.test(clean(message, 80))) return { handoff: { state: "none" }, reply: cancelHandoffReply(), authorized: false };
-    if (CONFIRM_PATTERN.test(clean(message, 80)) && hasRequiredHandoffContact(existing.contact)) {
+    if (isHandoffConfirmation(message) && hasRequiredHandoffContact(existing.contact)) {
       return { handoff: { ...existing, requestId: requestId(existing), state: "confirmed" }, authorized: true };
     }
+    if (acknowledgement) return { handoff: existing, authorized: false };
     if (!decision.required && startsIndependentServiceQuestion(message)) return { handoff: { state: "none" }, authorized: false };
     return { handoff: existing, reply: confirmationReply(existing), authorized: false };
   }
+
+  // A receipt may neither start/restart a handoff nor replay contact collection
+  // from a stale pending request. It never extracts profile/contact data.
+  if (acknowledgement) return { handoff: existing, authorized: false };
 
   if (state === "collecting_required_fields") {
     if (CANCEL_PATTERN.test(clean(message, 80))) return { handoff: { state: "none" }, reply: cancelHandoffReply(), authorized: false };

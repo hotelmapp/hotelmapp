@@ -1,6 +1,7 @@
 import { detectGuestLanguage } from "../guest-language.js";
 import { validateGroundedResponse } from "./knowledge-grounding.js";
 import { verifyFinalResponse } from "./reasoning-core.js";
+import { validateAcknowledgementReply } from "./acknowledgement.js";
 
 const GENERIC_PERMISSION_OPENING = /^(?:(?:您好|哈囉|嗨)[😊😀🙂✨❤️～~，,。.!！\s]*)?(?:好的|了解|可以(?:的|喔)?|當然可以|沒問題)(?:[😊😀🙂✨❤️～~，,。.!！\s]|$)/u;
 const EXPLICIT_PERMISSION_REQUEST = /(?:可以|可不可以|可否|能不能|能否|請幫|幫我|協助我|\b(?:can|could|may|would)\b.{0,24}\b(?:you|i|we)\b|できますか|可能ですか|お願い|할 수 있|가능한가|도와)/iu;
@@ -52,6 +53,8 @@ export function answerMatchesCurrentNeed(answer, message, grounding) {
 export function validateUnifiedReply({ answer, message, history = [], grounding, selectedFacts = [], toolResult = { status: "not_requested" } }) {
   const factual = verifyFinalResponse({ answer, selectedFacts, toolResult });
   if (!factual.valid) return factual;
+  if (grounding?.topic === "acknowledgement") return validateAcknowledgementReply(answer)
+    ? { valid: true } : { valid: false, reason: "acknowledgement_action_or_collection" };
   if (!validateGroundedResponse(answer, grounding)) return { valid: false, reason: "grounding_contract_violation" };
   if (!answerMatchesCurrentNeed(answer, message, grounding)) return { valid: false, reason: "current_need_not_answered_first" };
   if (!openingMatchesSpeechAct(answer, message)) return { valid: false, reason: "irrelevant_permission_opening" };

@@ -1,5 +1,6 @@
 import { answerGuestMessage } from "../guest-response.js";
-import { decideHandoff, resolveHandoffDecision } from "../handoff.js";
+import { decideHandoff } from "../handoff.js";
+import { isAcknowledgementTurn, withAcknowledgementBoundary } from "../acknowledgement.js";
 import { advanceHandoffAuthorization, performAuthorizedHandoff } from "../handoff-service.js";
 import { resolveAiFirstHandoffDecision } from "../handoff-resolution-review.js";
 import { ConversationService } from "./service.js";
@@ -54,11 +55,14 @@ export async function answerWithConversation({
     return { answer: response, durable: false, memoryError: error };
   }
 
-  const grounding = await route(message, history, storedTopic, storedIntent, { env, logger, temporalContext });
+  const grounding = withAcknowledgementBoundary(message, await route(message, history, storedTopic, storedIntent, { env, logger, temporalContext }));
   // Every turn is semantically routed first. A possible action then receives a
   // separate grounded AI review before deterministic authorization begins.
-  // Regex matching is retained only inside the safe provider-outage fallback.
-  const decision = await reviewHandoff({ message, history, grounding, env, logger });
+  // Model decisions cannot bypass the receipt boundary or durable consent.
+  const reviewed = await reviewHandoff({ message, history, grounding, env, logger });
+  const decision = isAcknowledgementTurn(message, grounding)
+    ? { required: false, category: null, source: "acknowledgement_boundary" }
+    : reviewed;
   const authorization = advanceHandoffAuthorization({ message, history, identity, current: durableHandoff, decision });
   let nextHandoff = authorization.handoff || durableHandoff || { state: "none" };
   let response;
