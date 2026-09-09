@@ -54,7 +54,7 @@ test("legacy Meta callback delegates to the production handler with raw body par
   const response = recorder();
   await legacyHandler(signedRequest(payload), response);
   assert.equal(response.statusCode, 200);
-  assert.deepEqual(response.body, { ok: true, processed: 0, ignored: 0, duplicates: 0 });
+  assert.deepEqual(response.body, { ok: true, processed: 0, ignored: 0, duplicates: 0, human: 0 });
 });
 
 test("Meta POST signature uses x-hub-signature-256 and rejects tampering", () => {

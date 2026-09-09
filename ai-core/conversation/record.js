@@ -49,7 +49,7 @@ export function appendTurn(record, turn, { now = new Date(), limits = CONVERSATI
   const next = structuredClone(record);
   const content = minimizeConversationText(turn?.content);
   if (!content || !["user", "assistant"].includes(turn?.role)) throw new TypeError("invalid_turn");
-  next.turns.push({ role: turn.role, content, at: now.toISOString(), ...(turn.id ? { id: String(turn.id).slice(0, 128) } : {}) });
+  next.turns.push({ role: turn.role, content, at: now.toISOString(), ...(turn.id ? { id: String(turn.id).slice(0, 128) } : {}), ...(["staff", "staff_note"].includes(turn.source) ? { source: turn.source } : {}) });
   next.turns = next.turns.slice(-limits.maxTurns);
   next.updatedAt = now.toISOString();
   while (Buffer.byteLength(JSON.stringify(next)) > limits.maxRecordBytes && next.turns.length > 1) next.turns.shift();

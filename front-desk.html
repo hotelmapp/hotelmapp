@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>希堤微旅｜櫃檯工作台</title>
+  <link rel="stylesheet" href="/front-desk.css">
+  <script src="/front-desk.js" type="module"></script>
+</head>
+<body>
+  <header><div><small>HOTEL MAPP TAICHUNG</small><h1>櫃檯工作台</h1></div><button id="logout" hidden>鎖定工作台</button></header>
+  <p id="status" role="status" aria-live="polite">正在確認登入狀態…</p>
+  <section id="loginPanel" class="login" hidden>
+    <h2>管理員登入</h2><p>登入後供櫃檯共用，操作紀錄統一記為「櫃檯工作台」。</p>
+    <form id="loginForm"><label for="password">工作台專用管理員密碼</label><input id="password" type="password" autocomplete="current-password" required maxlength="256"><button type="submit">登入工作台</button></form>
+    <p class="muted">不是 LINE、Facebook 或 GitHub 的密碼。尚未設定時，請由管理員先完成啟用。</p>
+  </section>
+  <main id="workspace" hidden>
+    <aside><div class="section-head"><h2>旅客對話</h2><button id="refresh">重新整理</button></div><p class="muted">LINE 一對一、Messenger；只顯示啟用後收到的對話。</p><div id="inbox"></div></aside>
+    <section class="conversation">
+      <div id="empty"><h2>選擇一段對話</h2><p>先看過旅客的訊息，再按「人工接手」。</p></div>
+      <div id="detail" hidden>
+        <div class="section-head"><div><h2 id="title"></h2><p id="mode"></p></div><button id="takeover">人工接手</button></div>
+        <p id="notice" class="notice"></p>
+        <div id="transcript" aria-label="對話紀錄"></div>
+        <form id="replyForm"><label for="reply">真人櫃檯回覆</label><textarea id="reply" rows="4" maxlength="1500" required placeholder="輸入回覆；系統會自動加上【真人櫃檯回覆】"></textarea><button id="send" type="submit">以真人櫃檯身分送出</button><button id="newReply" type="button" hidden>已在原平台確認，建立新回覆</button></form>
+        <section class="close-panel"><h3>處理完成後</h3><label for="summary">交接摘要（內部使用，不直接傳給旅客）</label><textarea id="summary" rows="2" maxlength="500" placeholder="簡述已處理事項；不要填密碼、證件或信用卡資料。"></textarea><button id="close">處理完成，恢復 AI</button><p class="muted">只有按此按鈕才會恢復。登出、久未操作或客人說「謝謝」都不會自動結案。</p></section>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

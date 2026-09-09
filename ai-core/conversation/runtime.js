@@ -30,6 +30,8 @@ export async function answerWithConversation({
   route = resolveSemanticKnowledgeGrounding,
   reviewHandoff = resolveAiFirstHandoffDecision,
   claimDelivery = claimHandoffDelivery,
+  beforeExternalAction = async () => true,
+  deferPersistence = false,
   env = process.env,
   logger = console
 }) {
@@ -68,6 +70,7 @@ export async function answerWithConversation({
   let response;
 
   if (authorization.authorized) {
+    if (!await beforeExternalAction()) return { answer: null, suppressed: true, durable: true, handoff: durableHandoff };
     let claimed = false;
     try { claimed = await claimDelivery(service, id, nextHandoff); }
     catch {
@@ -78,7 +81,10 @@ export async function answerWithConversation({
       nextHandoff = { ...nextHandoff, state: "delivery_uncertain" };
       response = "這筆送出請求已經處理過，為避免重複寄送，我不會再次送出。若要確認櫃檯是否收到，請直接聯絡櫃檯協助。";
     }
-    if (!response && claimed) {
+    if (!response && claimed && !await beforeExternalAction()) {
+      nextHandoff = { ...nextHandoff, state: "failed" };
+      response = null;
+    } else if (!response && claimed) {
       const result = await handoffService(
         { message, history, channel, identity },
         { authorization: nextHandoff, deliveryClaimed: true }
@@ -95,6 +101,10 @@ export async function answerWithConversation({
     });
   }
 
+  if (deferPersistence) return {
+    answer: response, durable: true, handoff: nextHandoff,
+    metadata: { topic: grounding.topic, intent: grounding.intent, handoff: nextHandoff }
+  };
   try {
     await service.append(
       id,
