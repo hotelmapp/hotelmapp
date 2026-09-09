@@ -5,6 +5,7 @@ import { lineConversationId } from "../../ai-core/conversation/record.js";
 import { answerWithConversation, configuredConversationService } from "../../ai-core/conversation/runtime.js";
 import { frontDeskService, preserveHumanHold } from "../../ai-core/front-desk/service.js";
 import { deskEnabled } from "../../ai-core/front-desk/store.js";
+import { aiMessage } from "../../ai-core/message-identity.js";
 
 const LINE_REPLY_URL = "https://api.line.me/v2/bot/message/reply";
 const MAX_BODY_BYTES = 1_000_000;
@@ -46,7 +47,7 @@ async function replyText(replyToken, text, accessToken, fetchImpl = fetch) {
   const response = await fetchImpl(LINE_REPLY_URL, {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ replyToken, messages: [{ type: "text", text }] }),
+    body: JSON.stringify({ replyToken, messages: [{ type: "text", text: aiMessage(text) }] }),
     signal: AbortSignal.timeout(8_000)
   });
   if (!response.ok) {

@@ -18,8 +18,15 @@ const messages = {
 const state = { authenticated: false, selected: null, detail: null, busy: false, refreshing: false, drafts: new Map(), generation: 0 };
 function status(text, error = false) { $("status").textContent = text; $("status").classList.toggle("error", error); }
 function draft(id = state.selected) {
-  if (!state.drafts.has(id)) state.drafts.set(id, { text: "", summary: "", requestId: null, attempted: false });
+  if (!state.drafts.has(id)) state.drafts.set(id, { text: "", summary: "", requestId: null, attempted: false, matched: false, review: null });
   return state.drafts.get(id);
+}
+function reviewKey(detail) {
+  return JSON.stringify([detail.id, detail.revision, detail.control.epoch, detail.control.inboundVersion || 0]);
+}
+function canClose(detail = state.detail) {
+  return Boolean(detail && detail.id === state.selected && detail.control.mode === "human"
+    && draft().summary.trim() && draft().review === reviewKey(detail));
 }
 function loggedIn(value) {
   state.authenticated = value;
@@ -37,7 +44,9 @@ async function api(action, body = {}) {
       method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, ...body }), signal: AbortSignal.timeout(25_000)
     });
-  } catch { throw new Error("連線中斷，送出結果可能尚未確認。請勿重複建立相同訊息；先到原平台核對。"); }
+  } catch { throw new Error(action === "reply"
+    ? "連線中斷，送出結果可能尚未確認。請勿重複建立相同訊息；先到原平台核對。"
+    : "連線中斷，尚無法確認操作結果。請重新整理，確認 AI 是否已暫停或恢復。"); }
   const data = await response.json();
   if (!response.ok) {
     if (data.error === "login_required") loggedIn(false);
@@ -53,18 +62,32 @@ function renderDetail(detail) {
   $("title").textContent = (detail.channel === "line" ? "LINE" : "Messenger") + " 對話 " + detail.id.slice(-6);
   $("mode").textContent = modeText(detail.control);
   const human = detail.control.mode === "human";
-  $("takeover").disabled = state.busy || detail.control.mode !== "ai";
-  $("send").disabled = state.busy || (!draft().attempted && (!human || !detail.routeAvailable || !detail.replyWindowOpen));
-  $("close").disabled = state.busy || !human;
-  $("reply").disabled = state.busy || !human || draft().attempted;
+  const native = detail.channel === "line";
+  const current = draft();
+  if (current.review !== reviewKey(detail) || !human) current.review = null;
+  $("nativeReply").hidden = !native;
+  $("replyForm").hidden = native;
+  $("guestMatched").checked = current.matched;
+  $("guestMatched").disabled = state.busy || detail.control.mode !== "ai";
+  $("takeover").disabled = state.busy || detail.control.mode !== "ai" || (native && !current.matched);
+  $("copyGreeting").disabled = state.busy || !human;
+  $("send").disabled = native || state.busy || (!current.attempted && (!human || !detail.routeAvailable || !detail.replyWindowOpen));
+  $("resolved").checked = Boolean(current.review);
+  $("resolved").disabled = state.busy || !human;
+  $("close").disabled = state.busy || !canClose(detail);
+  $("reply").disabled = native || state.busy || !human || current.attempted;
   $("summary").disabled = state.busy || !human;
   const uncertain = ["uncertain", "pending"].includes(detail.control.lastSend?.status);
   $("notice").textContent = uncertain
     ? "前一則人工訊息的送出結果尚未確認，請先到原平台核對；不要重複寄送。"
-    : !detail.routeAvailable ? "對話資料已過期，但 AI 仍維持暫停。請到原平台確認處理結果後，再結案。"
+    : detail.control.mode === "pausing" ? "請等狀態變成「真人接手中」再回覆。尚未送出的 AI 回覆會被攔下；已送往平台的訊息無法撤回。"
+    : native ? human
+      ? "這位客人的 AI 已暫停。請到 LINE 回覆，先貼上人工接手說明；處理完回此頁留下摘要並恢復 AI。"
+        + (detail.reminder ? " 已接手超過 30 分鐘，請確認是否仍需處理。" : "")
+      : "這位客人目前由 AI 回覆。先核對客人，再按「人工接手，暫停 AI」；直接在 LINE 打字不會觸發暫停。"
+    : !detail.routeAvailable ? "近期資料已過期，請到原平台確認；是否暫停 AI 請以此頁狀態為準。"
     : !detail.replyWindowOpen ? "已超過平台回覆時限；此入口不會繞過平台限制。"
     : detail.reminder ? "這段對話已接手超過 30 分鐘；若已完成，請記得結案。系統不會自行恢復 AI。"
-    : detail.control.mode === "pausing" ? "請等狀態變成「真人接手中」再回覆。尚未送出的 AI 回覆會被攔下；已送往平台的訊息無法撤回。"
     : "人工訊息會自動標示身分。請從此工作台回覆；原 LINE／Meta 後台直接發出的文字不會同步到這裡。";
   const fragment = document.createDocumentFragment();
   for (const turn of detail.turns) {
@@ -95,11 +118,12 @@ async function refresh() {
       button.append(title, mode, preview);
       button.addEventListener("click", async () => {
         if (state.busy) return;
-        state.selected = item.id; const selected = item.id;
+        state.selected = item.id; const selected = item.id, selectionGeneration = ++state.generation;
+        draft(selected).matched = false; draft(selected).review = null;
         // Never leave guest A's form visible while guest B is loading.
         state.detail = null; $("detail").hidden = true; $("empty").hidden = false;
         status("正在讀取這位旅客的對話…");
-        try { const detail = await api("detail", { id: selected }); if (state.selected === selected && state.authenticated) renderDetail(detail); } catch (error) { status(error.message, true); }
+        try { const detail = await api("detail", { id: selected }); if (state.selected === selected && state.authenticated && selectionGeneration === state.generation && !state.busy) renderDetail(detail); } catch (error) { if (selectionGeneration === state.generation) status(error.message, true); }
       });
       fragment.append(button);
     }
@@ -107,12 +131,21 @@ async function refresh() {
     $("inbox").replaceChildren(fragment);
     const selected = state.selected;
     if (selected) { const detail = await api("detail", { id: selected }); if (state.selected === selected && state.authenticated && generation === state.generation) renderDetail(detail); }
-  } catch (error) { status(error.message, true); } finally { state.refreshing = false; }
+  } catch (error) { if (generation === state.generation) status(error.message, true); }
+  finally {
+    state.refreshing = false;
+    if (state.authenticated && generation !== state.generation && !state.busy) await refresh();
+  }
 }
 async function perform(fn) {
   if (state.busy) return;
+  // A read started before an action must never restore the old control state.
+  state.generation++;
   state.busy = true; if (state.detail) renderDetail(state.detail);
-  try { await fn(); } catch (error) { status(error.message, true); }
+  try { await fn(); } catch (error) {
+    status(error.message, true);
+    state.detail = null; $("detail").hidden = true; $("empty").hidden = false;
+  }
   finally { state.busy = false; if (state.detail && state.authenticated) renderDetail(state.detail); await refresh(); }
 }
 $("loginForm").addEventListener("submit", event => {
@@ -124,14 +157,32 @@ $("logout").addEventListener("click", () => perform(async () => {
 }));
 $("refresh").addEventListener("click", refresh);
 $("reply").addEventListener("input", () => { draft().text = $("reply").value; });
-$("summary").addEventListener("input", () => { draft().summary = $("summary").value; });
+$("summary").addEventListener("input", () => {
+  draft().summary = $("summary").value; draft().review = null;
+  $("resolved").checked = false; $("close").disabled = true;
+});
+$("guestMatched").addEventListener("change", () => {
+  draft().matched = $("guestMatched").checked; if (state.detail) renderDetail(state.detail);
+});
+$("resolved").addEventListener("change", () => {
+  draft().review = $("resolved").checked && state.detail?.control.mode === "human" ? reviewKey(state.detail) : null;
+  $("close").disabled = state.busy || !canClose();
+});
+$("copyGreeting").addEventListener("click", async () => {
+  if (state.busy || !state.authenticated || state.detail?.channel !== "line" || state.detail?.control.mode !== "human") return;
+  try { await navigator.clipboard.writeText($("nativeGreeting").value); status("已複製接手說明，請貼到 LINE 的同一位客人聊天室送出。這個按鈕不會自動發訊息。"); }
+  catch { $("nativeGreeting").focus(); $("nativeGreeting").select(); status("請複製已選取的接手說明，再貼到 LINE 送出。"); }
+});
 $("takeover").addEventListener("click", () => perform(async () => {
-  await api("takeover", { id: state.selected }); status("已提出人工接手。請確認狀態顯示「真人接手中」後再回覆。");
+  if (!state.detail || state.detail.id !== state.selected || state.detail.control.mode !== "ai") return;
+  if (state.detail.channel === "line" && !draft().matched) { status("請先在 LINE 核對這位客人及對話，再勾選核對欄位。", true); return; }
+  const result = await api("takeover", { id: state.selected }); state.detail.control = result.control;
+  status("已提出人工接手。請確認狀態顯示「真人接手中」後再回覆。");
 }));
 $("replyForm").addEventListener("submit", event => {
   event.preventDefault();
   perform(async () => {
-    if (!state.detail || state.detail.id !== state.selected) return;
+    if (!state.detail || state.detail.id !== state.selected || state.detail.channel === "line") return;
     const current = draft();
     let result;
     if (current.attempted) {
@@ -152,10 +203,14 @@ $("newReply").addEventListener("click", () => {
 });
 $("close").addEventListener("click", () => {
   if (!draft().summary.trim()) { status(messages.summary_required, true); $("summary").focus(); return; }
+  if (!canClose()) { status("請先核對原平台及此頁最新訊息，勾選已確認處理完成。", true); return; }
   if (!confirm("確認已處理完成並看過最新訊息？結案後，客人的下一則提問將由 AI 回覆。")) return;
+  const detail = state.detail, summary = draft().summary;
   perform(async () => {
-    await api("close", { id: state.selected, epoch: state.detail.control.epoch, revision: state.detail.revision, inboundVersion: state.detail.control.inboundVersion || 0, summary: draft().summary });
-    draft().summary = ""; status("已結案並恢復 AI。交接摘要僅供內部使用，不會另發結案訊息給旅客。");
+    await api("close", { id: detail.id, epoch: detail.control.epoch, revision: detail.revision, inboundVersion: detail.control.inboundVersion || 0, summary });
+    draft(detail.id).summary = ""; draft(detail.id).review = null;
+    state.detail = null; $("detail").hidden = true; $("empty").hidden = false;
+    status("已結案並恢復 AI。交接摘要僅供內部使用，不會另發結案訊息給旅客。");
   });
 });
 document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });

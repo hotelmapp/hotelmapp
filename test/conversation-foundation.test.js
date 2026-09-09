@@ -60,7 +60,7 @@ test("separate LINE instances share durable history and event dedupe", async () 
   const replies = []; const fetchImpl = async (_url, options) => { replies.push(JSON.parse(options.body).messages[0].text); return { ok: true, headers: { get: () => null } }; }; const answer = async (message, { history }) => `${history.at(-1)?.content || "none"}|${message}`;
   await processLineEvent({ webhookEventId: "evt-1", type: "message", message: { type: "text", text: "first" }, replyToken: "r1", source }, { accessToken: "token", fetchImpl, conversationService: serviceA, hmacSecret, answer });
   await processLineEvent({ webhookEventId: "evt-2", type: "message", message: { type: "text", text: "second" }, replyToken: "r2", source }, { accessToken: "token", fetchImpl, conversationService: serviceB, hmacSecret, answer });
-  assert.equal(replies[1], "none|first|second"); const duplicate = await processLineEvent({ webhookEventId: "evt-2", type: "message", message: { type: "text", text: "second" }, replyToken: "r3", source }, { accessToken: "token", fetchImpl, conversationService: serviceA, hmacSecret, answer }); assert.equal(duplicate.outcome, "duplicate"); assert.equal([...store.records.keys()].some(key => key.includes(source.userId)), false);
+  assert.equal(replies[1], "【AI 小幫手】\nnone|first|second"); const duplicate = await processLineEvent({ webhookEventId: "evt-2", type: "message", message: { type: "text", text: "second" }, replyToken: "r3", source }, { accessToken: "token", fetchImpl, conversationService: serviceA, hmacSecret, answer }); assert.equal(duplicate.outcome, "duplicate"); assert.equal([...store.records.keys()].some(key => key.includes(source.userId)), false);
 });
 
 test("memory outage permits FAQ but fails closed before handoff", async () => {

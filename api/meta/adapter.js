@@ -5,6 +5,7 @@ import { metaConversationId } from "../../ai-core/conversation/record.js";
 import { performAuthorizedHandoff } from "../../ai-core/handoff-service.js";
 import { sendMessengerText } from "./client.js";
 import { frontDeskService, preserveHumanHold } from "../../ai-core/front-desk/service.js";
+import { aiMessage } from "../../ai-core/message-identity.js";
 
 const DEDUPE_TTL_MS = 24 * 60 * 60_000;
 const safeId = value => createHash("sha256").update(String(value)).digest("hex").slice(0, 16);
@@ -41,12 +42,12 @@ export async function processMetaEvent({ event, pageId }, {
     id: conversationId, channel: "messenger", message: message.text,
     route: { channel: "messenger", pageId, recipientId: event.sender.id, lastInboundAt: event.timestamp },
     generate: mayAct => answerWithConversation({ id: conversationId, channel: "messenger", message: message.text, service: conversationService, answer, handoffService: performAuthorizedHandoff, beforeExternalAction: mayAct, deferPersistence: true }),
-    send: text => send({ recipientId: event.sender.id, text, accessToken, graphVersion, fetchImpl })
+    send: text => send({ recipientId: event.sender.id, text: aiMessage(text), accessToken, graphVersion, fetchImpl })
   });
   if (await preserveHumanHold({ conversations: conversationService, id: conversationId, channel: "messenger", message: message.text, env })) return { outcome: "human", conversationId };
   const result = await answerWithConversation({ id: conversationId, channel: "messenger", message: message.text, service: conversationService, answer, handoffService: performAuthorizedHandoff });
   if (!result.durable) throw new Error("meta_memory_unavailable", { cause: result.memoryError });
-  await send({ recipientId: event.sender.id, text: result.answer, accessToken, graphVersion, fetchImpl });
+  await send({ recipientId: event.sender.id, text: aiMessage(result.answer), accessToken, graphVersion, fetchImpl });
   logger.info?.("[meta] reply", { channel: "messenger", conversationId, messageId, memoryWrite: true, send: "success" });
   return { outcome: "replied", conversationId };
 }
