@@ -53,7 +53,7 @@
 | 變數 | 用途 |
 | --- | --- |
 | `FRONT_DESK_ENABLED=true` | 明確啟用新工作台及文字通道接手功能，未設定時預設關閉 |
-| `FRONT_DESK_ADMIN_KEY` | 至少 32、最多 256 字元的高強度隨機專用管理員密碼 |
+| `FRONT_DESK_ADMIN_KEY` | 至少 8、最多 256 字元的專用管理員密碼；系統不限制字元組合 |
 | `FRONT_DESK_DATA_KEY` | 獨立的 32-byte 隨機金鑰，以 Base64 編碼，用來加密平台收件路由 |
 | `FRONT_DESK_ORIGIN` | 正式 HTTPS origin，例如 `https://your-hotel.example`，不要加路徑或結尾斜線 |
 | 原有 Redis REST、`CONVERSATION_HMAC_SECRET` | 持久狀態、一次性發送紀錄與不直接暴露身分的對話 ID |
