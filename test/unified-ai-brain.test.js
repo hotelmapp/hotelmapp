@@ -35,7 +35,7 @@ test("the screenshot question is answered directly and concisely even without a 
       logger: silentLogger
     });
     assert.match(answer, /^您好～有參加喔，/u, message);
-    assert.match(answer, /2026 年 9 月 1 日.*11 月 30 日/u, message);
+    assert.match(answer, /2026 年 9 月 1 日.*2026 年 12 月 31 日/u, message);
     assert.doesNotMatch(answer, /第一晚|第二晚|每位旅客|額度與經費/u, message);
   }
 });
@@ -49,7 +49,7 @@ test("one semantic plan feeds one unified composer instead of another intent dec
     logger: silentLogger,
     request: async ({ payload }) => {
       calls.push(payload);
-      return { answer: "有參加喔，希堤微旅將於 2026 年 9 月 1 日起參加平日住宿補助，活動至 11 月 30 日止。" };
+      return { answer: "有參加喔，希堤微旅將於 2026 年 9 月 1 日起參加平日住宿補助，活動至 2026 年 12 月 31 日止。" };
     }
   });
 
@@ -63,8 +63,8 @@ test("one semantic plan feeds one unified composer instead of another intent dec
 test("an answer that misses the current need is corrected once before fallback", async () => {
   const message = "請問，你們沒有參加國旅補助嗎？";
   const answers = [
-    "希堤微旅將於 2026 年 9 月 1 日起參加平日住宿補助，活動至 11 月 30 日止。",
-    "有參加喔，活動從 2026 年 9 月 1 日開始，到 11 月 30 日為止。"
+    "希堤微旅將於 2026 年 9 月 1 日起參加平日住宿補助，活動至 2026 年 12 月 31 日止。",
+    "有參加喔，活動從 2026 年 9 月 1 日開始，到 2026 年 12 月 31 日為止。"
   ];
   const calls = [];
   const result = await orchestrateHospitalityTurn({
@@ -93,7 +93,7 @@ test("the unified brain remains channel-neutral", async () => {
       logger: silentLogger,
       request: async ({ payload }) => {
         calls.push(payload);
-        return { answer: "有參加喔，活動從 2026 年 9 月 1 日開始，到 11 月 30 日為止。" };
+        return { answer: "有參加喔，活動從 2026 年 9 月 1 日開始，到 2026 年 12 月 31 日為止。" };
       }
     });
     assert.equal(calls.length, 1, channel);

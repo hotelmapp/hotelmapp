@@ -1,9 +1,9 @@
-// 唯一內容來源：〈希堤微旅 AI 櫃檯知識庫 V2.4〉正式版（2026-08-29）。
-// V2.4 以 V2.3 為基礎，將飯店參加 2026 平日住宿補助列為明確結構化事實。
+// 唯一內容來源：〈希堤微旅 AI 櫃檯知識庫 V2.5〉正式版（2026-11-11）。
+// V2.5 依交通部觀光署 2026-11-10 公告，將平日住宿獎助及生日住宿券期限延長至 2026-12-31。
 // 櫃檯內部核銷 SOP 不屬於旅客知識。
 // 未出現在正式知識中的資訊必須維持 null，不得以 placeholder 或常識補值。
 export const hotelKnowledge = {
-  source: { title: "希堤微旅 AI 櫃檯知識庫 V2.4 正式版", date: "2026-08-29", basedOn: "V2.3 正式版（2026-08-29）" },
+  source: { title: "希堤微旅 AI 櫃檯知識庫 V2.5 正式版", date: "2026-11-11", basedOn: "V2.4 正式版（2026-08-29）" },
   identity: { name: "希堤微旅", address: "台中市上石路158號", website: "https://www.hotelm.com.tw/", bookingUrl: "https://book-directonline.com/properties/HotelMappTaichungDIrect?locale=zh-TW" },
   contact: {
     frontDeskPhone: "04-2707-8378",
@@ -120,10 +120,10 @@ export const hotelKnowledge = {
     hotelParticipation: true,
     period: {
       startsOn: "2026-09-01",
-      endsOn: "2026-11-30",
+      endsOn: "2026-12-31",
       earlyEndRule: "政府活動經費用罄時可能提前結束。"
     },
-    applicableStayDays: "限週日至週四入住；週五、週六及國定連續假日不適用。",
+    applicableStayDays: "限週日至週四入住；週五、週六、國定假日及連續假期不適用。",
     participationLimit: {
       perPerson: 1,
       scope: "每位旅客於本活動期間限參與一次。",
@@ -142,6 +142,7 @@ export const hotelKnowledge = {
     },
     birthdayVoucher: {
       amountPerRoom: "NT$1,200",
+      endsOn: "2026-12-31",
       birthdayRelated: false,
       acquisitionRule: "名稱雖為壽星生日券，但與旅客生日無關；必須參加活動抽獎並中獎後才能取得。"
     },
