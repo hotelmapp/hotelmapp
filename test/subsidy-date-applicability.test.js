@@ -43,11 +43,13 @@ test("the screenshot follow-up becomes date applicability and asks only for the 
   assert.doesNotMatch(answer, /^是否適用仍需以政府活動系統/u);
 });
 
-test("date applicability handles in-range weekday, Friday, and outside-period dates", async () => {
+test("date applicability handles the December extension, Friday, and outside-period dates", async () => {
   const cases = [
     ["9月30日住宿補助適用嗎？", /9 月 30 日.*週三.*適用日/u],
+    ["12月30日住宿補助適用嗎？", /12 月 30 日.*週三.*適用日/u],
     ["9月4日住宿補助可以用嗎？", /9 月 4 日.*週五.*不適用/u],
-    ["8月31日住宿補助適用嗎？", /8 月 31 日.*不在 9 月 1 日至 11 月 30 日.*不適用/u]
+    ["8月31日住宿補助適用嗎？", /8 月 31 日.*不在 9 月 1 日至 12 月 31 日.*不適用/u],
+    ["1月1日住宿補助適用嗎？", /1 月 1 日.*不在 9 月 1 日至 12 月 31 日.*不適用/u]
   ];
   for (const [message, expected] of cases) {
     const selected = grounding(message);

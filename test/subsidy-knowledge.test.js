@@ -15,12 +15,12 @@ async function answer(message, date = "2026-08-23", channel = "web") {
   return answerGuestMessage(message, { channel, temporalContext: temporal(date), handoffService: noHandoff });
 }
 
-test("knowledge V2.4 contains only the confirmed public subsidy rules", () => {
-  assert.equal(KNOWLEDGE_VERSION, "2.4");
+test("knowledge V2.5 contains only the confirmed public subsidy rules", () => {
+  assert.equal(KNOWLEDGE_VERSION, "2.5");
   const subsidy = hotelKnowledge.governmentSubsidy2026;
   assert.equal(subsidy.hotelParticipation, true);
   assert.deepEqual(subsidy.period, {
-    startsOn: "2026-09-01", endsOn: "2026-11-30",
+    startsOn: "2026-09-01", endsOn: "2026-12-31",
     earlyEndRule: "政府活動經費用罄時可能提前結束。"
   });
   assert.equal(subsidy.participationLimit.perPerson, 1);
@@ -28,6 +28,7 @@ test("knowledge V2.4 contains only the confirmed public subsidy rules", () => {
   assert.equal(subsidy.weekdayStayAward.consecutiveSecondNight, "NT$1,200");
   assert.equal(subsidy.weekdayStayAward.thirdNight, null);
   assert.equal(subsidy.birthdayVoucher.birthdayRelated, false);
+  assert.equal(subsidy.birthdayVoucher.endsOn, "2026-12-31");
   assert.equal(subsidy.taiwanPass.amountPerRoomPerNight, "NT$1,500");
   assert.equal(subsidy.stacking.allThreeTogetherAllowed, true);
   assert.doesNotMatch(JSON.stringify(subsidy), /隔天中午|小於 1MB|臺灣旅宿網|A4 影印|發票號碼/u);
@@ -96,15 +97,15 @@ test("activity wording follows the authoritative Asia/Taipei date", async () => 
   assert.match(upcomingAmount, /將於 2026 年 9 月 1 日起參加/u);
   assert.match(upcomingAmount, /第一晚折抵 NT\$800/u);
 
-  const active = await answer("飯店有政府住宿補助嗎？", "2026-10-15");
+  const active = await answer("飯店有政府住宿補助嗎？", "2026-12-15");
   assert.match(active, /目前有參加/u);
 
-  const ended = await answer("飯店有政府住宿補助嗎？", "2026-12-01");
-  assert.match(ended, /已於 11 月 30 日結束/u);
+  const ended = await answer("飯店有政府住宿補助嗎？", "2027-01-01");
+  assert.match(ended, /已於 2026 年 12 月 31 日結束/u);
   assert.match(ended, /政府最新公告/u);
 
-  const endedChannel = await answer("Agoda 訂房可以使用住宿補助嗎？", "2026-12-01");
-  assert.match(endedChannel, /已於 11 月 30 日結束/u);
+  const endedChannel = await answer("Agoda 訂房可以使用住宿補助嗎？", "2027-01-01");
+  assert.match(endedChannel, /已於 2026 年 12 月 31 日結束/u);
   assert.match(endedChannel, /Agoda.*不能使用/u);
 });
 
@@ -132,6 +133,7 @@ test("voucher acquisition, Taiwan PASS, and stacking cap stay explicit", async (
   assert.match(birthday, /與旅客生日無關/u);
   assert.match(birthday, /參加活動抽獎並中獎/u);
   assert.match(birthday, /每房可折抵 NT\$1,200/u);
+  assert.match(birthday, /使用期限同樣至 2026 年 12 月 31 日/u);
 
   const pass = await answer("Taiwan PASS 住宿券多少錢？");
   assert.match(pass, /每房每晚折抵 NT\$1,500/u);

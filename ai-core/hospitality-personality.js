@@ -40,24 +40,39 @@ function subsidyPhase(subsidy, temporalContext) {
 
 function subsidyStatusText(subsidy, temporalContext, language) {
   const phase = subsidyPhase(subsidy, temporalContext);
+  const startsOn = longStayDate(subsidy.period.startsOn, language);
+  const endsOn = longStayDate(subsidy.period.endsOn, language);
   if (language === "en") {
-    if (phase === "upcoming") return `Hotel Mapp will participate in the 2026 weekday accommodation subsidy from September 1 to November 30, 2026`;
-    if (phase === "ended") return `The published 2026 weekday accommodation subsidy period ended on November 30, 2026; please refer to the latest government announcement for any extension`;
-    return `Hotel Mapp is participating in the 2026 weekday accommodation subsidy from September 1 to November 30, 2026`;
+    if (phase === "upcoming") return `Hotel Mapp will participate in the 2026 weekday accommodation subsidy from ${startsOn} to ${endsOn}`;
+    if (phase === "ended") return `The published 2026 weekday accommodation subsidy period ended on ${endsOn}; please refer to the latest government announcement for any extension`;
+    return `Hotel Mapp is participating in the 2026 weekday accommodation subsidy from ${startsOn} to ${endsOn}`;
   }
   if (language === "ja") {
-    if (phase === "upcoming") return `希堤微旅は2026年9月1日から11月30日まで平日宿泊補助に参加予定です`;
-    if (phase === "ended") return `公表されている2026年平日宿泊補助は11月30日に終了しました。延長の有無は政府の最新公告をご確認ください`;
-    return `希堤微旅は2026年9月1日から11月30日まで平日宿泊補助に参加しています`;
+    if (phase === "upcoming") return `希堤微旅は${startsOn}から${endsOn}まで平日宿泊補助に参加予定です`;
+    if (phase === "ended") return `公表されている2026年平日宿泊補助は${endsOn}に終了しました。延長の有無は政府の最新公告をご確認ください`;
+    return `希堤微旅は${startsOn}から${endsOn}まで平日宿泊補助に参加しています`;
   }
   if (language === "ko") {
-    if (phase === "upcoming") return `호텔 맵은 2026년 9월 1일부터 11월 30일까지 평일 숙박 보조금 행사에 참여할 예정입니다`;
-    if (phase === "ended") return `공개된 2026년 평일 숙박 보조금 기간은 11월 30일에 종료되었습니다. 연장 여부는 정부의 최신 공지를 확인해 주세요`;
-    return `호텔 맵은 2026년 9월 1일부터 11월 30일까지 평일 숙박 보조금 행사에 참여하고 있습니다`;
+    if (phase === "upcoming") return `호텔 맵은 ${startsOn}부터 ${endsOn}까지 평일 숙박 보조금 행사에 참여할 예정입니다`;
+    if (phase === "ended") return `공개된 2026년 평일 숙박 보조금 기간은 ${endsOn}에 종료되었습니다. 연장 여부는 정부의 최신 공지를 확인해 주세요`;
+    return `호텔 맵은 ${startsOn}부터 ${endsOn}까지 평일 숙박 보조금 행사에 참여하고 있습니다`;
   }
-  if (phase === "upcoming") return "希堤微旅將於 2026 年 9 月 1 日起參加平日住宿補助，活動至 11 月 30 日止";
-  if (phase === "ended") return "文件所載的 2026 平日住宿補助已於 11 月 30 日結束；是否延長請以政府最新公告為準";
-  return "希堤微旅目前有參加 2026 平日住宿補助，活動期間至 11 月 30 日止";
+  if (phase === "upcoming") return `希堤微旅將於 ${startsOn}起參加平日住宿補助，活動至 ${endsOn}止`;
+  if (phase === "ended") return `文件所載的 2026 平日住宿補助已於 ${endsOn}結束；是否延長請以政府最新公告為準`;
+  return `希堤微旅目前有參加 2026 平日住宿補助，活動期間至 ${endsOn}止`;
+}
+
+function longStayDate(iso, language) {
+  const match = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})$/u);
+  if (!match) return iso;
+  const [, year, month, day] = match;
+  if (language === "en") {
+    const monthName = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"][Number(month) - 1];
+    return `${monthName} ${Number(day)}, ${year}`;
+  }
+  if (language === "ja") return `${year}年${Number(month)}月${Number(day)}日`;
+  if (language === "ko") return `${year}년 ${Number(month)}월 ${Number(day)}일`;
+  return `${year} 年 ${Number(month)} 月 ${Number(day)} 日`;
 }
 
 function shortStayDate(iso, language) {
@@ -88,7 +103,7 @@ function subsidyDateApplicabilityText(subsidy, requestContext = {}, language = "
     if (language === "ja") return "国定連休の前日が対象になるかのご確認ですね。国定連休中は対象外で、前日は実際の宿泊日が日曜から木曜に当たるかで判断します。ご予定のチェックイン日を教えていただけますか。";
     if (language === "ko") return "공휴일 연휴 전날에 보조금을 사용할 수 있는지 확인하시는군요. 공휴일 연휴 기간은 제외되며, 전날은 실제 체크인 날짜가 일요일부터 목요일인지에 따라 달라집니다. 예정 체크인 날짜를 알려 주시겠어요?";
     if (relationship === "day_before_long_holiday") return "了解😊 您是想先確認國定連假前一天入住是否能使用補助。是否符合補助資格，仍需以政府活動系統當下的查詢結果為準；即使是連假前一天，也要看實際入住日期是否落在週日至週四，並可能因資格或活動額度而不同，因此目前無法先保證一定可以使用，還請您見諒～方便告訴我預計入住日期嗎？我可以先依公開規則幫您判斷日期是否在適用範圍喔。";
-    return "我先幫您看日期規則～活動限週日至週四入住，週五、週六及國定連續假日不適用。方便告訴我預計入住的日期嗎？我可以先依公開規則幫您判斷喔。";
+    return "我先幫您看日期規則～活動限週日至週四入住，週五、週六、國定假日及連續假期不適用。方便告訴我預計入住的日期嗎？我可以先依公開規則幫您判斷喔。";
   }
 
   const displayDate = shortStayDate(date, language);
@@ -111,10 +126,10 @@ function subsidyDateApplicabilityText(subsidy, requestContext = {}, language = "
     if (excludedWeekday || statedHoliday) return `${displayDate}은 공개된 날짜 규정상 적용되지 않습니다.`;
     return `${displayDate}은 ${displayWeekday}이며 일요일부터 목요일까지의 적용일에 해당합니다. 개인 자격과 사용 가능 금액은 정부 시스템에서 최종 확인해야 합니다.`;
   }
-  if (outsidePeriod) return `您提到的${displayDate}不在 9 月 1 日至 11 月 30 日的活動期間內，所以日期規則上不適用喔。`;
-  if (statedHoliday) return `您提到的${displayDate}如果是國定連續假日，依公開規則不適用喔。`;
+  if (outsidePeriod) return `您提到的${displayDate}不在 ${shortStayDate(subsidy.period.startsOn, language)}至 ${shortStayDate(subsidy.period.endsOn, language)}的活動期間內，所以日期規則上不適用喔。`;
+  if (statedHoliday) return `您提到的${displayDate}如果是國定假日或連續假期，依公開規則不適用喔。`;
   if (excludedWeekday) return `您提到的${displayDate}是${displayWeekday}，依公開規則不適用喔；活動限週日至週四入住。`;
-  return `您提到的${displayDate}是${displayWeekday}，依公開規則屬於週日至週四的適用日喔；如果該日實際被列為國定連續假日，則不適用。個人資格與可用額度仍須由政府活動系統確認。`;
+  return `您提到的${displayDate}是${displayWeekday}，依公開規則屬於週日至週四的適用日喔；如果該日實際被列為國定假日或連續假期，則不適用。個人資格與可用額度仍須由政府活動系統確認。`;
 }
 
 function asksSubsidyParticipation(message, language) {
@@ -172,11 +187,11 @@ export function renderHospitalityFact({ topic, intent, facts, message = "", lang
     }
     if (intent === "subsidy_date_applicability") return subsidyDateApplicabilityText(subsidy, facts?.requestContext, language);
     if (language === "en") {
-      if (intent === "subsidy_period") return `${status}. It applies to Sunday-through-Thursday stays, excluding Fridays, Saturdays, and national long weekends. Funding may run out early, and the latest government announcement prevails.`;
+      if (intent === "subsidy_period") return `${status}. It applies to Sunday-through-Thursday stays, excluding Fridays, Saturdays, national holidays, and consecutive holiday periods. Funding may run out early, and the latest government announcement prevails.`;
       if (intent === "subsidy_amount") return `The first night receives ${subsidy.weekdayStayAward.firstNight}, and a consecutive second night receives ${subsidy.weekdayStayAward.consecutiveSecondNight}, for up to ${subsidy.weekdayStayAward.maximumForTwoNightStay}. Eligibility and available funding must still be confirmed in the government system.`;
       if (intent === "subsidy_booking_channel") return `The subsidy is for direct bookings through the hotel website, phone, LINE, or on site. Agoda, Booking.com, and other OTA or third-party bookings are not eligible.`;
       if (intent === "subsidy_participation_limit") return `Each guest may participate once during the campaign. That one participation may still cover the first and consecutive second night of the same stay under the published rules.`;
-      if (intent === "subsidy_birthday_voucher") return `Despite its name, the NT$1,200 Birthday Voucher is not based on the guest’s birthday. It is available only to guests who enter the campaign lottery and win.`;
+      if (intent === "subsidy_birthday_voucher") return `Despite its name, the NT$1,200 Birthday Voucher is not based on the guest’s birthday. It is available only to guests who enter the campaign lottery and win, and it is valid through ${longStayDate(subsidy.birthdayVoucher.endsOn, language)}.`;
       if (intent === "subsidy_taiwan_pass") return `The Taiwan PASS accommodation voucher is ${subsidy.taiwanPass.amountPerRoomPerNight} per room per night. Final eligibility must be confirmed in the government system.`;
       if (intent === "subsidy_stacking") return `The weekday subsidy, Birthday Voucher, and Taiwan PASS may all be combined. The total discount cannot exceed that night’s full room rate, and any excess cannot be paid in cash, returned as change, or retained.`;
       if (intent === "subsidy_registration") return `Guests who have not registered may use the hotel-provided QR code to open the official government campaign website. Please do not send ID photos, ID numbers, or health-card information in chat.`;
@@ -186,22 +201,26 @@ export function renderHospitalityFact({ topic, intent, facts, message = "", lang
       return `${status}. The first night receives ${subsidy.weekdayStayAward.firstNight}, and a consecutive second night receives ${subsidy.weekdayStayAward.consecutiveSecondNight}. Each guest may participate once, subject to government-system confirmation and remaining funding.`;
     }
     if (language === "ja") {
+      if (intent === "subsidy_period") return `${status}。対象は日曜から木曜の宿泊で、金曜、土曜、国定休日および連休期間は対象外です。予算がなくなり次第、早期終了する場合があり、政府の最新公告が優先されます。`;
+      if (intent === "subsidy_birthday_voucher") return `「壽星生日券」は名称にかかわらず誕生日とは関係なく、抽選に応募して当選した方のみ取得できます。1室につき${subsidy.birthdayVoucher.amountPerRoom}で、有効期限は${longStayDate(subsidy.birthdayVoucher.endsOn, language)}までです。`;
       if (intent === "subsidy_booking_channel") return `ホテル公式サイト、電話、LINE、現地での直接予約が対象です。Agoda、Booking.comなどのOTA・第三者サイト経由の予約は対象外です。`;
       if (intent === "subsidy_stacking") return `平日宿泊補助、壽星生日券、Taiwan PASSは3つ同時に併用できます。ただし、その日の正規宿泊料金を超える割引はできず、超過分の現金返金・釣銭・繰越はありません。`;
       if (intent === "subsidy_documentation") return `連続2泊目の補助に1泊目の宿泊証明が必要かどうかは、公開されている案内では確認できません。政府システムと最新規定に基づき、フロントへご確認ください。`;
       return `${status}。1泊目はNT$800、連続する2泊目はNT$1,200で、1人につき期間中1回までです。最終的な資格と残額は政府システムおよび最新公告をご確認ください。`;
     }
     if (language === "ko") {
+      if (intent === "subsidy_period") return `${status}. 일요일부터 목요일 숙박에 적용되며 금요일, 토요일, 공휴일 및 연휴 기간은 제외됩니다. 예산이 소진되면 조기 종료될 수 있으며 정부의 최신 공지가 우선합니다.`;
+      if (intent === "subsidy_birthday_voucher") return `생일권은 명칭과 달리 투숙객의 생일과는 관계가 없으며, 행사 추첨에 응모해 당첨된 경우에만 받을 수 있습니다. 객실당 ${subsidy.birthdayVoucher.amountPerRoom}이며 ${longStayDate(subsidy.birthdayVoucher.endsOn, language)}까지 유효합니다.`;
       if (intent === "subsidy_booking_channel") return `호텔 공식 웹사이트, 전화, LINE 또는 현장 직접 예약만 대상입니다. Agoda, Booking.com 등 OTA·제3자 예약은 사용할 수 없습니다.`;
       if (intent === "subsidy_stacking") return `평일 숙박 보조금, 생일권, Taiwan PASS 세 가지를 동시에 사용할 수 있습니다. 단, 총 할인액은 당일 정상 객실 요금을 초과할 수 없으며 초과분은 현금 환불, 거스름돈 또는 이월이 불가합니다.`;
       if (intent === "subsidy_documentation") return `연속 두 번째 숙박 보조금에 첫날 숙박 증명이 필요한지는 공개 안내에서 확인되지 않습니다. 정부 시스템과 최신 규정에 따라 프런트에 확인해 주세요.`;
       return `${status}. 첫날은 NT$800, 연속 두 번째 날은 NT$1,200이며 1인당 행사 기간 중 1회만 참여할 수 있습니다. 최종 자격과 잔여 예산은 정부 시스템과 최신 공지를 확인해 주세요.`;
     }
-    if (intent === "subsidy_period") return `${status}；限週日至週四入住，週五、週六及國定連續假日不適用。經費用罄可能提前結束，仍以政府最新公告為準。`;
+    if (intent === "subsidy_period") return `${status}；限週日至週四入住，週五、週六、國定假日及連續假期不適用。經費用罄可能提前結束，仍以政府最新公告為準。`;
     if (intent === "subsidy_amount") return `第一晚折抵 ${subsidy.weekdayStayAward.firstNight}，連續入住第二晚折抵 ${subsidy.weekdayStayAward.consecutiveSecondNight}，兩晚最高 ${subsidy.weekdayStayAward.maximumForTwoNightStay}。實際資格與額度仍須由政府系統確認。`;
     if (intent === "subsidy_booking_channel") return `限透過飯店官網、電話、LINE 或現場直接訂房；Agoda、Booking.com 等 OTA／第三方平台訂單不能使用。`;
     if (intent === "subsidy_participation_limit") return `每位旅客在活動期間限參與一次；同一次連續住宿仍可依規定使用第一晚及連續第二晚補助。`;
-    if (intent === "subsidy_birthday_voucher") return `壽星生日券雖然名稱有「壽星」，但與旅客生日無關；必須參加活動抽獎並中獎後才能取得，每房可折抵 ${subsidy.birthdayVoucher.amountPerRoom}。`;
+    if (intent === "subsidy_birthday_voucher") return `壽星生日券雖然名稱有「壽星」，但與旅客生日無關；必須參加活動抽獎並中獎後才能取得，每房可折抵 ${subsidy.birthdayVoucher.amountPerRoom}，使用期限同樣至 ${longStayDate(subsidy.birthdayVoucher.endsOn, language)}。`;
     if (intent === "subsidy_taiwan_pass") return `Taiwan PASS 住宿券是每房每晚折抵 ${subsidy.taiwanPass.amountPerRoomPerNight}；實際使用資格仍須由政府系統確認。`;
     if (intent === "subsidy_stacking") return `平日住宿獎助、壽星生日券與 Taiwan PASS 三項可以同時疊加，但總折抵最高不得超過當天實際全額房價；超過部分不能退現、找現或保留。`;
     if (intent === "subsidy_registration") return `尚未登錄的旅客可以使用飯店提供的 QR Code 進入政府活動官方網站登錄。請不要在 LINE、Messenger 或網站聊天中傳送證件照片、身分證字號或健保卡資料。`;
